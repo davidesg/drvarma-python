@@ -54,6 +54,24 @@ class Model:
                                     d=self.d, D=self.D, s=self.series.freq, L=L, b=b)
         return levels
 
+    def irf(self, horizon, orthogonalized=True):
+        """Orthogonalised impulse responses OIRF[0..horizon] (shape (H+1, m, m))."""
+        if self.result is None:
+            raise RuntimeError("call fit() before irf()")
+        from .irf import oirf, psi_weights
+        if orthogonalized:
+            return oirf(self.result["phi"], self.result["theta"],
+                        self.result["sigma"], horizon)
+        return psi_weights(self.result["phi"], self.result["theta"], horizon)
+
+    def fevd(self, horizon):
+        """Forecast-error variance decomposition (percentages), shape (H, m, m)."""
+        if self.result is None:
+            raise RuntimeError("call fit() before fevd()")
+        from .irf import fevd
+        return fevd(self.result["phi"], self.result["theta"],
+                    self.result["sigma"], horizon)
+
     def diagnostics(self, lag=None):
         """Multivariate residual diagnostics: Hosking Q and Jarque-Bera.
 
