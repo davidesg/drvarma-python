@@ -22,19 +22,29 @@ class Model:
     def __init__(self, series, lam=0.0, d=1, D=0, scale=transform.DEFAULT_SCALE,
                  p=0, q=0, include_mean=False,
                  diag_ar=False, diag_ma=False, diag_cov=False,
-                 method=1, twostep=False):
+                 method=1, twostep=False, deseason=None):
         self.series = series
         self.lam, self.d, self.D, self.scale = lam, d, D, scale
         self.p, self.q = p, q
         self.include_mean = include_mean
         self.diag_ar, self.diag_ma, self.diag_cov = diag_ar, diag_ma, diag_cov
         self.method, self.twostep = method, twostep
+        self.deseason = deseason            # None | "auto" | "force"
         self.result = None
+        self._dummies = None
+        self._deseason_info = None
 
     def fit(self):
-        """Transform the series and estimate by exact ML (C engine)."""
+        """Deseasonalise (optional), transform and estimate by exact ML (C engine)."""
         from ._engine import estimate_w
-        w, bc = transform.transform(self.series.data, lam=self.lam, d=self.d,
+        levels = self.series.data
+        if self.deseason:
+            from .deseason import deseasonalize_raw
+            yr, sub = self.series.start
+            levels, self._dummies, self._deseason_info = deseasonalize_raw(
+                levels, s=self.series.freq, start_sub=sub, mode=self.deseason)
+        self._levels = levels
+        w, bc = transform.transform(levels, lam=self.lam, d=self.d,
                                     D=self.D, s=self.series.freq, scale=self.scale)
         self._w, self._bc = w, bc
         self.result = estimate_w(
@@ -52,6 +62,13 @@ class Model:
         levels, _ = forecast_levels(self.result, self._w, self._bc,
                                     lam=self.lam, scale=self.scale,
                                     d=self.d, D=self.D, s=self.series.freq, L=L, b=b)
+        if self.deseason and self._dummies is not None:
+            freq = self.series.freq
+            sub = self.series.start[1]
+            origin = self.series.nobs - b
+            for l in range(1, L + 1):
+                period = (origin + l + sub - 2) % freq
+                levels[l - 1] += self._dummies[:, period]
         return levels
 
     def irf(self, horizon, orthogonalized=True):
