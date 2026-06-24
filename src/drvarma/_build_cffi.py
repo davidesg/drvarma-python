@@ -32,11 +32,16 @@ typedef struct {
     int     ifault;
     int     npar;
     int     m;
+    int     p, q;
     int     nresiduals;
     double *params;
     double *std_errors;
     double *cov_matrix;
     double *residuals;
+    double *mu;
+    double *phi;
+    double *theta;
+    double *sigma;
     double  sigma2;
     double  logelf;
 } DrvarmaResult;

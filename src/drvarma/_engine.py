@@ -40,10 +40,13 @@ def estimate_w(w, p, q, include_mean=False,
     res = lib.drvarma_estimate(spec)
     try:
         npar = res.npar
+        rp, rq, rm = res.p, res.q, res.m
         out = {
             "ifault": res.ifault,
             "npar": npar,
-            "m": res.m,
+            "m": rm,
+            "p": rp,
+            "q": rq,
             "sigma2": res.sigma2,
             "logelf": res.logelf,
             "params": np.frombuffer(ffi.buffer(res.params, npar * 8), float).copy()
@@ -54,6 +57,13 @@ def estimate_w(w, p, q, include_mean=False,
                     .reshape(npar, npar).copy() if npar else np.zeros((0, 0))),
             "residuals": np.frombuffer(ffi.buffer(res.residuals, nobs * m * 8), float)
                          .reshape(nobs, m).copy(),
+            "mu": np.frombuffer(ffi.buffer(res.mu, rm * 8), float).copy(),
+            "phi": (np.frombuffer(ffi.buffer(res.phi, rp * rm * rm * 8), float)
+                    .reshape(rp, rm, rm).copy() if rp else np.zeros((0, rm, rm))),
+            "theta": (np.frombuffer(ffi.buffer(res.theta, rq * rm * rm * 8), float)
+                      .reshape(rq, rm, rm).copy() if rq else np.zeros((0, rm, rm))),
+            "sigma": np.frombuffer(ffi.buffer(res.sigma, rm * rm * 8), float)
+                     .reshape(rm, rm).copy(),
         }
     finally:
         lib.drvarma_result_free(res)

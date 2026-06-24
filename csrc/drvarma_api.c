@@ -939,7 +939,8 @@ void drvarma_result_free(DrvarmaResult *r)
 {
     if (!r) return;
     free(r->params); free(r->std_errors); free(r->cov_matrix);
-    free(r->residuals); free(r);
+    free(r->residuals); free(r->mu); free(r->phi); free(r->theta);
+    free(r->sigma); free(r);
 }
 
 DrvarmaResult *drvarma_estimate(const DrvarmaModelSpec *spec)
@@ -999,11 +1000,16 @@ DrvarmaResult *drvarma_estimate(const DrvarmaModelSpec *spec)
 
     r = (DrvarmaResult *) calloc(1, sizeof(DrvarmaResult));
     r->ifault = est_fault; r->npar = npar; r->m = nser; r->nresiduals = nobs;
+    r->p = global_p; r->q = global_q;
     r->sigma2 = varma1.sigma2; r->logelf = varma1.logelf;
     r->params     = (double *) malloc((size_t)npar * sizeof(double));
     r->std_errors = (double *) malloc((size_t)npar * sizeof(double));
     r->cov_matrix = (double *) malloc((size_t)npar * npar * sizeof(double));
     r->residuals  = (double *) malloc((size_t)nobs * nser * sizeof(double));
+    r->mu    = (double *) calloc((size_t)nser, sizeof(double));
+    r->phi   = (double *) calloc((size_t)(global_p > 0 ? global_p : 1) * nser * nser, sizeof(double));
+    r->theta = (double *) calloc((size_t)(global_q > 0 ? global_q : 1) * nser * nser, sizeof(double));
+    r->sigma = (double *) calloc((size_t)nser * nser, sizeof(double));
     for (i = 1; i <= npar; i++) { r->params[i-1] = x[i]; r->std_errors[i-1] = dev[i]; }
     for (i = 1; i <= npar; i++)
         for (j = 1; j <= npar; j++)
@@ -1011,6 +1017,18 @@ DrvarmaResult *drvarma_estimate(const DrvarmaModelSpec *spec)
     for (t = 1; t <= nobs; t++)
         for (j = 1; j <= nser; j++)
             r->residuals[(t-1)*nser + (j-1)] = varma1.a[t][j];
+    for (i = 1; i <= nser; i++) r->mu[i-1] = varma1.mu[i];
+    for (int k = 1; k <= global_p; k++)
+        for (i = 1; i <= nser; i++)
+            for (j = 1; j <= nser; j++)
+                r->phi[((k-1)*nser + (i-1))*nser + (j-1)] = varma1.phi[k][i][j];
+    for (int k = 1; k <= global_q; k++)
+        for (i = 1; i <= nser; i++)
+            for (j = 1; j <= nser; j++)
+                r->theta[((k-1)*nser + (i-1))*nser + (j-1)] = varma1.theta[k][i][j];
+    for (i = 1; i <= nser; i++)
+        for (j = 1; j <= nser; j++)
+            r->sigma[(i-1)*nser + (j-1)] = varma1.sigma2 * varma1.qq[i][j];
 
     shootx(x, &varma1, &ifault, 0, 1);
     free_matrix(cov, 1, npar, 1, npar);

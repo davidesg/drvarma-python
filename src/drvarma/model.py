@@ -44,6 +44,16 @@ class Model:
         )
         return self
 
+    def forecast(self, L, b=0):
+        """Forecast L steps ahead (origin = last obs minus b); returns levels (L, m)."""
+        if self.result is None:
+            raise RuntimeError("call fit() before forecast()")
+        from .forecast import forecast_levels
+        levels, _ = forecast_levels(self.result, self._w, self._bc,
+                                    lam=self.lam, scale=self.scale,
+                                    d=self.d, D=self.D, s=self.series.freq, L=L, b=b)
+        return levels
+
     # convenience accessors -------------------------------------------------
     @property
     def params(self):

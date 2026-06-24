@@ -22,11 +22,16 @@ typedef struct {
     int     ifault;
     int     npar;
     int     m;
+    int     p, q;
     int     nresiduals;
     double *params;
     double *std_errors;
     double *cov_matrix;
-    double *residuals;
+    double *residuals;     /* nobs*m (row-major)                              */
+    double *mu;            /* m                                               */
+    double *phi;           /* p*m*m (lag 1..p, row-major per lag)             */
+    double *theta;         /* q*m*m                                           */
+    double *sigma;         /* m*m  (= sigma2 * Q)                             */
     double  sigma2;
     double  logelf;
 } DrvarmaResult;
