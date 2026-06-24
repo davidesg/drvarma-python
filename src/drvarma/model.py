@@ -54,22 +54,40 @@ class Model:
         )
         return self
 
-    def forecast(self, L, b=0):
-        """Forecast L steps ahead (origin = last obs minus b); returns levels (L, m)."""
+    def forecast(self, L, b=0, bands=False):
+        """Forecast L steps ahead (origin = last obs minus b).
+
+        Returns levels (L, m), or (levels, low95, high95) if bands=True.
+        """
         if self.result is None:
             raise RuntimeError("call fit() before forecast()")
-        from .forecast import forecast_levels
-        levels, _ = forecast_levels(self.result, self._w, self._bc,
-                                    lam=self.lam, scale=self.scale,
-                                    d=self.d, D=self.D, s=self.series.freq, L=L, b=b)
+        from .forecast import forecast_levels, forecast_level_variances
+        lev_des, _ = forecast_levels(self.result, self._w, self._bc,
+                                     lam=self.lam, scale=self.scale, d=self.d,
+                                     D=self.D, s=self.series.freq, L=L, b=b)
+        m = self.series.m
+        freq = self.series.freq
+        sub = self.series.start[1]
+        origin = self.series.nobs - b
+        dseas = np.zeros((L, m))
         if self.deseason and self._dummies is not None:
-            freq = self.series.freq
-            sub = self.series.start[1]
-            origin = self.series.nobs - b
             for l in range(1, L + 1):
                 period = (origin + l + sub - 2) % freq
-                levels[l - 1] += self._dummies[:, period]
-        return levels
+                dseas[l - 1] = self._dummies[:, period]
+        levels = lev_des + dseas
+        if not bands:
+            return levels
+        v_level, _, _ = forecast_level_variances(
+            self.result["phi"], self.result["theta"], self.result["sigma"],
+            L, self.d, self.D, freq)
+        low = np.zeros((L, m)); high = np.zeros((L, m))
+        for l in range(1, L + 1):
+            for i in range(m):
+                sd = np.sqrt(v_level[l, i, i])
+                cf = self.scale * transform.boxcox_fwd(lev_des[l - 1, i], self.lam)
+                low[l - 1, i] = transform.boxcox_inv((cf - 1.96 * sd) / self.scale, self.lam) + dseas[l - 1, i]
+                high[l - 1, i] = transform.boxcox_inv((cf + 1.96 * sd) / self.scale, self.lam) + dseas[l - 1, i]
+        return levels, low, high
 
     def recursive_forecast(self, estwin, H):
         """Fixed-parameter recursive forecasts from multiple origins (-estwin).

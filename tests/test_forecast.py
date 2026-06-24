@@ -42,6 +42,32 @@ def test_forecast_levels_match_c(tmp_path):
         assert np.max(np.abs(lev[:, j] - c)) < 1e-3
 
 
+@pytest.mark.skipif(not (os.path.exists(IPC3) and os.path.exists(C_BIN)),
+                    reason="C drvarma binary or IPC3.inp not available")
+def test_forecast_bands_match_c(tmp_path):
+    import shutil, subprocess
+    shutil.copy(IPC3, tmp_path / "fb.inp")
+    subprocess.run([os.path.abspath(C_BIN), str(tmp_path / "fb"), "3", "0", "-mean",
+                    "-deseason", "auto", "-forecast", "12"], check=True, capture_output=True)
+    cL = {1: [], 2: [], 3: []}; ser = 0
+    for line in open(tmp_path / "fb.forecast", encoding="latin-1"):
+        ms = re.search(r"Series\s+(\d+)", line)
+        if ms:
+            ser = int(ms.group(1)); continue
+        mm = re.match(r"\s*\d+/\d+\s+([-\d.]+)\s+([-\d.]+)\s+([-\d.]+)", line)
+        if mm and ser in cL:
+            cL[ser].append([float(mm.group(1)), float(mm.group(2)), float(mm.group(3))])
+    s, _ = load(IPC3)
+    mdl = Model(s, lam=0.0, d=1, D=0, scale=100.0, p=3, q=0,
+                include_mean=True, deseason="auto").fit()
+    lev, low, high = mdl.forecast(12, bands=True)
+    for j in range(3):
+        c = np.array(cL[j + 1][:12])
+        assert np.max(np.abs(lev[:, j] - c[:, 0])) < 1e-3
+        assert np.max(np.abs(low[:, j] - c[:, 1])) < 1e-3
+        assert np.max(np.abs(high[:, j] - c[:, 2])) < 1e-3
+
+
 def test_forecast_shapes_and_finite():
     sim = simulate_varma(phi=[np.array([[0.5, 0.0], [0.2, 0.4]])], n=300, seed=21)
     # treat as raw levels: identity transform, no differencing, scale 1

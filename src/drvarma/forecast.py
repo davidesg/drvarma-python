@@ -41,6 +41,51 @@ def forecast_w(phi, theta, mu, w, a, L, b=0):
     return f
 
 
+def _forecast_variance(psis, sigma):
+    """var[l] = sum_{j=0}^{l-1} psis[j] sigma psis[j]^T (l=1..L)."""
+    L = psis.shape[0] - 1
+    m = sigma.shape[0]
+    var = np.zeros((L + 1, m, m))
+    for l in range(1, L + 1):
+        acc = np.zeros((m, m))
+        for j in range(0, l):
+            acc += psis[j] @ sigma @ psis[j].T
+        var[l] = acc
+    return var
+
+
+def forecast_level_variances(phi, theta, sigma, L, d, D, s):
+    """Level / monthly / annual forecast-error variances (port of forecast.c).
+
+    Returns (v_level, v_mon, v_ann), each (L+1, m, m), on the scale*Box-Cox scale.
+    """
+    from .irf import psi_weights
+    sigma = np.asarray(sigma, float)
+    m = sigma.shape[0]
+    psi = psi_weights(phi, theta, L)
+    deg = d + D * s
+    delta = np.zeros(deg + 1)
+    delta[0] = 1.0
+    for _ in range(d):
+        for k in range(deg, 0, -1):
+            delta[k] -= delta[k - 1]
+    for _ in range(D):
+        for k in range(deg, s - 1, -1):
+            delta[k] -= delta[k - s]
+    psis = np.zeros((L + 1, m, m))
+    for l in range(L + 1):
+        val = psi[l].copy()
+        for k in range(1, min(l, deg) + 1):
+            val -= delta[k] * psis[l - k]
+        psis[l] = val
+    v_level = _forecast_variance(psis, sigma)
+    op = np.array([psis[l] - (psis[l - 1] if l >= 1 else 0.0) for l in range(L + 1)])
+    v_mon = _forecast_variance(op, sigma)
+    op = np.array([psis[l] - (psis[l - s] if l >= s else 0.0) for l in range(L + 1)])
+    v_ann = _forecast_variance(op, sigma)
+    return v_level, v_mon, v_ann
+
+
 def recursive_forecast(series, estwin, H, lam, d, D, scale, p, q,
                        include_mean=False, diag_ar=False, diag_ma=False,
                        diag_cov=False, deseason=None):
