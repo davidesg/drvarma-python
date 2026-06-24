@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=60", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "drvarma"
+version = "0.0.1.dev0"
+description = "Multivariate VARMA modelling — Python port of the drvarma engine"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "GPL-2.0-or-later" }
+authors = [
+    { name = "A.B. Treadway" },
+    { name = "J.A. Mauricio" },
+    { name = "D.E. Guerrero" },
+]
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+]
+
+[project.optional-dependencies]
+# Optional CFFI-compiled C engine (P1): pip install "drvarma[c-engine]"
+c-engine = ["cffi>=1.15"]
+plots = ["matplotlib>=3.6"]
+test = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
