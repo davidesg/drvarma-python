@@ -26,6 +26,9 @@ All P1/P2 numerics are validated against the C engine on the IPC3 reference
 case (parameters, forecasts, bands, diagnostics, IRF/FEVD and recursive
 forecasts match to rounding precision).
 
+**Resuming work?** Read [`docs/STATUS.md`](docs/STATUS.md) (state, architecture,
+build/test/validate, gotchas) and [`TODO.md`](TODO.md) (next tasks).
+
 ## Install (development)
 
 ```sh
