@@ -54,6 +54,22 @@ class Model:
                                     d=self.d, D=self.D, s=self.series.freq, L=L, b=b)
         return levels
 
+    def diagnostics(self, lag=None):
+        """Multivariate residual diagnostics: Hosking Q and Jarque-Bera.
+
+        `lag` defaults to freq + 2 (14 for monthly), matching the C engine.
+        """
+        if self.result is None:
+            raise RuntimeError("call fit() before diagnostics()")
+        from .diagnostics import hosking_q, jarque_bera_mv
+        res = self.result["residuals"]
+        if lag is None:
+            lag = (self.series.freq + 2) if self.series.freq > 1 else 10
+        Q, qdf, qp = hosking_q(res, lag)
+        JB, jdf, jp = jarque_bera_mv(res)
+        return {"hosking_Q": Q, "hosking_df": qdf, "hosking_p": qp, "hosking_lag": lag,
+                "JB": JB, "JB_df": jdf, "JB_p": jp}
+
     # convenience accessors -------------------------------------------------
     @property
     def params(self):
