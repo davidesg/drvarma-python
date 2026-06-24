@@ -71,6 +71,20 @@ class Model:
                 levels[l - 1] += self._dummies[:, period]
         return levels
 
+    def recursive_forecast(self, estwin, H):
+        """Fixed-parameter recursive forecasts from multiple origins (-estwin).
+
+        Estimates once on the first `estwin` raw observations; returns a list of
+        (origin_raw_index, series_idx, horizon, level). q=0 only.
+        """
+        from .forecast import recursive_forecast
+        rows, _ = recursive_forecast(
+            self.series, estwin, H, lam=self.lam, d=self.d, D=self.D,
+            scale=self.scale, p=self.p, q=self.q, include_mean=self.include_mean,
+            diag_ar=self.diag_ar, diag_ma=self.diag_ma, diag_cov=self.diag_cov,
+            deseason=self.deseason)
+        return rows
+
     def irf(self, horizon, orthogonalized=True):
         """Orthogonalised impulse responses OIRF[0..horizon] (shape (H+1, m, m))."""
         if self.result is None:
