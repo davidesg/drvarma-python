@@ -130,6 +130,72 @@ def test_hosking_q_matches_formula():
     assert abs(Q - Qm) < 1e-9
 
 
+@needs_engine
+@needs_pt
+def test_series_stats_match_c_out():
+    # exact match vs the IPC3.out residual-diagnostics section (series a[1]).
+    from drvarma import load
+    ipc3 = os.path.join(_HERE, "..", "..", "drvarma_v.04.1", "data",
+                        "models_group1", "IPC3.inp")
+    if not os.path.exists(ipc3):
+        pytest.skip("IPC3.inp absent")
+    from drvarma import Model
+    ser, spec = load(ipc3)
+    mdl = Model(ser, lam=spec.lam, d=spec.d, D=spec.D, p=3, q=0,
+                include_mean=True, deseason="auto").fit()
+    s = diagnostics.series_stats(mdl.residuals[:, 0])
+    assert abs(s["mean"] - 0.000134) < 5e-7
+    assert abs(s["std_error"] - 0.017187) < 5e-7
+    assert abs(s["variance"] - 0.063509) < 5e-7
+    assert abs(s["std"] - 0.252010) < 5e-7
+    assert abs(s["skew"] - (-0.052073)) < 5e-7
+    assert abs(s["kurt"] - (-0.027081)) < 5e-7
+    assert s["min_idx"] + 1 == 168 and abs(s["min_val"] - (-0.733616)) < 5e-7
+    assert s["max_idx"] + 1 == 128 and abs(s["max_val"] - 0.676607) < 5e-7
+
+
+def test_acf_matches_formula():
+    rng = np.random.default_rng(5)
+    x = rng.standard_normal(300)
+    a = diagnostics.acf(x, 10)
+    n = 300
+    xc = x - x.mean()
+    var = (xc ** 2).mean()
+    for j in range(1, 11):
+        expected = (xc[:n - j] * xc[j:]).sum() / (n * var)
+        assert abs(a[j - 1] - expected) < 1e-12
+
+
+def test_ljung_box_matches_formula():
+    rng = np.random.default_rng(6)
+    x = rng.standard_normal(250)
+    a = diagnostics.acf(x, 12)
+    Q, df, p = diagnostics.ljung_box(a, 250)
+    Qm = 250 * 252 * sum(a[i] ** 2 / (250 - (i + 1)) for i in range(12))
+    assert df == 12 and abs(Q - Qm) < 1e-8
+    assert 0.0 <= p <= 1.0
+
+
+def test_pacf_ar1_property():
+    # AR(1): pacf(1) ~ phi, pacf(k>1) ~ 0
+    phi = 0.6
+    sim = simulate_varma(phi=[np.array([[phi]])], n=4000, seed=8)
+    a = diagnostics.acf(sim.data[:, 0], 10)
+    p = diagnostics.pacf(a)
+    assert abs(p[0] - phi) < 0.05
+    assert abs(p[1]) < 0.05 and abs(p[2]) < 0.05
+
+
+def test_residual_diagnostics_structure():
+    sim = simulate_varma(phi=[np.array([[0.5, 0.0], [0.0, 0.4]])], n=200, seed=1)
+    diag = diagnostics.residual_diagnostics(sim.data, freq=12)
+    assert len(diag) == 2
+    for d in diag:
+        assert set(d) == {"stats", "acf", "pacf", "lags", "ljung_box"}
+        assert d["acf"].shape == (d["lags"],) == d["pacf"].shape
+        assert d["ljung_box"]["df"] == d["lags"]
+
+
 def test_ccf_lag0_is_correlation():
     rng = np.random.default_rng(3)
     w1 = rng.standard_normal(500)
