@@ -16,17 +16,21 @@ and how to validate.
       ASCII residual-plot tail (`diagnose()`).
 
 ## P3 — pure-Python general-m likelihood (reference / fallback)
-- [ ] **`elfvarma_py.py`**: exact Gaussian VARMA(p,q) log-likelihood for general
-      m in numpy (generalise fue's m=1 `elf_scalar`/`flikam`; the C
-      `elfvarma.c`/`multshea.c` are the reference implementation). Start q=0
-      (conditional/exact VAR) then add MA.
-- [ ] **`estimate_py.py`**: scipy `minimize` (L-BFGS-B) driver over the param
-      packing used by `shootx` (mu, phi, theta, chol(Q)); reuse the same packing
-      order so results line up with the C.
-- [ ] Wire `_engine.estimate` to **fall back** to the pure-Python estimator when
-      `_drvarma_engine` is not importable (mirror fue's `_engine.py`).
-- [ ] Validate: pure-Python vs C params/loglik to ~1e-6 on IPC3 and pass-through;
-      synthetic recovery (VAR and VARMA) via `datasets.simulate_varma`.
+- [x] **`elfvarma_py.py`** (q=0): exact Gaussian **VAR(p)** log-likelihood for
+      general m via the companion-form Lyapunov stationary covariance of the first
+      p obs + conditional density. Reproduces the C `logelf` to ~1e-7. Vectorised.
+- [x] **`estimate_py.py`** (q=0): scipy L-BFGS-B over (mu, phi, chol(Sigma)) from
+      OLS start; result dict matches the C `estimate_w` (params in C label order;
+      std errors via numerical observed-information Hessian, best-effort). Reports
+      `sigma2=1, sigma=Sigma` (the AS-311 sigma2/Q split is not reproduced here).
+- [x] Wire `_engine.estimate_w` to **fall back** to `estimate_py.estimate_w_py`
+      when `_drvarma_engine` is not importable (mirrors fue's `_engine.py`).
+- [x] Validated (`tests/test_estimate_py.py`, 6 tests): elf_var vs C logelf <1e-6;
+      pure-Python estimate vs C mu/phi/sigma/logelf <1e-3 on IPC3 (q=0); fallback
+      dispatch (incl. via `Model.fit`); synthetic VAR(1) recovery.
+- [ ] **MA case (q>0)**: port the multivariate AS 311 (`elfvarma.c`/`multshea.c`)
+      — exact VARMA likelihood. `estimate_w_py` currently raises NotImplementedError
+      for q>0 (build the C engine for VARMA). Add chol(Q)+theta to the packing.
 
 ## P4 — synthetic test suite & reliability
 - [ ] Expand `datasets`: VARMA(1,1), full-Σ, near-unit-root, varying m; seeded

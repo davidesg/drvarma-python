@@ -18,7 +18,7 @@ The C engine lives in the sibling directory `../drvarma_v.04.1` (published at
 | P0 | package skeleton, `.inp` I/O, Box-Cox/differencing transform, synthetic VARMA simulator | **done** |
 | P1 | estimation via CFFI over a `drvarma_api.c` | **done** |
 | P2 | forecasting (+ bands, recursive `-estwin`), deseason, diagnostics, IRF/FEVD, report writers | **done** |
-| P3 | pure-Python general-m likelihood (reference/fallback) | pending |
+| P3 | pure-Python exact-ML likelihood (reference/fallback) | VAR (q=0) **done**; VARMA (q>0) pending |
 | P4 | synthetic test suite | started (simulator) |
 | P5 | CLI **done**; packaging/docs/CI pending | in progress |
 

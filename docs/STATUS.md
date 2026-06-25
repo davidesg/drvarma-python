@@ -22,7 +22,9 @@ C core.
 Wrap the validated multivariate C through CFFI to get a correct port fast; the
 pure-Python general-m likelihood is a later reference/fallback (P3). **fue's
 pure-Python likelihood is m=1 only**, so the multivariate likelihood is *not*
-reusable from fue — it lives in the shared C (or must be written for P3).
+reusable from fue. P3 status: the exact **VAR(p)** (q=0) likelihood is now written
+in pure Python (`elfvarma_py`/`estimate_py`, see below); the VARMA (q>0) case still
+lives only in the shared C.
 
 ## Done (P0–P2), all validated vs the C binary on IPC3
 
@@ -48,7 +50,7 @@ P2 numeric checks vs C (IPC3, `3 0 -mean [-deseason auto] [-forecast 12] [-estwi
 cd drvarma_source/drvarma
 # build the optional C engine (GSL dev headers required) straight into src/:
 python setup.py build_ext --inplace        # or: pip install -e .
-PYTHONPATH=src python -m pytest tests/ -q   # 37 tests
+PYTHONPATH=src python -m pytest tests/ -q   # 43 tests
 ```
 
 `pip install` builds the engine via `setup.py` (an *optional* cffi Extension:
@@ -92,8 +94,23 @@ src/drvarma/
   datasets.py   simulate_varma
   report.py     .out/.forecast/.recursive writers (C-format text reports)
   cli.py        `drvarma <file> p q [flags]` entry point (drvarma.cli:main)
+  elfvarma_py.py exact VAR(p) log-likelihood, pure Python (q=0 fallback)
+  estimate_py.py scipy exact-ML VAR estimator (pure-Python fallback)
 tests/          one test module per area; compare to the C binary + synthetic
 ```
+
+## Pure-Python VAR fallback (P3, q=0, done 2026-06-25)
+
+`elfvarma_py.elf_var` is the exact Gaussian **VAR(p)** log-likelihood for general
+m (companion-form Lyapunov stationary covariance of the first p obs + conditional
+density); it reproduces the C `logelf` to ~1e-7. `estimate_py.estimate_w_py` fits
+it with scipy L-BFGS-B and returns the **same dict shape** as the C
+`_engine.estimate_w`, so model/forecast/report all work without the compiled
+engine. `_engine.estimate_w` now tries the C engine and **falls back** to the
+pure-Python estimator on ImportError. Validated in `tests/test_estimate_py.py`.
+Caveats: q>0 (MA) raises NotImplementedError in the fallback (build the C engine
+for VARMA); std errors come from a numerical Hessian (best-effort); the fallback
+reports `sigma2=1, sigma=Sigma` rather than the C's AS-311 sigma2/Q split.
 
 ## Reports & CLI (P2-presentation + P5-CLI, done 2026-06-25)
 

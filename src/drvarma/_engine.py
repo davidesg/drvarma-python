@@ -1,8 +1,9 @@
 """Bridge from Python to the cffi-compiled drvarma C estimator.
 
 `estimate_w(...)` estimates a VARMA(p,q) on an already-transformed stationary
-series `w` (shape nobs x m) via the C engine and returns a result dict.
-Raises ImportError if the C extension is not built.
+series `w` (shape nobs x m) via the C engine and returns a result dict.  When the
+C extension is not built it falls back to the pure-Python estimator
+(`estimate_py`, exact VAR only) — mirroring fue's `_engine.py`.
 """
 import numpy as np
 
@@ -10,8 +11,18 @@ import numpy as np
 def estimate_w(w, p, q, include_mean=False,
                diag_ar=False, diag_ma=False, diag_cov=False,
                method=1, twostep=False, maxits=0, grtol=0.0, sptol=0.0):
-    """Estimate VARMA(p,q) on the stationary series w (nobs x m)."""
-    from drvarma._drvarma_engine import ffi, lib
+    """Estimate VARMA(p,q) on the stationary series w (nobs x m).
+
+    Uses the compiled C engine when available; otherwise falls back to the
+    pure-Python exact-ML estimator (`estimate_py.estimate_w_py`, q=0 only).
+    """
+    try:
+        from drvarma._drvarma_engine import ffi, lib
+    except ImportError:
+        from .estimate_py import estimate_w_py
+        return estimate_w_py(w, p, q, include_mean=include_mean,
+                             diag_ar=diag_ar, diag_ma=diag_ma, diag_cov=diag_cov,
+                             method=method, twostep=twostep)
 
     w = np.ascontiguousarray(np.atleast_2d(np.asarray(w, dtype=np.float64)))
     nobs, m = w.shape
