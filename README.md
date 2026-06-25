@@ -68,7 +68,13 @@ the C engine; see [`docs/STATUS.md`](docs/STATUS.md) for `.out` fidelity notes.
 
 With matplotlib (`pip install "drvarma[plots]"`), `drvarma.plots` offers
 `plot_series`, `plot_forecast` (history + forecast + 95% bands), `plot_irf`
-(m×m OIRF grid) and `plot_fevd`. Each returns a matplotlib `Figure`.
+(m×m OIRF grid), `plot_fevd` and `plot_ccf` (two-sided cross-correlation). Each
+returns a matplotlib `Figure`.
+
+The `[plots]` extra also pulls in **pyfug**, whose Jenkins-Treadway diagnostic
+plots are reused per series/residual: `plot_series_jt`, `plot_residual_acf_pacf`,
+`plot_residual_histogram`, `plot_residual_diagnostics` (series + ACF/PACF) and
+`plot_mean_deviation`; `apply_jt_theme()` styles the rest with the JT theme.
 
 ## License
 

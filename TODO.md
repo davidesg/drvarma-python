@@ -91,11 +91,12 @@ pure-Python fallback with no compiled engine. Remaining: the graphics finish
       **Byte-exact vs `IPC3.out`** except the standardized-plot value column
       (residuals differ ~1e-9, engine tolerance). Wired into `out_report`
       (`residuals="auto"`: included when pyfug is importable). `tests/test_residual_report.py`.
-- [ ] **Graphics finish (deferred to last)**: reuse `pyfug.graphics` JT formats
-      (series, ACF/PACF, histogram, mean-deviation) through the same adapter;
-      restyle forecast/IRF/FEVD with the JT theme; add pyfug to `[plots]` extras.
-      drvarma keeps stat ownership (`diagnostics.py`); pyfug renders. See
-      `docs/FUE_REUSE.md`.
+- [x] **Graphics finish** (`plots.py`): JT diagnostics delegated to
+      `pyfug.graphics` via the adapter — `plot_series_jt`, `plot_residual_acf_pacf`,
+      `plot_residual_histogram`, `plot_residual_diagnostics` (combined),
+      `plot_mean_deviation`. `apply_jt_theme()` applies pyfug's JT matplotlib
+      rcParams globally so drvarma's own forecast/IRF/FEVD/CCF plots adopt the JT
+      style too. pyfug in `[plots]` extras; tests skip if pyfug absent (6 tests).
 - [ ] Docs: USER_GUIDE / API reference for the Python package; PyPI release.
 - [ ] CI workflow building the engine + running pytest (mirror the C repo CI).
 

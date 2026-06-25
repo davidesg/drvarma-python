@@ -201,3 +201,65 @@ def plot_fevd(model, horizon, axes=None):
                  fontweight="bold", fontsize=11)
     fig.tight_layout()
     return fig
+
+
+# --------------------------------------------------------------------------- #
+#  Jenkins-Treadway diagnostics — reuse pyfug.graphics per series/residual     #
+# --------------------------------------------------------------------------- #
+
+def _jt_graphics():
+    """Import pyfug.graphics (which also applies the JT matplotlib style)."""
+    from . import _pyfug
+    _pyfug.require_pyfug()
+    import pyfug.graphics as G
+    return G
+
+
+def apply_jt_theme():
+    """Apply pyfug's Jenkins-Treadway matplotlib rcParams globally.
+
+    Call once so drvarma's own plots (forecast/IRF/FEVD/CCF) also pick up the JT
+    fonts and line weights.  Requires pyfug.
+    """
+    _jt_graphics()
+    from pyfug.graphics import base as _b
+    _b._setup_matplotlib_rc()
+
+
+def plot_series_jt(series, j=0, **kw):
+    """Jenkins-Treadway standardized plot of column `j` (via pyfug.graphics)."""
+    from . import _pyfug
+    G = _jt_graphics()
+    return G.plot_series(_pyfug.series_to_tseries(series, j), **kw)
+
+
+def plot_residual_acf_pacf(model, j=0, npar=None, **kw):
+    """JT ACF/PACF correlogram of residual series `j` (via pyfug.graphics)."""
+    from . import _pyfug
+    G = _jt_graphics()
+    if npar is None:
+        npar = model.result["npar"]
+    return G.plot_acf_pacf(_pyfug.residual_to_tseries(model, j), npar=npar, **kw)
+
+
+def plot_residual_histogram(model, j=0, **kw):
+    """JT standardized histogram of residual series `j` (via pyfug.graphics)."""
+    from . import _pyfug
+    G = _jt_graphics()
+    return G.plot_histogram(_pyfug.residual_to_tseries(model, j), **kw)
+
+
+def plot_residual_diagnostics(model, j=0, npar=None, **kw):
+    """JT combined plot (series + ACF/PACF) of residual series `j`."""
+    from . import _pyfug
+    G = _jt_graphics()
+    if npar is None:
+        npar = model.result["npar"]
+    return G.plot_combined(_pyfug.residual_to_tseries(model, j), npar=npar, **kw)
+
+
+def plot_mean_deviation(series, j=0, **kw):
+    """JT mean-standard-deviation chart of column `j` (via pyfug.graphics)."""
+    from . import _pyfug
+    G = _jt_graphics()
+    return G.plot_mean_deviation(_pyfug.series_to_tseries(series, j), **kw)
