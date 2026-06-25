@@ -536,14 +536,17 @@ def _roots_block(model):
     return "".join(out)
 
 
-def out_report(model, input_path="", output_path="", irf_horizon=None):
+def out_report(model, input_path="", output_path="", irf_horizon=None,
+               residuals="auto"):
     """Return the full ``.out`` estimation report for a fitted `model`.
 
     Reproduces the C engine's sections (header, parameters, Wald tests, IRF/FEVD,
-    diagnostics, normalized model, inverse roots).  Two C sections are *not*
-    reproduced: the optimizer iteration/objective line (engine-internal; the
-    log-likelihood is shown instead) and the per-series ASCII residual plots
-    (`diagnose()`).  Inverse roots are modulus-sorted rather than in chekma order.
+    diagnostics, normalized model, inverse roots).  With ``residuals`` the
+    per-series ASCII residual diagnostics section (`diagnose()`) is appended:
+    ``"auto"`` (default) includes it when pyfug is importable, ``True`` requires
+    pyfug, ``False`` omits it.  Not reproduced: the optimizer iteration/objective
+    line (engine-internal; the log-likelihood is shown instead) and the
+    inverse-roots ordering (modulus-sorted rather than chekma's QR order).
     """
     if model.result is None:
         raise RuntimeError("call fit() before out_report()")
@@ -564,13 +567,22 @@ def out_report(model, input_path="", output_path="", irf_horizon=None):
         _matrices_block(model),
         _roots_block(model),
     ]
+    if residuals is True or (residuals == "auto" and _have_pyfug()):
+        parts.append(residual_report(model))
     return "".join(parts)
 
 
-def write_out(model, path, input_path="", output_path="", irf_horizon=None):
+def _have_pyfug():
+    from . import _pyfug
+    return _pyfug.have_pyfug()
+
+
+def write_out(model, path, input_path="", output_path="", irf_horizon=None,
+              residuals="auto"):
     """Write the ``.out`` report for `model` to `path`."""
     text = out_report(model, input_path=input_path,
-                      output_path=output_path or path, irf_horizon=irf_horizon)
+                      output_path=output_path or path, irf_horizon=irf_horizon,
+                      residuals=residuals)
     with open(path, "w") as fh:
         fh.write(text)
     return text
@@ -615,3 +627,115 @@ def write_recursive(model, estwin, H, path):
     with open(path, "w") as fh:
         fh.write(text)
     return text
+
+
+# --------------------------------------------------------------------------- #
+#  Residual diagnostics section of the .out report                            #
+# --------------------------------------------------------------------------- #
+
+def _residual_stats_block(data, freq, start):
+    """drvarma's File_StatSer stats block (own wording; no Jarque-Bera line)."""
+    from .diagnostics import series_stats
+    s = series_stats(data)
+    n = s["n"]
+    by, bt = start
+    ey, et = obs_to_date(by, bt, n, freq)
+    out = []
+    out.append("Unconditional residuals (seasonal period: %d)\n" % freq)
+    if freq > 1:
+        out.append("%d observations: from %d/%d to %d/%d\n" % (n, bt, by, et, ey))
+    else:
+        out.append("%d observations: from %d to %d\n" % (n, by, ey))
+    out.append("\n")
+    out.append("                  Mean: %18.6f\n" % s["mean"])
+    out.append("Standard error of mean: %18.6f\n" % s["std_error"])
+    out.append("              Variance: %18.6f\n" % s["variance"])
+    out.append("    Standard deviation: %18.6f\n" % s["std"])
+    out.append("              Skewness: %18.6f\n" % s["skew"])
+    out.append("              Kurtosis: %18.6f\n" % s["kurt"])
+    miny, mint = obs_to_date(by, bt, s["min_idx"] + 1, freq)
+    maxy, maxt = obs_to_date(by, bt, s["max_idx"] + 1, freq)
+    if freq > 1:
+        out.append("               Minimum: %18.6f at %2d/%d (observation %3d)\n"
+                   % (s["min_val"], mint, miny, s["min_idx"] + 1))
+        out.append("               Maximum: %18.6f at %2d/%d (observation %3d)\n"
+                   % (s["max_val"], maxt, maxy, s["max_idx"] + 1))
+    else:
+        out.append("               Minimum: %18.6f at %d (observation %3d)\n"
+                   % (s["min_val"], miny, s["min_idx"] + 1))
+        out.append("               Maximum: %18.6f at %d (observation %3d)\n"
+                   % (s["max_val"], maxy, s["max_idx"] + 1))
+    return "".join(out)            # the blank line comes from the plot renderer
+
+
+def residual_report(model):
+    """Per-series residual diagnostics section of the ``.out`` (text).
+
+    drvarma writes its own statistics block (File_StatSer wording); the intricate
+    ASCII renderings (standardized plot, histogram, ACF/PACF correlograms) reuse
+    pyfug's migrated `diagnose.c` renderers via the Tseries adapter (see
+    docs/FUE_REUSE.md).  Requires pyfug.
+    """
+    import io
+    from . import _pyfug, _ascii
+    from .diagnostics import _acf_lags, series_stats, acf as _acf, pacf as _pacf
+    _pyfug.require_pyfug()
+    import pyfug.ascii as A
+
+    if model.result is None:
+        raise RuntimeError("call fit() before residual_report()")
+    s = model.series
+    freq = s.freq
+    start = _pyfug.residual_start(model)
+    res = model.residuals
+    nobs, m = res.shape
+    nlags = _acf_lags(nobs, freq)
+
+    out = ["\n\n", _banner("                RESIDUAL DIAGNOSTICS                         ")]
+    for j in range(m):
+        col = res[:, j]
+        out.append("\n--- Residual series a[%d] (%s) ---\n" % (j + 1, s.names[j]))
+        out.append(_residual_stats_block(col, freq, start))
+        # standardized time-series plot: reuse pyfug (matches), but map its
+        # U+00AF/U+00AE outlier markers back to drvarma's '>'.
+        ts = _pyfug.residual_to_tseries(model, j, lags=nlags)
+        f = io.StringIO()
+        A._write_ascii_plot(f, ts)
+        out.append(f.getvalue().replace("¯", ">").replace("®", ">"))
+        # histogram + ACF/PACF correlograms: drvarma's own renderers (exact).
+        st = series_stats(col)
+        out.append(_ascii.hist_ser(col, st["mean"], st["variance"]))
+        a = _acf(col, nlags)
+        out.append(_ascii.plot_cor(a, nlags, 1, nobs, freq))
+        out.append(_ascii.plot_cor(_pacf(a), nlags, 0, nobs, freq))
+
+    # cross-correlation functions between residual pairs (port of diagnose())
+    if m > 1:
+        out.append("\n--- Cross-correlation functions between residuals ---\n")
+        clags = 3 * (1 + 2) if nobs >= 3 * (1 + 1) else nobs - 1 // 2
+        clags = min(clags, nobs - 2)
+        stats = [series_stats(res[:, k]) for k in range(m)]
+        for i in range(m):
+            for j in range(i + 1, m):
+                ni, nj = s.names[i], s.names[j]
+                out.append("\nCROSS CORRELATION a[%d] (%s) - a[%d] (%s)\n"
+                           % (j + 1, nj, i + 1, ni))
+                out.append("      %s --> %s IF k > 0\n" % (nj, ni))
+                out.append("      %s --> %s IF k < 0\n" % (ni, nj))
+                c1 = _ascii.ccf_corr(res[:, i], res[:, j], clags,
+                                     stats[i]["mean"], stats[j]["mean"],
+                                     stats[i]["std"], stats[j]["std"])
+                c2 = _ascii.ccf_corr(res[:, j], res[:, i], clags,
+                                     stats[j]["mean"], stats[i]["mean"],
+                                     stats[j]["std"], stats[i]["std"])
+                totcorr = np.concatenate([c1[::-1], c2[1:clags + 1]])
+                out.append(_ascii.plot_ccf_ascii(totcorr, clags, nobs, freq=1))
+                q2 = _ascii.chi_test_c(c2, clags + 1, nobs)
+                q1 = _ascii.chi_test_c(c1, clags + 1, nobs)
+                out.append("Q(%2d) = %6.3f     k >= 0      Q(%2d) = %6.3f      k > 0\n"
+                           % (clags + 1, q2, clags, q2 - c2[0] ** 2 * (nobs + 2)))
+                out.append("Q(%2d) = %6.3f     k <= 0      Q(%2d) = %6.3f      k < 0\n"
+                           % (clags + 1, q1, clags, q1 - c1[0] ** 2 * (nobs + 2)))
+
+    out.append("\n" + EQ + "\n")
+    return "".join(out)

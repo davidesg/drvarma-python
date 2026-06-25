@@ -83,10 +83,14 @@ pure-Python fallback with no compiled engine. Remaining: the graphics finish
       from drvarma's own `diagnostics.series_stats` (drvarma owns the numbers;
       pyfug only renders). `residual_start` dates residuals from `d+D·s`. pyfug
       added to `[plots]` extras; tests skip if pyfug absent (5 tests).
-- [ ] **Residual `.out` section (ASCII)** — compose per residual series: write
-      drvarma's `File_StatSer` stats block (own wording, no JB line) + reuse
-      `pyfug.ascii` `_write_ascii_plot`/`_write_ascii_histogram`/
-      `_write_acf_ascii_bars` via the adapter. See `docs/FUE_REUSE.md`.
+- [x] **Residual `.out` section (ASCII)** — `report.residual_report`: drvarma's
+      own File_StatSer stats block + standardized time-series plot reused from
+      `pyfug.ascii` (markers normalised ¯/®→`>`) + **drvarma's own** histogram and
+      ACF/PACF correlograms (`_ascii.py`: ports of `File_HistSer`, `PlotCor`,
+      `PlotCCF`, `Ccf`, `ChiTestC`, `round_local`) + cross-correlation section.
+      **Byte-exact vs `IPC3.out`** except the standardized-plot value column
+      (residuals differ ~1e-9, engine tolerance). Wired into `out_report`
+      (`residuals="auto"`: included when pyfug is importable). `tests/test_residual_report.py`.
 - [ ] **Graphics finish (deferred to last)**: reuse `pyfug.graphics` JT formats
       (series, ACF/PACF, histogram, mean-deviation) through the same adapter;
       restyle forecast/IRF/FEVD with the JT theme; add pyfug to `[plots]` extras.
