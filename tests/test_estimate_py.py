@@ -5,7 +5,7 @@ import sys
 import numpy as np
 import pytest
 
-from drvarma import load, transform, Model
+from drvarma import load, transform, Model, report
 from drvarma.datasets import simulate_varma
 from drvarma.elfvarma_py import elf_var, elf_varma
 from drvarma.estimate_py import estimate_w_py
@@ -145,3 +145,22 @@ def test_estimate_py_varma_is_mle():
     assert py["ifault"] == 0 and ifault == 0
     assert py["logelf"] >= ll_truth - 1e-6
     assert py["theta"].shape == (1, 2, 2)
+
+
+def test_full_pipeline_without_engine(monkeypatch):
+    # The whole Model -> forecast -> report path must work on the pure-Python
+    # fallback (no compiled engine) for a VARMA model.
+    monkeypatch.setitem(sys.modules, "drvarma._drvarma_engine", None)
+    phi = [np.array([[0.5, 0.1], [0.0, 0.4]])]
+    th = [np.array([[0.3, 0.0], [0.1, 0.2]])]
+    sim = simulate_varma(phi=phi, theta=th, n=150, seed=4, names=["A", "B"])
+    mdl = Model(sim, lam=1.0, d=0, D=0, scale=1.0, p=1, q=1,
+                include_mean=True).fit()
+    assert mdl.ifault == 0
+    assert mdl.result["theta"].shape == (1, 2, 2)
+    fc = mdl.forecast(6)
+    assert fc.shape == (6, 2) and np.all(np.isfinite(fc))
+    out = report.out_report(mdl, input_path="sim.inp", output_path="sim.out")
+    assert "VARMA(1,1)" in out and "FORECAST ERROR VARIANCE" in out
+    fr = report.forecast_report(mdl, 6)
+    assert fr.count("Series") == 2

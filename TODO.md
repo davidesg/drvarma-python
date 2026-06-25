@@ -1,8 +1,9 @@
 # drvarma Python port — TODO
 
-Status snapshot in `docs/STATUS.md`. P0, P1 and P2 are done and validated against
-the C engine (37 tests). Tasks below are ordered; each notes the files to touch
-and how to validate.
+Status snapshot in `docs/STATUS.md`. P0–P3 and P5 (CLI + packaging) are done and
+validated against the C engine (48 tests). The whole Model → forecast → report
+pipeline also runs on the pure-Python fallback with no compiled engine. Remaining:
+P4 (synthetic/reliability suite), P5 docs/plots/CI, and the deferred Shea backup.
 
 ## P2 — remaining (presentation only)
 - [x] **Report writers** (`report.py`): `.forecast` is **byte-exact** vs the C
@@ -31,12 +32,11 @@ and how to validate.
       Reports `sigma2=1, sigma=Sigma` (AS-311 sigma2/Q split not reproduced).
 - [x] Wire `_engine.estimate_w` to **fall back** to `estimate_py.estimate_w_py`
       when `_drvarma_engine` is not importable (mirrors fue's `_engine.py`).
-- [x] Validated (`tests/test_estimate_py.py`, 10 tests): elf_var/elf_varma vs C
+- [x] Validated (`tests/test_estimate_py.py`, 11 tests): elf_var/elf_varma vs C
       `logelf` <1e-6 and exact residuals <1e-6 (q=0 and VARMA(1,1)/(2,1)); pure-
       Python estimate vs C mu/phi/theta/sigma/logelf <1e-3; fallback dispatch
-      (incl. via `Model.fit`); synthetic VAR(1) recovery and VARMA MLE property.
-- [ ] **Shea backup**: faithful port of `csrc/internal/multshea.c` (AS 242) as an
-      alternative exact VARMA likelihood.
+      (incl. via `Model.fit`); synthetic VAR(1) recovery and VARMA MLE property;
+      full Model→forecast→report pipeline with the engine monkeypatched out.
 
 ## P4 — synthetic test suite & reliability
 - [ ] Expand `datasets`: VARMA(1,1), full-Σ, near-unit-root, varying m; seeded
@@ -69,6 +69,26 @@ and how to validate.
       add a C API entry to filter residuals, or compute in numpy).
 - [ ] Consider exposing the C forecast/diagnostics too (currently re-implemented
       in numpy); decide single-source-of-truth per function.
+
+## P6 — Shea (AS 242) backup likelihood  [DEFERRED — do last]
+
+`csrc/internal/multshea.c` (Shea) is present and compiled but **not wired into the
+drvarma C estimator**: its entry point `marma(...)` has no callers — only
+Mauricio's `elf(...)` (`elfvarma.c`) is used. So Shea has no C reference results to
+validate a Python port against yet. Sequence (C first):
+
+- [ ] Wire `marma()` into the C engine (a *new* engine version) as a selectable
+      likelihood option (e.g. a method flag), **if feasible**. It already mirrors
+      the `elf(...)` interface (`marma(k,n,p,q,mu,phi,theta,...)`), so it should be
+      a near drop-in alternative inside `shootx`/`drvmlest`.
+- [ ] Compare **C-Shea vs C-Mauricio** on the reference cases (logelf, residuals,
+      estimated params) — they should agree to numerical precision.
+- [ ] Decide whether to keep Shea as a permanent C option.
+- [ ] Only then port Shea to Python (faithful, like `_as311.py`) as an alternative
+      to `_as311`, validated against the C-Shea results.
+
+Note: a Kalman/state-space likelihood is essentially Shea's route — do not add one
+as a stand-in; port `multshea.c` faithfully instead.
 
 ## Decisions / open questions
 - [ ] Publish the Python port to its own GitHub repo? (own remote, CI, PyPI.)
