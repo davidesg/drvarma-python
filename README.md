@@ -17,10 +17,10 @@ The C engine lives in the sibling directory `../drvarma_v.04.1` (published at
 |-------|-------|-------|
 | P0 | package skeleton, `.inp` I/O, Box-Cox/differencing transform, synthetic VARMA simulator | **done** |
 | P1 | estimation via CFFI over a `drvarma_api.c` | **done** |
-| P2 | forecasting (+ bands, recursive `-estwin`), deseason, diagnostics, IRF/FEVD | **done** (report writers in P5) |
+| P2 | forecasting (+ bands, recursive `-estwin`), deseason, diagnostics, IRF/FEVD, report writers | **done** |
 | P3 | pure-Python general-m likelihood (reference/fallback) | pending |
 | P4 | synthetic test suite | started (simulator) |
-| P5 | CLI, packaging, report writers, docs | pending |
+| P5 | CLI **done**; packaging/docs/CI pending | in progress |
 
 All P1/P2 numerics are validated against the C engine on the IPC3 reference
 case (parameters, forecasts, bands, diagnostics, IRF/FEVD and recursive
@@ -50,6 +50,19 @@ from drvarma.datasets import simulate_varma
 import numpy as np
 sim = simulate_varma(phi=[np.array([[0.5, 0.0], [0.2, 0.4]])], n=300, seed=1)
 ```
+
+## Command line
+
+Mirrors the C binary (`<file>.inp` in, `.out`/`.forecast`/`.recursive` out):
+
+```sh
+drvarma data/models_group1/IPC3 3 0 -mean -deseason auto -forecast 24
+# or, without installing: PYTHONPATH=src python -m drvarma.cli <file> p q [flags]
+```
+
+Flags: `-mean -diagar -diagma -diagcov -m METHOD -twostep -deseason [auto|force]
+-scale FACTOR -forecast H -estwin N`. The `.forecast` output is byte-identical to
+the C engine; see [`docs/STATUS.md`](docs/STATUS.md) for `.out` fidelity notes.
 
 ## License
 

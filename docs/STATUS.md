@@ -1,6 +1,6 @@
 # drvarma Python port — status & handoff
 
-Last updated: 2026-06-24. Read this first when resuming in a new session.
+Last updated: 2026-06-25. Read this first when resuming in a new session.
 
 ## What this is
 
@@ -49,7 +49,7 @@ cd drvarma_source/drvarma
 # build the optional C engine (GSL + GLib dev headers required):
 python -m drvarma._build_cffi
 mv drvarma/_drvarma_engine*.so src/drvarma/ ; rm -rf drvarma   # cffi writes it under ./drvarma/
-PYTHONPATH=src python -m pytest tests/ -q                       # 29 tests
+PYTHONPATH=src python -m pytest tests/ -q                       # 37 tests
 ```
 
 The `.so` (and `_drvarma_engine.c`, `*.o`) are gitignored — rebuild as above.
@@ -85,8 +85,28 @@ src/drvarma/
   diagnostics.py hosking_q, jarque_bera_mv
   irf.py        psi_weights, oirf, fevd
   datasets.py   simulate_varma
+  report.py     .out/.forecast/.recursive writers (C-format text reports)
+  cli.py        `drvarma <file> p q [flags]` entry point (drvarma.cli:main)
 tests/          one test module per area; compare to the C binary + synthetic
 ```
+
+## Reports & CLI (P2-presentation + P5-CLI, done 2026-06-25)
+
+`report.py` reproduces the C text outputs; `cli.py` is the `drvarma` entry point
+(reads lambda/d/D from the `.inp`, writes `.out` always, `.forecast` with
+`-forecast H`, `.recursive` with `-estwin N`). Fidelity vs the C binary
+(`tests/test_report.py`, 8 tests):
+- **`.forecast` byte-exact** (Level/Low95/High95 + mon%/ann% rates and std).
+- **`.recursive`** matches the validated engine path (<1e-4); format ported verbatim.
+- **`.out`**: header, OIRF/accumulated/gain, FEVD, multivariate diagnostics,
+  normalized model are **byte-exact**; parameter *estimates* exact, but SE/t/p
+  carry the documented <1e-5 engine tolerance (Wald chi2 amplify it to ~1e-3,
+  p-values/conclusions still agree). NOT reproduced by design: the optimizer
+  iteration/objective line (engine-internal — `report` prints the log-likelihood
+  instead), inverse-roots *ordering* (modulus-sorted, not chekma's QR order), and
+  the per-series ASCII residual-plot tail (`diagnose()`).
+- Hosking lag in the report is `floor(sqrt(nobs))` (C `multivariate_diagnostics`),
+  *not* the `freq+2` used by `Model.diagnostics()`.
 
 ## Gotchas (important when resuming)
 

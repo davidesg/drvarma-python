@@ -19,6 +19,9 @@ dependencies = [
     "scipy>=1.10",
 ]
 
+[project.scripts]
+drvarma = "drvarma.cli:main"
+
 [project.optional-dependencies]
 # Optional CFFI-compiled C engine (P1): pip install "drvarma[c-engine]"
 c-engine = ["cffi>=1.15"]

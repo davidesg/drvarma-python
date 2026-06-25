@@ -9,8 +9,8 @@ __version__ = "0.0.1.dev0"
 from .series import MultiSeries
 from .inp import load, save, InpSpec
 from .model import Model
-from . import transform, forecast, diagnostics, irf, deseason, datasets
+from . import transform, forecast, diagnostics, irf, deseason, datasets, report
 
 __all__ = ["MultiSeries", "load", "save", "InpSpec", "Model",
            "transform", "forecast", "diagnostics", "irf", "deseason",
-           "datasets", "__version__"]
+           "datasets", "report", "__version__"]

@@ -1,17 +1,19 @@
 # drvarma Python port — TODO
 
-Status snapshot in `docs/STATUS.md`. P0, P1 and P2 (analytics) are done and
-validated against the C engine (29 tests). Tasks below are ordered; each notes
-the files to touch and how to validate.
+Status snapshot in `docs/STATUS.md`. P0, P1 and P2 are done and validated against
+the C engine (37 tests). Tasks below are ordered; each notes the files to touch
+and how to validate.
 
 ## P2 — remaining (presentation only)
-- [ ] **Report writers** (`report.py`): produce the `.out` and `.forecast` text
-      files matching the C format (parameters with SE/t/p, Wald tests, IRF/FEVD
-      tables, residual diagnostics; forecast Level/Low95/High95 + mon%/ann%).
-      Pieces already available: params/cov/sigma from `estimate_w`, forecasts +
-      bands from `Model.forecast(bands=True)`, diagnostics/irf/fevd from `Model`.
-      Validate by diffing against `../drvarma_v.04.1/*.out` / `*.forecast`.
-      (Could fold into P5/CLI.)
+- [x] **Report writers** (`report.py`): `.forecast` is **byte-exact** vs the C
+      (incl. mon%/ann% rates+std); `.recursive` matches the validated engine path
+      (<1e-4). `.out` reproduces header, parameters (estimates exact; SE/t/p carry
+      the documented <1e-5 engine tolerance), Wald tests, OIRF/accumulated/gain,
+      FEVD, multivariate diagnostics, normalized model, inverse roots. Validated
+      in `tests/test_report.py` (8 tests). NOT reproduced (by design): the optimizer
+      iteration/objective line (engine-internal — log-likelihood shown instead),
+      inverse-roots ordering (modulus-sorted, not chekma order), and the per-series
+      ASCII residual-plot tail (`diagnose()`).
 
 ## P3 — pure-Python general-m likelihood (reference / fallback)
 - [ ] **`elfvarma_py.py`**: exact Gaussian VARMA(p,q) log-likelihood for general
@@ -34,11 +36,14 @@ the files to touch and how to validate.
 - [ ] Reliability tests mirroring fue's `tests/test_reliability*.py`.
 
 ## P5 — CLI, packaging, docs
-- [ ] **`cli.py`**: `drvarma file.inp p q [options]` mirroring the C flags
-      (`-mean -diagar -diagma -diagcov -deseason -forecast -estwin -scale`),
-      writing `.out`/`.forecast`/`.recursive` via `report.py`.
+- [x] **`cli.py`**: `drvarma <file> p q [options]` mirroring the C flags
+      (`-mean -diagar -diagma -diagcov -m -twostep -deseason -forecast -estwin
+      -scale`), reading lambda/d/D from the `.inp` header and writing
+      `.out`/`.forecast`/`.recursive` via `report.py`. Entry point
+      `drvarma = drvarma.cli:main` is wired in `pyproject.toml`.
+      (`-volexp`/`-volmov` not ported — volatility is out of scope for the port.)
 - [ ] Packaging: `cffi_modules` in `pyproject.toml` so `pip install` builds the
-      engine; pure-Python wheel fallback; entry point `drvarma = drvarma.cli:main`.
+      engine; pure-Python wheel fallback. (Entry point done above.)
 - [ ] Optional `plots.py` (matplotlib): series, forecasts+bands, IRF.
 - [ ] Docs: USER_GUIDE / API reference for the Python package; PyPI release.
 - [ ] CI workflow building the engine + running pytest (mirror the C repo CI).
