@@ -18,6 +18,8 @@ C core.
   `../drvarma_v.04.1/MODELS_RESULTS.md`.
 - Reusing the fue/pyfug Python migration (ASCII residual diagnostics + JT plots)
   for the remaining presentation work: see `docs/FUE_REUSE.md`.
+- Plan to reach a **100% pure-Python** drvarma (engine optional): see
+  `docs/PURE_PYTHON_PLAN.md` (phases PP1–PP5; Shea is out of scope).
 
 ## Strategy (decided: A, CFFI-first)
 

@@ -98,35 +98,39 @@ pure-Python fallback with no compiled engine. Remaining: the graphics finish
       rcParams globally so drvarma's own forecast/IRF/FEVD/CCF plots adopt the JT
       style too. pyfug in `[plots]` extras; tests skip if pyfug absent (6 tests).
 - [ ] Docs: USER_GUIDE / API reference for the Python package; PyPI release.
-- [ ] CI workflow building the engine + running pytest (mirror the C repo CI).
+- [ ] CI workflow running pytest (pure-Python and with the engine).
+
+## PP — 100% pure-Python parity  (full plan: `docs/PURE_PYTHON_PLAN.md`)
+
+Goal: the pure-Python path is feature- and fidelity-complete vs the C engine, so
+the CFFI engine is an optional accelerator only. Ordered PP1 → PP5.
+
+- [ ] **PP1 (keystone)** — estimator parity: reparameterise `estimate_py` to the
+      C's `(μ, φ, θ, chol(Q))` packing with `σ̂²=f1/(n·m)` concentrated and a
+      `fdhess`-style finite-difference Hessian → reproduce the C's `sigma2`, `Q`
+      and `std_errors`/Wald (closes the σ²/Q split + std-error gaps). Makes the
+      engine-free `.out` parameter table / normalized model match the C.
+- [ ] **PP2** — Hannan-Rissanen two-step init (port `init_varma`,
+      `hannan_rissanen_diag`, `combine_vectors`; wire `-twostep` in pure Python).
+- [ ] **PP3** — volatility: port `volatility.c` (`-volexp`/`-volmov`) +
+      `.volatility` writer + CLI flags.
+- [ ] **PP4** — `recursive_forecast` for q>0 (exact residuals at fixed params via
+      AS-311 `cres` over the full series); expose `-seasonal`.
+- [ ] **PP5** — convergence hardening + a CI/test mode that diffs the **full**
+      engine-free `.out` byte-exact vs the C (VAR & VARMA, ±deseason).
 
 ## Engine / maintenance
 - [ ] Keep `csrc/internal/` in sync with `../drvarma_v.04.1/src` when the C
       engine changes (they are copies).
-- [ ] `recursive_forecast` for q>0 (needs full-data residuals at fixed params;
-      add a C API entry to filter residuals, or compute in numpy).
-- [ ] Consider exposing the C forecast/diagnostics too (currently re-implemented
-      in numpy); decide single-source-of-truth per function.
+- [ ] Single source of truth for forecasting/diagnostics: numpy (current) vs the C.
 
-## P6 — Shea (AS 242) backup likelihood  [DEFERRED — do last]
+## Out of scope for this port — Shea (AS 242)
 
-`csrc/internal/multshea.c` (Shea) is present and compiled but **not wired into the
-drvarma C estimator**: its entry point `marma(...)` has no callers — only
-Mauricio's `elf(...)` (`elfvarma.c`) is used. So Shea has no C reference results to
-validate a Python port against yet. Sequence (C first):
-
-- [ ] Wire `marma()` into the C engine (a *new* engine version) as a selectable
-      likelihood option (e.g. a method flag), **if feasible**. It already mirrors
-      the `elf(...)` interface (`marma(k,n,p,q,mu,phi,theta,...)`), so it should be
-      a near drop-in alternative inside `shootx`/`drvmlest`.
-- [ ] Compare **C-Shea vs C-Mauricio** on the reference cases (logelf, residuals,
-      estimated params) — they should agree to numerical precision.
-- [ ] Decide whether to keep Shea as a permanent C option.
-- [ ] Only then port Shea to Python (faithful, like `_as311.py`) as an alternative
-      to `_as311`, validated against the C-Shea results.
-
-Note: a Kalman/state-space likelihood is essentially Shea's route — do not add one
-as a stand-in; port `multshea.c` faithfully instead.
+`csrc/internal/multshea.c` (`marma`) is compiled but **not wired into the C
+estimator** (no callers), so there is no C reference to validate a Python port
+against. **Deferred — not part of the 100% Python goal.** If ever revived: wire
+`marma()` into a new C engine version first, compare C-Shea vs C-Mauricio, then
+port faithfully (never a Kalman/state-space stand-in — that *is* Shea's route).
 
 ## Decisions / open questions
 - [ ] Publish the Python port to its own GitHub repo? (own remote, CI, PyPI.)
