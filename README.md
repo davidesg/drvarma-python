@@ -19,7 +19,7 @@ The C engine lives in the sibling directory `../drvarma_v.04.1` (published at
 | P1 | estimation via CFFI over a `drvarma_api.c` | **done** |
 | P2 | forecasting (+ bands, recursive `-estwin`), deseason, diagnostics, IRF/FEVD, report writers | **done** |
 | P3 | pure-Python exact-ML likelihood — faithful port of Mauricio's AS 311 | **done** (VAR + VARMA); Shea/multshea.c backup pending |
-| P4 | synthetic test suite | started (simulator) |
+| P4 | synthetic suite & reliability (`datasets.varma_cases`, recovery + agreement + formula tests) | **done** |
 | P5 | CLI **done**; packaging/docs/CI pending | in progress |
 
 All P1/P2 numerics are validated against the C engine on the IPC3 reference

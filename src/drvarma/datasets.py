@@ -62,3 +62,81 @@ def simulate_varma(phi=None, theta=None, sigma=None, n=200, mu=None,
 
     data = w[burnin:]
     return MultiSeries(data, freq=freq, start=start, names=names)
+
+
+# --------------------------------------------------------------------------- #
+#  Stationarity / invertibility helpers and a registry of ground-truth cases  #
+# --------------------------------------------------------------------------- #
+
+def _companion_eigmax(mats):
+    """Largest companion-matrix eigenvalue modulus of a coefficient stack.
+
+    `mats` is a list/array of (m, m) matrices (Phi_1..Phi_p or Theta_1..Theta_q).
+    Returns 0.0 for an empty stack.
+    """
+    mats = [np.asarray(M, float) for M in mats]
+    if not mats:
+        return 0.0
+    p = len(mats)
+    m = mats[0].shape[0]
+    comp = np.zeros((m * p, m * p))
+    for i in range(p):
+        comp[:m, i * m:(i + 1) * m] = mats[i]
+    if p > 1:
+        comp[m:, :m * (p - 1)] = np.eye(m * (p - 1))
+    return float(np.max(np.abs(np.linalg.eigvals(comp))))
+
+
+def is_stationary(phi, tol=1.0):
+    """True if the AR operator is stationary (all companion |eig| < tol)."""
+    return _companion_eigmax(phi) < tol
+
+
+def is_invertible(theta, tol=1.0):
+    """True if the MA operator is invertible (all companion |eig| < tol)."""
+    return _companion_eigmax(theta) < tol
+
+
+def varma_cases():
+    """Registry of seeded VARMA ground-truth cases for recovery/reliability tests.
+
+    Each entry is a dict with keys: name, phi (list of (m,m)), theta (list of
+    (m,m)), sigma (m,m), mu (m,), well_identified (bool — VARs and simple VARMAs
+    where the MLE recovers the truth at large n), and notes.  All cases are
+    verified stationary and invertible.
+    """
+    cases = [
+        dict(name="var1_m2",
+             phi=[[[0.5, 0.1], [-0.2, 0.4]]], theta=[],
+             sigma=[[1.0, 0.3], [0.3, 0.8]], mu=[0.1, -0.2],
+             well_identified=True, notes="simple bivariate VAR(1)"),
+        dict(name="var2_m3",
+             phi=[[[0.4, 0.0, 0.1], [0.0, 0.3, 0.0], [0.1, 0.0, 0.35]],
+                  [[-0.2, 0.0, 0.0], [0.0, -0.15, 0.0], [0.0, 0.0, -0.1]]],
+             theta=[],
+             sigma=[[1.0, 0.2, 0.1], [0.2, 0.9, 0.25], [0.1, 0.25, 1.1]],
+             mu=[0.0, 0.0, 0.0],
+             well_identified=True, notes="VAR(2), m=3, full Sigma"),
+        dict(name="varma11_m2",
+             phi=[[[0.5, 0.1], [0.0, 0.4]]], theta=[[[0.3, 0.0], [0.1, 0.2]]],
+             sigma=[[1.0, 0.2], [0.2, 0.7]], mu=[0.0, 0.0],
+             well_identified=False, notes="bivariate VARMA(1,1), weakly id."),
+        dict(name="fullsigma_m3",
+             phi=[[[0.3, 0.05, 0.0], [0.0, 0.25, 0.05], [0.05, 0.0, 0.3]]],
+             theta=[],
+             sigma=[[1.2, 0.5, 0.4], [0.5, 1.0, 0.45], [0.4, 0.45, 1.3]],
+             mu=[0.0, 0.0, 0.0],
+             well_identified=True, notes="VAR(1) with strongly-correlated Sigma"),
+        dict(name="near_unit_root_m2",
+             phi=[[[0.92, 0.0], [0.0, 0.88]]], theta=[],
+             sigma=[[1.0, 0.2], [0.2, 1.0]], mu=[0.0, 0.0],
+             well_identified=True, notes="near-unit-root diagonal VAR(1)"),
+        dict(name="diag_var1_m2",
+             phi=[[[0.6, 0.0], [0.0, 0.3]]], theta=[],
+             sigma=[[1.0, 0.0], [0.0, 0.5]], mu=[0.0, 0.0],
+             well_identified=True, notes="diagonal VAR(1), diagonal Sigma"),
+    ]
+    for c in cases:                                  # sanity-check the registry
+        assert is_stationary(c["phi"]), c["name"]
+        assert is_invertible(c["theta"]), c["name"]
+    return cases

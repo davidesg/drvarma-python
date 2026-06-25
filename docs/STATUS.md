@@ -26,7 +26,7 @@ reusable from fue. P3 status: the exact VARMA likelihood is now written in pure
 Python as a faithful port of Mauricio's **AS 311** (`_as311.py`, see below);
 `estimate_py` fits it without the C engine.
 
-## Done (P0–P3, P5), all validated vs the C binary/engine on IPC3 (48 tests)
+## Done (P0–P5), all validated vs the C binary/engine on IPC3 (67 tests)
 
 | Phase | Module(s) | Validation |
 |-------|-----------|------------|
@@ -56,7 +56,7 @@ P2 numeric checks vs C (IPC3, `3 0 -mean [-deseason auto] [-forecast 12] [-estwi
 cd drvarma_source/drvarma
 # build the optional C engine (GSL dev headers required) straight into src/:
 python setup.py build_ext --inplace        # or: pip install -e .
-PYTHONPATH=src python -m pytest tests/ -q   # 47 tests
+PYTHONPATH=src python -m pytest tests/ -q   # 67 tests
 ```
 
 `pip install` builds the engine via `setup.py` (an *optional* cffi Extension:

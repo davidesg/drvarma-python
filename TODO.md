@@ -1,7 +1,7 @@
 # drvarma Python port — TODO
 
 Status snapshot in `docs/STATUS.md`. P0–P3 and P5 (CLI + packaging) are done and
-validated against the C engine (48 tests). The whole Model → forecast → report
+validated against the C engine (67 tests). The whole Model → forecast → report
 pipeline also runs on the pure-Python fallback with no compiled engine. Remaining:
 P4 (synthetic/reliability suite), P5 docs/plots/CI, and the deferred Shea backup.
 
@@ -39,11 +39,16 @@ P4 (synthetic/reliability suite), P5 docs/plots/CI, and the deferred Shea backup
       full Model→forecast→report pipeline with the engine monkeypatched out.
 
 ## P4 — synthetic test suite & reliability
-- [ ] Expand `datasets`: VARMA(1,1), full-Σ, near-unit-root, varying m; seeded
-      fixtures with known ground truth.
-- [ ] Parameter-recovery tests (CFFI and, once ready, pure-Python) with
-      tolerance bands; edge cases (collinearity à la WTI/IPC, small n).
-- [ ] Reliability tests mirroring fue's `tests/test_reliability*.py`.
+- [x] Expand `datasets`: `varma_cases()` registry (VAR(1)/VAR(2), VARMA(1,1),
+      full-Σ, near-unit-root, diagonal; m=2,3) with known ground truth, all
+      verified stationary/invertible; `is_stationary`/`is_invertible` helpers.
+- [x] Parameter-recovery tests (`tests/test_reliability.py`): C-engine recovery at
+      n=4000 within bands (phi<0.07, sigma<0.08; mu excluded — near-unit-root mean
+      is noisy); C-vs-pure-Python agreement <3e-3; small-n (n=40) convergence.
+- [x] Reliability tests (mirroring fue): Sigma symmetric/PD, std=sqrt(diag cov),
+      npar vs diag restrictions, Hosking-Q / Jarque-Bera against their formulas,
+      simulation + estimator determinism, near-unit-root convergence. (19 tests.)
+- [ ] Optional: collinearity edge case à la WTI/IPC (ill-conditioned cross SEs).
 
 ## P5 — CLI, packaging, docs
 - [x] **`cli.py`**: `drvarma <file> p q [options]` mirroring the C flags
