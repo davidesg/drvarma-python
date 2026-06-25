@@ -26,7 +26,7 @@ reusable from fue. P3 status: the exact VARMA likelihood is now written in pure
 Python as a faithful port of Mauricio's **AS 311** (`_as311.py`, see below);
 `estimate_py` fits it without the C engine.
 
-## Done (P0–P5), all validated vs the C binary/engine on IPC3 (67 tests)
+## Done (P0–P5), all validated vs the C binary/engine on IPC3 (79 tests)
 
 | Phase | Module(s) | Validation |
 |-------|-----------|------------|
@@ -34,10 +34,10 @@ Python as a faithful port of Mauricio's **AS 311** (`_as311.py`, see below);
 | P1 | `csrc/drvarma_api.{c,h}`, `_build_cffi`, `_engine`, `model.fit` | 36 params match C to <1e-5; synthetic recovery |
 | P2 | `forecast` (+bands, recursive), `diagnostics`, `irf`, `deseason`, `report` | see below + report section |
 | P3 | `_as311` (Mauricio AS 311), `elfvarma_py`, `estimate_py` | logelf ~1e-11, exact residuals ~1e-12; pure-Python estimate vs C <1e-3 |
+| P4 | `datasets.varma_cases`, `tests/test_reliability.py` | recovery within bands; pass-through (WTI/IPC) ill-conditioning; formula checks |
 | P5 | `cli`, `setup.py` (optional cffi build) | `.forecast` byte-exact; pipeline runs C-free |
 
-Deferred: P4 (synthetic/reliability suite), P5 docs/plots/CI, P6 Shea backup
-(`marma`, C-first — see TODO).
+Deferred: P5 docs/plots/CI, P6 Shea backup (`marma`, C-first — see TODO).
 
 P2 numeric checks vs C (IPC3, `3 0 -mean [-deseason auto] [-forecast 12] [-estwin 200]`):
 - forecast levels <1e-3; **bands** Low95/High95 <1e-3;
@@ -56,7 +56,7 @@ P2 numeric checks vs C (IPC3, `3 0 -mean [-deseason auto] [-forecast 12] [-estwi
 cd drvarma_source/drvarma
 # build the optional C engine (GSL dev headers required) straight into src/:
 python setup.py build_ext --inplace        # or: pip install -e .
-PYTHONPATH=src python -m pytest tests/ -q   # 67 tests
+PYTHONPATH=src python -m pytest tests/ -q   # 79 tests
 ```
 
 `pip install` builds the engine via `setup.py` (an *optional* cffi Extension:

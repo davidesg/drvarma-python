@@ -4,10 +4,12 @@ constraints, diagnostics formulas, determinism and edge cases.
 Recovery uses the (fast) C engine at large n; the pure-Python estimator is
 exercised at modest n.  Tests that need the C engine auto-skip when it is absent.
 """
+import os
+
 import numpy as np
 import pytest
 
-from drvarma import diagnostics
+from drvarma import diagnostics, load, transform
 from drvarma.datasets import (simulate_varma, varma_cases, is_stationary,
                               is_invertible)
 from drvarma.estimate_py import estimate_w_py
@@ -20,6 +22,22 @@ except ImportError:
     has_engine = False
 
 needs_engine = pytest.mark.skipif(not has_engine, reason="C engine not built")
+
+_HERE = os.path.dirname(__file__)
+PASSTHROUGH = os.path.join(_HERE, "..", "..", "drvarma_v.04.1", "data", "passthrough")
+PT_COUNTRIES = ["ES", "FR", "DE"]
+
+
+def _pt_path(cty):
+    return os.path.join(PASSTHROUGH, "WTI_IPC_%s.inp" % cty)
+
+
+def _pt_available():
+    return all(os.path.exists(_pt_path(c)) for c in PT_COUNTRIES)
+
+
+needs_pt = pytest.mark.skipif(not _pt_available(),
+                              reason="WTI/IPC pass-through data not available")
 
 CASES = varma_cases()
 WELL_ID = [c for c in CASES if c["well_identified"]]
@@ -167,3 +185,69 @@ def test_registry_cases_stationary_invertible():
         theta = [np.array(T) for T in c["theta"]]
         assert is_stationary(phi), c["name"]
         assert is_invertible(theta), c["name"]
+
+
+# -- documented pass-through cases (WTI -> IPC, ill-conditioned by design) --- #
+#
+# Bivariate WTI + IPC_x VAR(1).  The ~hundreds-fold variance disparity between the
+# volatile commodity (WTI) and the smooth CPI (IPC) ill-conditions the
+# variance/covariance estimate, so cross-term SEs/Wald are unreliable — but the
+# point estimates and forecasts are robust and scale-invariant.  See the C repo's
+# MODELS_RESULTS.md section 4.
+
+def _pt_w(cty, scale=100.0):
+    ser, spec = load(_pt_path(cty))
+    w, _ = transform.transform(ser.data, lam=spec.lam, d=spec.d, D=spec.D,
+                               s=ser.freq, scale=scale)
+    return ser, w
+
+
+@needs_pt
+@pytest.mark.parametrize("cty", PT_COUNTRIES)
+def test_passthrough_variance_disparity(cty):
+    # the documented cause of the ill-conditioning: WTI is far more volatile.
+    ser, w = _pt_w(cty)
+    assert ser.names[0] == "WTI" and ser.names[1].startswith("IPC")
+    col_var = w.var(axis=0)
+    assert col_var.max() / col_var.min() > 100.0      # ~200-740x in practice
+
+
+@needs_engine
+@needs_pt
+@pytest.mark.parametrize("cty", PT_COUNTRIES)
+def test_passthrough_point_estimates_scale_invariant(cty):
+    # documented engine property: point estimates are invariant to the rescale
+    # factor (only the SEs/Wald of the cross terms are scale-sensitive). The C
+    # engine's steptol handling makes this hold tightly even on this ill-
+    # conditioned data; the pure-Python L-BFGS-B is looser, so this asserts the C.
+    _, w100 = _pt_w(cty, scale=100.0)
+    _, w25 = _pt_w(cty, scale=25.0)
+    r100 = estimate_w(w100, p=1, q=0, include_mean=True)
+    r25 = estimate_w(w25, p=1, q=0, include_mean=True)
+    assert r100["ifault"] == 0 and r25["ifault"] == 0
+    assert np.max(np.abs(r100["phi"] - r25["phi"])) < 1e-4
+
+
+@needs_pt
+@pytest.mark.parametrize("cty", PT_COUNTRIES)
+def test_passthrough_cov_ill_conditioned(cty):
+    # the documented caveat: the parameter covariance is ill-conditioned, so the
+    # cross-term standard errors are not reliable.
+    _, w = _pt_w(cty)
+    r = estimate_w_py(w, p=1, q=0, include_mean=True)
+    assert r["ifault"] == 0
+    assert np.linalg.cond(r["cov"]) > 1e4             # observed 1e5-1e7
+
+
+@needs_engine
+@needs_pt
+@pytest.mark.parametrize("cty", PT_COUNTRIES)
+def test_passthrough_point_estimates_robust_c_vs_python(cty):
+    # despite the ill-conditioning, the point estimates and log-likelihood agree
+    # between the C engine and the pure-Python AS 311 estimator.
+    _, w = _pt_w(cty)
+    c = estimate_w(w, p=1, q=0, include_mean=True)
+    py = estimate_w_py(w, p=1, q=0, include_mean=True)
+    assert abs(py["logelf"] - c["logelf"]) < 1e-4
+    assert np.max(np.abs(py["phi"] - c["phi"])) < 2e-3
+    assert np.max(np.abs(py["mu"] - c["mu"])) < 2e-3

@@ -1,7 +1,7 @@
 # drvarma Python port — TODO
 
 Status snapshot in `docs/STATUS.md`. P0–P3 and P5 (CLI + packaging) are done and
-validated against the C engine (67 tests). The whole Model → forecast → report
+validated against the C engine (79 tests). The whole Model → forecast → report
 pipeline also runs on the pure-Python fallback with no compiled engine. Remaining:
 P4 (synthetic/reliability suite), P5 docs/plots/CI, and the deferred Shea backup.
 
@@ -48,7 +48,12 @@ P4 (synthetic/reliability suite), P5 docs/plots/CI, and the deferred Shea backup
 - [x] Reliability tests (mirroring fue): Sigma symmetric/PD, std=sqrt(diag cov),
       npar vs diag restrictions, Hosking-Q / Jarque-Bera against their formulas,
       simulation + estimator determinism, near-unit-root convergence. (19 tests.)
-- [ ] Optional: collinearity edge case à la WTI/IPC (ill-conditioned cross SEs).
+- [x] Documented **pass-through** cases (WTI→IPC, `data/passthrough/WTI_IPC_*`):
+      ill-conditioned by the ~hundreds-fold WTI/IPC variance disparity. Tests
+      (12, in `test_reliability.py`): variance disparity >100×; point estimates
+      scale-invariant (C engine, <1e-4); parameter cov ill-conditioned
+      (cond>1e4); C-vs-pure-Python point estimates/logelf robust (<2e-3/<1e-4)
+      despite the ill-conditioning. Matches the C `MODELS_RESULTS.md` §4 caveat.
 
 ## P5 — CLI, packaging, docs
 - [x] **`cli.py`**: `drvarma <file> p q [options]` mirroring the C flags
