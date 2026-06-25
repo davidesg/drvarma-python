@@ -42,8 +42,12 @@ and how to validate.
       `.out`/`.forecast`/`.recursive` via `report.py`. Entry point
       `drvarma = drvarma.cli:main` is wired in `pyproject.toml`.
       (`-volexp`/`-volmov` not ported — volatility is out of scope for the port.)
-- [ ] Packaging: `cffi_modules` in `pyproject.toml` so `pip install` builds the
-      engine; pure-Python wheel fallback. (Entry point done above.)
+- [x] Packaging: `setup.py` builds the engine as an **optional** cffi Extension
+      (`pip install` / `build_ext --inplace` compile it into `src/drvarma/`; a
+      build failure without GSL degrades to a pure-Python install, tests skip).
+      `cffi` added to build-system requires; `MANIFEST.in` ships `csrc/` in the
+      sdist. (Entry point `drvarma = drvarma.cli:main` already wired.)
+      Remaining: real pure-Python *compute* fallback needs P3; binary wheels/CI.
 - [ ] Optional `plots.py` (matplotlib): series, forecasts+bands, IRF.
 - [ ] Docs: USER_GUIDE / API reference for the Python package; PyPI release.
 - [ ] CI workflow building the engine + running pytest (mirror the C repo CI).

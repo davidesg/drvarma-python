@@ -1,0 +1,5 @@
+# Ship the C engine sources so `pip install` from an sdist can compile it.
+recursive-include csrc *.c *.h
+include COPYING
+include README.md docs/STATUS.md TODO.md
+global-exclude *.o *.so

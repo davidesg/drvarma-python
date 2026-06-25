@@ -46,11 +46,16 @@ P2 numeric checks vs C (IPC3, `3 0 -mean [-deseason auto] [-forecast 12] [-estwi
 
 ```sh
 cd drvarma_source/drvarma
-# build the optional C engine (GSL + GLib dev headers required):
-python -m drvarma._build_cffi
-mv drvarma/_drvarma_engine*.so src/drvarma/ ; rm -rf drvarma   # cffi writes it under ./drvarma/
-PYTHONPATH=src python -m pytest tests/ -q                       # 37 tests
+# build the optional C engine (GSL dev headers required) straight into src/:
+python setup.py build_ext --inplace        # or: pip install -e .
+PYTHONPATH=src python -m pytest tests/ -q   # 37 tests
 ```
+
+`pip install` builds the engine via `setup.py` (an *optional* cffi Extension:
+if GSL is missing the install still succeeds and the package runs pure-Python,
+with the C-engine tests skipping themselves). Running `_build_cffi` standalone
+still works but writes the module under `./drvarma/` (move it to `src/drvarma/`);
+prefer `build_ext --inplace`, which places it correctly.
 
 The `.so` (and `_drvarma_engine.c`, `*.o`) are gitignored — rebuild as above.
 Tests that compare against the C binary auto-skip if `../drvarma_v.04.1/bin/drvarma`
@@ -118,8 +123,10 @@ tests/          one test module per area; compare to the C binary + synthetic
   mapped to LEVEL dummies (A0 + sum-to-zero) and subtracted from raw *levels*;
   forecasts re-seasonalise with period `(origin + l + sub - 2) % freq`. Don't
   "simplify" this — the differenced-basis estimation is what matches the C.
-- **CFFI .so placement**: `_build_cffi` writes the module under `./drvarma/`
-  (because of the dotted module name); move it into `src/drvarma/`.
+- **CFFI .so placement**: prefer `python setup.py build_ext --inplace` (or
+  `pip install -e .`), which builds straight into `src/drvarma/`. Running
+  `_build_cffi` standalone still writes under `./drvarma/` (dotted module name) —
+  move it into `src/drvarma/` if you use that path.
 - **`csrc/internal/` are copies** of the C core and will drift from
   `../drvarma_v.04.1/src` if that changes — re-sync when the C engine is updated.
 - **default scale = 100** (matches the C; estimates are scale-invariant). Keep it
