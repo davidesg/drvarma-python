@@ -1,7 +1,7 @@
 # drvarma Python port — TODO
 
 Status snapshot in `docs/STATUS.md`. P0–P3 and P5 (CLI + packaging) are done and
-validated against the C engine (79 tests). The whole Model → forecast → report
+validated against the C engine (86 tests). The whole Model → forecast → report
 pipeline also runs on the pure-Python fallback with no compiled engine. Remaining:
 P4 (synthetic/reliability suite), P5 docs/plots/CI, and the deferred Shea backup.
 
@@ -68,7 +68,10 @@ P4 (synthetic/reliability suite), P5 docs/plots/CI, and the deferred Shea backup
       `cffi` added to build-system requires; `MANIFEST.in` ships `csrc/` in the
       sdist. (Entry point `drvarma = drvarma.cli:main` already wired.)
       Remaining: real pure-Python *compute* fallback needs P3; binary wheels/CI.
-- [ ] Optional `plots.py` (matplotlib): series, forecasts+bands, IRF.
+- [x] Optional `plots.py` (matplotlib, lazy import): `plot_series`,
+      `plot_forecast` (history + forecast + 95% bands), `plot_irf` (m×m OIRF
+      grid), `plot_fevd` (stacked). Smoke-tested with the Agg backend
+      (`tests/test_plots.py`, 7 tests; skip if matplotlib absent).
 - [ ] Docs: USER_GUIDE / API reference for the Python package; PyPI release.
 - [ ] CI workflow building the engine + running pytest (mirror the C repo CI).
 

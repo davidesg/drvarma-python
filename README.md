@@ -64,6 +64,12 @@ Flags: `-mean -diagar -diagma -diagcov -m METHOD -twostep -deseason [auto|force]
 -scale FACTOR -forecast H -estwin N`. The `.forecast` output is byte-identical to
 the C engine; see [`docs/STATUS.md`](docs/STATUS.md) for `.out` fidelity notes.
 
+## Plots (optional)
+
+With matplotlib (`pip install "drvarma[plots]"`), `drvarma.plots` offers
+`plot_series`, `plot_forecast` (history + forecast + 95% bands), `plot_irf`
+(m×m OIRF grid) and `plot_fevd`. Each returns a matplotlib `Figure`.
+
 ## License
 
 GNU General Public License v2 or later (see [`COPYING`](COPYING)).

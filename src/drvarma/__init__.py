@@ -10,8 +10,9 @@ from .series import MultiSeries
 from .inp import load, save, InpSpec
 from .model import Model
 from . import (transform, forecast, diagnostics, irf, deseason, datasets,
-               report, elfvarma_py, estimate_py)
+               report, elfvarma_py, estimate_py, plots)
 
 __all__ = ["MultiSeries", "load", "save", "InpSpec", "Model",
            "transform", "forecast", "diagnostics", "irf", "deseason",
-           "datasets", "report", "elfvarma_py", "estimate_py", "__version__"]
+           "datasets", "report", "elfvarma_py", "estimate_py", "plots",
+           "__version__"]
