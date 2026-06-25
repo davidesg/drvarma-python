@@ -22,9 +22,9 @@ C core.
 Wrap the validated multivariate C through CFFI to get a correct port fast; the
 pure-Python general-m likelihood is a later reference/fallback (P3). **fue's
 pure-Python likelihood is m=1 only**, so the multivariate likelihood is *not*
-reusable from fue. P3 status: the exact **VAR(p)** (q=0) likelihood is now written
-in pure Python (`elfvarma_py`/`estimate_py`, see below); the VARMA (q>0) case still
-lives only in the shared C.
+reusable from fue. P3 status: the exact VARMA likelihood is now written in pure
+Python as a faithful port of Mauricio's **AS 311** (`_as311.py`, see below);
+`estimate_py` fits it without the C engine.
 
 ## Done (P0–P2), all validated vs the C binary on IPC3
 
@@ -50,7 +50,7 @@ P2 numeric checks vs C (IPC3, `3 0 -mean [-deseason auto] [-forecast 12] [-estwi
 cd drvarma_source/drvarma
 # build the optional C engine (GSL dev headers required) straight into src/:
 python setup.py build_ext --inplace        # or: pip install -e .
-PYTHONPATH=src python -m pytest tests/ -q   # 43 tests
+PYTHONPATH=src python -m pytest tests/ -q   # 47 tests
 ```
 
 `pip install` builds the engine via `setup.py` (an *optional* cffi Extension:
@@ -94,23 +94,34 @@ src/drvarma/
   datasets.py   simulate_varma
   report.py     .out/.forecast/.recursive writers (C-format text reports)
   cli.py        `drvarma <file> p q [flags]` entry point (drvarma.cli:main)
-  elfvarma_py.py exact VAR(p) log-likelihood, pure Python (q=0 fallback)
-  estimate_py.py scipy exact-ML VAR estimator (pure-Python fallback)
+  _as311.py     faithful port of Mauricio's AS 311 exact VARMA likelihood
+  elfvarma_py.py elf_varma (AS 311 wrapper) + elf_var (fast q=0 specialisation)
+  estimate_py.py scipy exact-ML VARMA estimator (pure-Python fallback)
 tests/          one test module per area; compare to the C binary + synthetic
 ```
 
-## Pure-Python VAR fallback (P3, q=0, done 2026-06-25)
+## Pure-Python VARMA fallback (P3, done 2026-06-25)
 
-`elfvarma_py.elf_var` is the exact Gaussian **VAR(p)** log-likelihood for general
-m (companion-form Lyapunov stationary covariance of the first p obs + conditional
-density); it reproduces the C `logelf` to ~1e-7. `estimate_py.estimate_w_py` fits
-it with scipy L-BFGS-B and returns the **same dict shape** as the C
-`_engine.estimate_w`, so model/forecast/report all work without the compiled
-engine. `_engine.estimate_w` now tries the C engine and **falls back** to the
-pure-Python estimator on ImportError. Validated in `tests/test_estimate_py.py`.
-Caveats: q>0 (MA) raises NotImplementedError in the fallback (build the C engine
-for VARMA); std errors come from a numerical Hessian (best-effort); the fallback
-reports `sigma2=1, sigma=Sigma` rather than the C's AS-311 sigma2/Q split.
+`_as311.py` is a **faithful Python port of Mauricio's AS 311** (the exact VARMA
+log-likelihood in `csrc/internal/elfvarma.c`: `elf` + `cgamma` + `cxi` + `cres` +
+`chekma`). Mauricio wrote that algorithm, so the port is a step-by-step
+transcription (1-indexed arrays; only the length-n inner sums vectorised). It
+reproduces the C `logelf` to ~1e-11 and the AS 311 exact residuals to ~1e-12.
+
+**Do not replace this with a Kalman filter** — the state-space/Kalman route is
+essentially Shea's approach; a faithful port of `multshea.c` (AS 242) is the
+desirable *backup*, tracked in TODO.
+
+`elfvarma_py.elf_varma` wraps AS 311 (general p,q); `elf_var` is a fast vectorised
+q=0 specialisation (companion Lyapunov covariance), cross-checked against AS 311.
+`estimate_py.estimate_w_py` fits by scipy L-BFGS-B and returns the **same dict
+shape** as the C `_engine.estimate_w`, which now **falls back** to it on
+ImportError — so model/forecast/report work without the compiled engine.
+Validated vs the C engine to <1e-3 on params (q=0 and VARMA). Caveats: std errors
+come from a numerical Hessian (best-effort); the fallback reports `sigma2=1,
+sigma=Sigma` rather than the C's AS-311 sigma2/Q split; the L-BFGS-B start is
+θ=0 (no Hannan-Rissanen two-step), so for weakly-identified VARMA the optimum is
+the MLE but may sit far from a poorly-identified "truth" (the C agrees).
 
 ## Reports & CLI (P2-presentation + P5-CLI, done 2026-06-25)
 

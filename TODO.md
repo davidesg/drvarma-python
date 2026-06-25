@@ -16,21 +16,27 @@ and how to validate.
       ASCII residual-plot tail (`diagnose()`).
 
 ## P3 — pure-Python general-m likelihood (reference / fallback)
-- [x] **`elfvarma_py.py`** (q=0): exact Gaussian **VAR(p)** log-likelihood for
-      general m via the companion-form Lyapunov stationary covariance of the first
-      p obs + conditional density. Reproduces the C `logelf` to ~1e-7. Vectorised.
-- [x] **`estimate_py.py`** (q=0): scipy L-BFGS-B over (mu, phi, chol(Sigma)) from
-      OLS start; result dict matches the C `estimate_w` (params in C label order;
-      std errors via numerical observed-information Hessian, best-effort). Reports
-      `sigma2=1, sigma=Sigma` (the AS-311 sigma2/Q split is not reproduced here).
+- [x] **`_as311.py`** — faithful Python port of **Mauricio's AS 311**
+      (`csrc/internal/elfvarma.c`: `elf`, `cgamma`, `cxi`, `cres`, `chekma`), the
+      exact VARMA(p,q) log-likelihood for general m. 1-indexed transcription;
+      hot length-n loops vectorised without changing the algorithm. Reproduces the
+      C `logelf` to ~1e-11 and the exact residuals to ~1e-12. **No Kalman**
+      (that route is Shea's; a faithful `multshea.c` port is the desirable backup).
+- [x] **`elfvarma_py.py`**: `elf_varma` (AS 311 wrapper, general p,q) + `elf_var`
+      (fast vectorised q=0 specialisation via the companion Lyapunov covariance,
+      cross-checked against AS 311).
+- [x] **`estimate_py.py`**: scipy L-BFGS-B over (mu, phi, theta, chol(Sigma)) from
+      an OLS/θ=0 start; result dict matches the C `estimate_w` (params in C label
+      order; std errors via numerical observed-information Hessian, best-effort).
+      Reports `sigma2=1, sigma=Sigma` (AS-311 sigma2/Q split not reproduced).
 - [x] Wire `_engine.estimate_w` to **fall back** to `estimate_py.estimate_w_py`
       when `_drvarma_engine` is not importable (mirrors fue's `_engine.py`).
-- [x] Validated (`tests/test_estimate_py.py`, 6 tests): elf_var vs C logelf <1e-6;
-      pure-Python estimate vs C mu/phi/sigma/logelf <1e-3 on IPC3 (q=0); fallback
-      dispatch (incl. via `Model.fit`); synthetic VAR(1) recovery.
-- [ ] **MA case (q>0)**: port the multivariate AS 311 (`elfvarma.c`/`multshea.c`)
-      — exact VARMA likelihood. `estimate_w_py` currently raises NotImplementedError
-      for q>0 (build the C engine for VARMA). Add chol(Q)+theta to the packing.
+- [x] Validated (`tests/test_estimate_py.py`, 10 tests): elf_var/elf_varma vs C
+      `logelf` <1e-6 and exact residuals <1e-6 (q=0 and VARMA(1,1)/(2,1)); pure-
+      Python estimate vs C mu/phi/theta/sigma/logelf <1e-3; fallback dispatch
+      (incl. via `Model.fit`); synthetic VAR(1) recovery and VARMA MLE property.
+- [ ] **Shea backup**: faithful port of `csrc/internal/multshea.c` (AS 242) as an
+      alternative exact VARMA likelihood.
 
 ## P4 — synthetic test suite & reliability
 - [ ] Expand `datasets`: VARMA(1,1), full-Σ, near-unit-root, varying m; seeded

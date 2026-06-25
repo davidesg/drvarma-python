@@ -7,7 +7,7 @@ import pytest
 
 from drvarma import load, transform, Model
 from drvarma.datasets import simulate_varma
-from drvarma.elfvarma_py import elf_var
+from drvarma.elfvarma_py import elf_var, elf_varma
 from drvarma.estimate_py import estimate_w_py
 
 C_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "drvarma_v.04.1")
@@ -88,7 +88,60 @@ def test_model_fit_via_pure_python(monkeypatch):
     assert np.max(np.abs(mdl.result["phi"][0] - phi_true)) < 0.1
 
 
-def test_q_positive_not_supported():
-    w = np.random.default_rng(0).standard_normal((100, 2))
-    with pytest.raises(NotImplementedError):
-        estimate_w_py(w, p=1, q=1, include_mean=True)
+# -- VARMA (q>0): faithful AS 311 port --------------------------------------- #
+
+@needs_engine
+@needs_ipc3
+@pytest.mark.parametrize("pq", [(1, 1), (2, 1)])
+def test_elf_varma_matches_c_loglik(pq):
+    from drvarma._engine import estimate_w
+    p, q = pq
+    w = _ipc3_w()
+    r = estimate_w(w, p=p, q=q, include_mean=True)
+    ll, ifault, res = elf_varma(w, r["mu"], r["phi"], r["theta"], r["sigma"],
+                                compute_residuals=True)
+    assert ifault == 0
+    assert abs(ll - r["logelf"]) < 1e-6
+    assert np.max(np.abs(res - r["residuals"])) < 1e-6   # AS 311 exact residuals
+
+
+def test_elf_var_matches_elf_varma_q0():
+    # the fast VAR path and AS 311 (q=0) must agree
+    phi = [np.array([[0.5, 0.1], [-0.2, 0.4]])]
+    sigma = np.array([[1.0, 0.3], [0.3, 0.8]])
+    sim = simulate_varma(phi=phi, sigma=sigma, n=300, seed=5)
+    mu = sim.data.mean(axis=0)
+    a, _ = elf_var(sim.data, mu, np.array(phi), sigma)
+    b, ifault, _ = elf_varma(sim.data, mu, np.array(phi), np.zeros((0, 2, 2)), sigma)
+    assert ifault == 0
+    assert abs(a - b) < 1e-6
+
+
+@needs_engine
+def test_estimate_py_varma_matches_c():
+    from drvarma._engine import estimate_w
+    phi_t = np.array([[0.5, 0.1], [0.0, 0.4]])
+    th_t = np.array([[0.3, 0.0], [0.1, 0.2]])
+    sig = np.array([[1.0, 0.2], [0.2, 0.7]])
+    sim = simulate_varma(phi=[phi_t], theta=[th_t], sigma=sig, n=1200, seed=11)
+    c = estimate_w(sim.data, p=1, q=1, include_mean=True)
+    py = estimate_w_py(sim.data, p=1, q=1, include_mean=True)
+    assert py["ifault"] == 0
+    assert abs(py["logelf"] - c["logelf"]) < 1e-4
+    assert np.max(np.abs(py["phi"] - c["phi"])) < 1e-3
+    assert np.max(np.abs(py["theta"] - c["theta"])) < 1e-3
+    assert np.max(np.abs(py["sigma"] - c["sigma"])) < 1e-3
+
+
+def test_estimate_py_varma_is_mle():
+    # without the C engine: the fitted log-likelihood must beat the truth's
+    phi_t = np.array([[0.5, 0.1], [0.0, 0.4]])
+    th_t = np.array([[0.3, 0.0], [0.1, 0.2]])
+    sig = np.array([[1.0, 0.2], [0.2, 0.7]])
+    sim = simulate_varma(phi=[phi_t], theta=[th_t], sigma=sig, n=800, seed=2)
+    py = estimate_w_py(sim.data, p=1, q=1, include_mean=True)
+    ll_truth, ifault, _ = elf_varma(sim.data, sim.data.mean(axis=0),
+                                    np.array([phi_t]), np.array([th_t]), sig)
+    assert py["ifault"] == 0 and ifault == 0
+    assert py["logelf"] >= ll_truth - 1e-6
+    assert py["theta"].shape == (1, 2, 2)
