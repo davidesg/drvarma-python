@@ -78,10 +78,15 @@ pure-Python fallback with no compiled engine. Remaining: the graphics finish
       (stacked), `plot_ccf` (two-sided CCF in the drv4.040804/drvus format).
       Smoke-tested with the Agg backend (`tests/test_plots.py`; skip if matplotlib
       absent).
-- [ ] **Residual `.out` section (ASCII)** — reuse `pyfug.ascii` (the migrated
-      `diagnose.c`) per residual series via a `MultiSeries → pyfug.core.Tseries`
-      adapter; wrap with drvarma's `--- Residual series a[i] ---` wording. See
-      `docs/FUE_REUSE.md` (empirically reproduces `IPC3.out` near byte-exact).
+- [x] **`MultiSeries → pyfug.core.Tseries` adapter** (`_pyfug.py`): builds a
+      univariate Tseries per series/residual column with the statistics filled
+      from drvarma's own `diagnostics.series_stats` (drvarma owns the numbers;
+      pyfug only renders). `residual_start` dates residuals from `d+D·s`. pyfug
+      added to `[plots]` extras; tests skip if pyfug absent (5 tests).
+- [ ] **Residual `.out` section (ASCII)** — compose per residual series: write
+      drvarma's `File_StatSer` stats block (own wording, no JB line) + reuse
+      `pyfug.ascii` `_write_ascii_plot`/`_write_ascii_histogram`/
+      `_write_acf_ascii_bars` via the adapter. See `docs/FUE_REUSE.md`.
 - [ ] **Graphics finish (deferred to last)**: reuse `pyfug.graphics` JT formats
       (series, ACF/PACF, histogram, mean-deviation) through the same adapter;
       restyle forecast/IRF/FEVD with the JT theme; add pyfug to `[plots]` extras.

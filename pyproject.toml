@@ -25,7 +25,7 @@ drvarma = "drvarma.cli:main"
 [project.optional-dependencies]
 # Optional CFFI-compiled C engine (P1): pip install "drvarma[c-engine]"
 c-engine = ["cffi>=1.15"]
-plots = ["matplotlib>=3.6"]
+plots = ["matplotlib>=3.6", "pyfug>=2.0"]
 test = ["pytest>=7"]
 
 [tool.setuptools.packages.find]
