@@ -78,13 +78,15 @@ pure-Python fallback with no compiled engine. Remaining: the graphics finish
       (stacked), `plot_ccf` (two-sided CCF in the drv4.040804/drvus format).
       Smoke-tested with the Agg backend (`tests/test_plots.py`; skip if matplotlib
       absent).
-- [ ] **Graphics finish (deferred to last)**: reuse pyfug's Jenkins-Treadway
-      formats (series, ACF/PACF, histogram, mean-deviation) — adapt
-      MultiSeries/residual columns to `pyfug.core.Tseries`, populating stats from
-      **drvarma's own** `series_stats`/`acf`/`pacf` (not `pyfug.compute_all`);
+- [ ] **Residual `.out` section (ASCII)** — reuse `pyfug.ascii` (the migrated
+      `diagnose.c`) per residual series via a `MultiSeries → pyfug.core.Tseries`
+      adapter; wrap with drvarma's `--- Residual series a[i] ---` wording. See
+      `docs/FUE_REUSE.md` (empirically reproduces `IPC3.out` near byte-exact).
+- [ ] **Graphics finish (deferred to last)**: reuse `pyfug.graphics` JT formats
+      (series, ACF/PACF, histogram, mean-deviation) through the same adapter;
       restyle forecast/IRF/FEVD with the JT theme; add pyfug to `[plots]` extras.
-- [ ] Optional: render the per-series residual section in the `.out` report (the
-      ASCII tail) now that the stats exist — presentation only.
+      drvarma keeps stat ownership (`diagnostics.py`); pyfug renders. See
+      `docs/FUE_REUSE.md`.
 - [ ] Docs: USER_GUIDE / API reference for the Python package; PyPI release.
 - [ ] CI workflow building the engine + running pytest (mirror the C repo CI).
 

@@ -16,6 +16,8 @@ C core.
   branch `master`).
 - Plan: `docs/MIGRATION_PLAN.md`. Reference results to validate against:
   `../drvarma_v.04.1/MODELS_RESULTS.md`.
+- Reusing the fue/pyfug Python migration (ASCII residual diagnostics + JT plots)
+  for the remaining presentation work: see `docs/FUE_REUSE.md`.
 
 ## Strategy (decided: A, CFFI-first)
 
