@@ -130,6 +130,35 @@ def test_hosking_q_matches_formula():
     assert abs(Q - Qm) < 1e-9
 
 
+def test_ccf_lag0_is_correlation():
+    rng = np.random.default_rng(3)
+    w1 = rng.standard_normal(500)
+    w2 = 0.6 * w1 + rng.standard_normal(500)
+    rho = diagnostics.ccf(w1, w2, 20)
+    assert rho.shape == (41,)
+    # lag 0 (population) correlation
+    x1 = w1 - w1.mean(); x2 = w2 - w2.mean()
+    expected = (x1 * x2).mean() / np.sqrt((x1 ** 2).mean() * (x2 ** 2).mean())
+    assert abs(rho[20] - expected) < 1e-12
+    # positive/negative lags use the two cross-covariance directions
+    n = 500
+    c12_1 = (x1[1:] * x2[:n - 1]).sum() / n
+    c21_1 = (x2[1:] * x1[:n - 1]).sum() / n
+    den = np.sqrt((x1 ** 2).mean() * (x2 ** 2).mean())
+    assert abs(rho[21] - c12_1 / den) < 1e-12
+    assert abs(rho[19] - c21_1 / den) < 1e-12
+
+
+def test_qccf_equals_hosking_q_on_pair():
+    rng = np.random.default_rng(4)
+    w1 = rng.standard_normal(400)
+    w2 = rng.standard_normal(400)
+    Q, df, p = diagnostics.qccf(w1, w2, 10)
+    Qh, dfh, ph = diagnostics.hosking_q(np.column_stack([w1, w2]), 10)
+    assert df == dfh == 4 * 10
+    assert abs(Q - Qh) < 1e-9
+
+
 def test_jarque_bera_matches_formula():
     rng = np.random.default_rng(1)
     res = rng.standard_normal((400, 3))

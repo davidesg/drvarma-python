@@ -57,6 +57,48 @@ def hosking_q(res, s):
     return float(Q), df, _chisq_sf(Q, df)
 
 
+def ccf(w1, w2, lags):
+    """Two-sided sample cross-correlation function between two series.
+
+    Returns ``rho`` of length ``2*lags+1`` for lags ``-lags..+lags``, with
+    ``rho[lags+k]`` the correlation at lag k.  At lag k>0 it pairs ``w1_t`` with
+    ``w2_{t-k}`` (w2 lagging); at lag k<0, ``w2_t`` with ``w1_{t-|k|}``.  Cross-
+    covariances follow drvus ``ccf.c`` (divided by N); standardised by the
+    contemporaneous standard deviations.
+    """
+    w1 = np.asarray(w1, float).ravel()
+    w2 = np.asarray(w2, float).ravel()
+    n = w1.shape[0]
+    x1 = w1 - w1.mean()
+    x2 = w2 - w2.mean()
+    c11 = float((x1 * x1).mean())
+    c22 = float((x2 * x2).mean())
+    den = np.sqrt(c11 * c22)
+
+    def c12(k):                          # (1/N) sum_t x1_t x2_{t-k}, k>=0
+        return float((x1[k:] * x2[:n - k]).sum() / n)
+
+    def c21(k):                          # (1/N) sum_t x2_t x1_{t-k}, k>=0
+        return float((x2[k:] * x1[:n - k]).sum() / n)
+
+    rho = np.zeros(2 * lags + 1)
+    for k in range(lags + 1):
+        rho[lags + k] = c12(k) / den     # lag +k: w2 lags w1
+        rho[lags - k] = c21(k) / den     # lag -k: w1 lags w2
+    return rho
+
+
+def qccf(w1, w2, lags):
+    """Hosking bivariate portmanteau Q for the pair (w1, w2) up to `lags`.
+
+    Port of drvus ``ccf.c``/``qccf.c``; equivalent to `hosking_q` on the
+    stacked 2-variate series.  Returns (Q, df, pvalue).
+    """
+    res = np.column_stack([np.asarray(w1, float).ravel(),
+                           np.asarray(w2, float).ravel()])
+    return hosking_q(res, lags)
+
+
 def jarque_bera_mv(res):
     """Multivariate Jarque-Bera (sum of univariate JB) on residuals (nobs x m).
 

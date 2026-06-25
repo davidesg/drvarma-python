@@ -122,6 +122,56 @@ def plot_irf(model, horizon, orthogonalized=True, axes=None):
     return fig
 
 
+def _snap_cmax(value):
+    """Snap a CCF y-limit up to a tidy 0.1 step, with a 0.3 floor (drvus style)."""
+    import math
+    c = math.ceil(max(value, 0.25) * 10.0) / 10.0
+    return max(0.3, min(c, 1.0))
+
+
+def plot_ccf(w1, w2, lags=None, freq=12, names=("1", "2"), ax=None):
+    """Two-sided cross-correlation plot, reproducing the drvus ``ccf`` format.
+
+    Impulse bars over lags -K..K, ±2/√N significance bands (dashed), vertical
+    seasonal dividers at ±freq, ±2·freq, ±3·freq, and an ``Q ( K ) = ...`` label
+    (Hosking bivariate portmanteau).  ``w1``/``w2`` are 1-D arrays (e.g. two model
+    residual series).  Reference: drv4.040804/drvus ``ccf.c`` + ``x11plots.c``.
+    """
+    plt = _need_mpl()
+    from .diagnostics import ccf as _ccf, qccf as _qccf
+    w1 = np.asarray(w1, float).ravel()
+    w2 = np.asarray(w2, float).ravel()
+    n = w1.shape[0]
+    if lags is None:
+        lags = max(3 * freq, 12) if freq > 1 else min(20, n // 4)
+    rho = _ccf(w1, w2, lags)
+    Q, df, _ = _qccf(w1, w2, lags)
+    band = 2.0 / np.sqrt(n)
+    cmax = _snap_cmax(max(np.max(np.abs(rho)), band))
+    x = np.arange(-lags, lags + 1)
+
+    if ax is None:
+        fig, ax = plt.subplots(figsize=(9, 3))
+    else:
+        fig = ax.get_figure()
+    # seasonal vertical dividers
+    if freq > 1:
+        for s in range(freq, lags + 1, freq):
+            for xx in (s, -s):
+                ax.axvline(xx, color="0.6", lw=0.8, zorder=1)
+    ax.axhline(0, color="k", lw=1.0, zorder=2)
+    ax.axhline(band, color="k", lw=1.0, ls="--", zorder=2)
+    ax.axhline(-band, color="k", lw=1.0, ls="--", zorder=2)
+    ax.vlines(x, 0.0, rho, color="k", lw=1.6, zorder=3)         # impulses
+    ax.set_ylim(-cmax, cmax)
+    ax.set_xlim(-lags - 0.5, lags + 0.5)
+    ax.set_yticks([-cmax, -cmax / 2, 0, cmax / 2, cmax])
+    ax.set_title("ccf  %s%s%s" % (names[0], "↔", names[1]), fontsize=11)
+    ax.set_xlabel("Q ( %d ) = %.1f" % (lags, Q), fontsize=11)
+    fig.tight_layout()
+    return fig
+
+
 def plot_fevd(model, horizon, axes=None):
     """Stacked-area forecast-error variance decomposition, one panel per variable."""
     plt = _need_mpl()
