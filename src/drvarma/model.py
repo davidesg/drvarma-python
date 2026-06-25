@@ -138,18 +138,50 @@ class Model:
                 "JB": JB, "JB_df": jdf, "JB_p": jp}
 
     # convenience accessors -------------------------------------------------
+    def _get(self, key):
+        return None if self.result is None else self.result[key]
+
     @property
     def params(self):
-        return None if self.result is None else self.result["params"]
+        return self._get("params")
+
+    @property
+    def std_errors(self):
+        return self._get("std_errors")
+
+    @property
+    def phi(self):
+        """AR coefficient matrices, shape (p, m, m)."""
+        return self._get("phi")
+
+    @property
+    def theta(self):
+        """MA coefficient matrices, shape (q, m, m)."""
+        return self._get("theta")
+
+    @property
+    def mu(self):
+        """Mean/drift vector, shape (m,)."""
+        return self._get("mu")
+
+    @property
+    def sigma(self):
+        """Innovation covariance Sigma, shape (m, m)."""
+        return self._get("sigma")
 
     @property
     def sigma2(self):
-        return None if self.result is None else self.result["sigma2"]
+        return self._get("sigma2")
+
+    @property
+    def residuals(self):
+        """Estimation residuals, shape (nobs, m)."""
+        return self._get("residuals")
 
     @property
     def loglik(self):
-        return None if self.result is None else self.result["logelf"]
+        return self._get("logelf")
 
     @property
     def ifault(self):
-        return None if self.result is None else self.result["ifault"]
+        return self._get("ifault")

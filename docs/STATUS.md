@@ -47,7 +47,8 @@ P2 numeric checks vs C (IPC3, `3 0 -mean [-deseason auto] [-forecast 12] [-estwi
 - recursive (-estwin) all 612 rows <1e-4 (with & without deseason).
 
 `Model` API: `.fit()`, `.forecast(L, b=0, bands=False)`, `.recursive_forecast(estwin, H)`,
-`.diagnostics(lag=None)`, `.irf(horizon)`, `.fevd(horizon)`; plus `.params/.sigma2/.loglik/.ifault`.
+`.diagnostics(lag=None)`, `.irf(horizon)`, `.fevd(horizon)`; accessors
+`.phi/.theta/.mu/.sigma/.sigma2/.residuals/.params/.std_errors/.loglik/.ifault`.
 
 ## Build & test
 

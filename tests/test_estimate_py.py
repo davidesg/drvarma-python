@@ -157,7 +157,8 @@ def test_full_pipeline_without_engine(monkeypatch):
     mdl = Model(sim, lam=1.0, d=0, D=0, scale=1.0, p=1, q=1,
                 include_mean=True).fit()
     assert mdl.ifault == 0
-    assert mdl.result["theta"].shape == (1, 2, 2)
+    assert mdl.theta.shape == (1, 2, 2)
+    assert mdl.phi.shape == (1, 2, 2) and mdl.sigma.shape == (2, 2)
     fc = mdl.forecast(6)
     assert fc.shape == (6, 2) and np.all(np.isfinite(fc))
     out = report.out_report(mdl, input_path="sim.inp", output_path="sim.out")
