@@ -93,7 +93,7 @@ class Model:
         """Fixed-parameter recursive forecasts from multiple origins (-estwin).
 
         Estimates once on the first `estwin` raw observations; returns a list of
-        (origin_raw_index, series_idx, horizon, level). q=0 only.
+        (origin_raw_index, series_idx, horizon, level). Supports general VARMA(p,q).
         """
         from .forecast import recursive_forecast
         rows, _ = recursive_forecast(

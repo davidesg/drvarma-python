@@ -105,19 +105,67 @@ pure-Python fallback with no compiled engine. Remaining: the graphics finish
 Goal: the pure-Python path is feature- and fidelity-complete vs the C engine, so
 the CFFI engine is an optional accelerator only. Ordered PP1 → PP5.
 
-- [ ] **PP1 (keystone)** — estimator parity: reparameterise `estimate_py` to the
-      C's `(μ, φ, θ, chol(Q))` packing with `σ̂²=f1/(n·m)` concentrated and a
-      `fdhess`-style finite-difference Hessian → reproduce the C's `sigma2`, `Q`
-      and `std_errors`/Wald (closes the σ²/Q split + std-error gaps). Makes the
-      engine-free `.out` parameter table / normalized model match the C.
-- [ ] **PP2** — Hannan-Rissanen two-step init (port `init_varma`,
-      `hannan_rissanen_diag`, `combine_vectors`; wire `-twostep` in pure Python).
-- [ ] **PP3** — volatility: port `volatility.c` (`-volexp`/`-volmov`) +
-      `.volatility` writer + CLI flags.
-- [ ] **PP4** — `recursive_forecast` for q>0 (exact residuals at fixed params via
-      AS-311 `cres` over the full series); expose `-seasonal`.
-- [ ] **PP5** — convergence hardening + a CI/test mode that diffs the **full**
-      engine-free `.out` byte-exact vs the C (VAR & VARMA, ±deseason).
+- [x] **PP1 (keystone)** — estimator parity (done 2026-06-26). `estimate_py`
+      now mirrors the C *exactly*: the `shootx` packing `(μ, φ, θ, raw qq
+      lower-tri)`; `init_varma` (OLS AR seed + qq = residual **correlation**
+      matrix — the start that pins the σ²/Q split, since the concentrated
+      objective `f1^m·f2` is scale-invariant in qq); the concentrated objective
+      via AS 311 `elf(σ²=1)`; and a **faithful port of the factored BFGS
+      optimiser** (`_qnewt.py` ← `qnewtopt.c`: raxopt/bfgsfac/qrupdate/jacrot/
+      cdgrad/lnsrch/umstop). `σ̂²=f1/(n·m)`, `Σ=σ²·Q`; `cov = 2·f·b⁻¹/n` from the
+      optimiser's factored Hessian `b` (a plain numerical Hessian can't do this —
+      the qq-scale direction is flat). Engine-free IPC3 `.out`: parameter table
+      and normalized model **byte-identical** to the C binary except the 6th
+      decimal of a few std errors (≤1.4e-4, the documented engine tolerance);
+      estimates/logelf/sigma2/Σ/residuals match the C engine to ~1e-10. Closes
+      G1 + G2. Tests: `test_estimate_py.py` (`..._split_and_stderrs_match_c`,
+      `..._reports_sigma2_q_split`). 109 tests green.
+- [x] **PP2** — Hannan-Rissanen two-step init (done 2026-06-26). Ported
+      `hannan_rissanen_diag` (per-series HR: AR(L) OLS → residuals → regress on
+      AR+MA lags, `theta_d=-coef`, variances scaled to avg 1) and the
+      `combine_vectors` merge (diagonal AR/MA/cov from HR into the full start,
+      off-diagonal kept from `init_varma`) into `estimate_py`; `-twostep` wired
+      through the pure-Python path with the C's exact trigger (q>0 and not
+      fully-diagonal). `init_diag_varma` is dead code in the C (no callers) — not
+      ported. Validated vs the C engine (twostep=True): params <1e-5, logelf
+      <1e-6, Σ <1e-6 on VARMA(1,1)/(2,1). Tests: `test_estimate_py.py`
+      (`..._twostep_matches_c`, `..._twostep_runs_without_engine`). 112 green.
+- [x] **PP3** — volatility (done 2026-06-26). `volatility.py` ports
+      `volatility.c`: exponential weighting (`H_t=Σ φ(1-φ)^k ε_{t-k}ε_{t-k}'`, φ
+      from the Mahalanobis-distance exceedance proportion vs the (1-α) percentile)
+      and the moving-window unbiased sample covariance. `.volexp`/`.volmov`
+      writers (C `%g` format) + the `.out` info line; CLI `-volexp [alpha window]`
+      / `-volmov [window]` (defaults 0.05/20/20). **Byte-identical** to the C
+      binary with the engine; engine-free only a single last-digit `%g` rounding
+      differs (residuals ~1e-10). Tests: `test_volatility.py` (5). 117 green.
+      Closes G4.
+- [x] **PP4** — recursive forecasting for q>0 (done 2026-06-27). Dropped the
+      q=0 restriction in `recursive_forecast`. **Empirically established** (vs the
+      C binary on a synthetic well-identified VARMA(1,1)) that the C's
+      `forecast_mean` uses the **estimation-window residuals** `varma1.a` (zero
+      beyond the window), *not* full-series AS-311 residuals — so the MA term at
+      origin e indexes `a[e]` and vanishes past the window. Implemented as
+      `a_full[:estwin_eff] = result["residuals"]`. Validated to <1e-6 vs the C
+      binary `.recursive` end-to-end (Model→`recursive_report`). `-seasonal` is a
+      **vestigial** C flag (it only feeds `forecast_model`'s discarded `v_seas`;
+      the `.forecast` annual% comes from `forecast_level_variances` with `s=freq`)
+      — deliberately not ported. Test: `test_recursive.py::
+      test_recursive_varma_q_positive_matches_c`. 117 green. Closes G5.
+- [x] **PP5** — engine-free fidelity locked in (done 2026-06-27).
+      `test_pure_python_out.py`: (1) the pure-Python estimator reproduces the C
+      engine across the zoo (VAR(3) ±deseason, diag-ar, diag-cov) to logelf <1e-6,
+      mu/phi/Σ <1e-5; (2) with the engine monkeypatched **off**, the deterministic
+      `.out` sections (OIRF/accumulated, FEVD, multivariate diagnostics, normalized
+      model) are **byte-identical** to the C binary for VAR(3) -mean. Findings:
+      engine-free == cffi engine to ~1e-9 on raw data; the `.out` differences are
+      (a) the **Inverse roots** ordering (modulus vs chekma QR — deliberate) and
+      (b) under deseason the σ²/Q *split* drifts ~2.7e-5 (scale-ambiguous flat
+      direction; Σ/logelf still ~1e-12) — both documented, neither an estimation
+      error. Also established: the C *binary* can be numerically unstable on
+      pathological synthetics (VARMA(1,1) n=300 → SIGABRT / garbage Q), where the
+      pure-Python path stays stable; and the C/Python Hosking p-values use the same
+      `df=m²·s` + upper tail (a 0.0373-vs-0.9627 mismatch was downstream of the
+      binary's garbage estimate, not a formula bug).
 
 ## Engine / maintenance
 - [ ] Keep `csrc/internal/` in sync with `../drvarma_v.04.1/src` when the C

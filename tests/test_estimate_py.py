@@ -55,6 +55,41 @@ def test_estimate_py_matches_c():
     assert np.max(np.abs(py["sigma"] - c["sigma"])) < 1e-3
 
 
+@needs_engine
+@needs_ipc3
+def test_estimate_py_split_and_stderrs_match_c():
+    # PP1: pure-Python now reproduces the C sigma2/Q split AND the cov[] std
+    # errors (same init_varma + concentrated objective + factored BFGS).
+    from drvarma._engine import estimate_w
+    w = _ipc3_w()
+    c = estimate_w(w, p=3, q=0, include_mean=True)
+    py = estimate_w_py(w, p=3, q=0, include_mean=True)
+    assert py["ifault"] == 0
+    # estimates (incl. the raw cov[] = Q lower triangle) byte-close to the C
+    assert np.max(np.abs(py["params"] - c["params"])) < 1e-6
+    assert abs(py["sigma2"] - c["sigma2"]) < 1e-6        # the split is matched
+    assert abs(py["logelf"] - c["logelf"]) < 1e-6
+    assert np.max(np.abs(py["sigma"] - c["sigma"])) < 1e-6
+    # cov[] std errors (impossible with a plain numerical Hessian: the qq-scale
+    # direction is flat) are reproduced via the factored BFGS Hessian.
+    assert np.max(np.abs(py["std_errors"] - c["std_errors"])) < 1e-3
+
+
+def test_estimate_py_reports_sigma2_q_split():
+    # engine-free: sigma2 != 1 and sigma == sigma2 * Q is self-consistent.
+    phi_true = np.array([[0.5, 0.1], [-0.2, 0.4]])
+    sigma_true = np.array([[1.0, 0.3], [0.3, 0.8]])
+    sim = simulate_varma(phi=[phi_true], sigma=sigma_true, n=600, seed=9)
+    r = estimate_w_py(sim.data, p=1, q=0, include_mean=True)
+    assert r["ifault"] == 0
+    assert r["sigma2"] != 1.0
+    qq = r["sigma"] / r["sigma2"]
+    assert np.allclose(r["sigma"], r["sigma2"] * qq)
+    # cov[] params are the raw qq lower triangle (C label order)
+    cov_lt = np.array([qq[i, j] for i in range(2) for j in range(i + 1)])
+    assert np.allclose(r["params"][-3:], cov_lt)
+
+
 @needs_ipc3
 def test_engine_falls_back_without_extension(monkeypatch):
     # Make `import drvarma._drvarma_engine` fail so estimate_w uses pure Python.
@@ -131,6 +166,41 @@ def test_estimate_py_varma_matches_c():
     assert np.max(np.abs(py["phi"] - c["phi"])) < 1e-3
     assert np.max(np.abs(py["theta"] - c["theta"])) < 1e-3
     assert np.max(np.abs(py["sigma"] - c["sigma"])) < 1e-3
+
+
+@needs_engine
+@pytest.mark.parametrize("pq", [(1, 1), (2, 1)])
+def test_estimate_py_twostep_matches_c(pq):
+    # PP2: pure-Python Hannan-Rissanen two-step start matches the C engine's,
+    # so -twostep VARMA fits converge to the same optimum engine-free.
+    from drvarma._engine import estimate_w
+    p, q = pq
+    phi = [np.array([[0.4, 0.1], [0.0, 0.3]])]
+    if p == 2:
+        phi.append(np.array([[0.1, 0.0], [0.1, 0.1]]))
+    th = [np.array([[0.3, 0.0], [0.1, 0.2]])]
+    sig = np.array([[1.0, 0.3], [0.3, 0.8]])
+    sim = simulate_varma(phi=phi, theta=th, sigma=sig, n=1200, seed=5)
+    c = estimate_w(sim.data, p=p, q=q, include_mean=True, twostep=True)
+    py = estimate_w_py(sim.data, p=p, q=q, include_mean=True, twostep=True)
+    assert py["ifault"] == 0
+    assert np.max(np.abs(py["params"] - c["params"])) < 1e-5
+    assert abs(py["logelf"] - c["logelf"]) < 1e-6
+    assert np.max(np.abs(py["sigma"] - c["sigma"])) < 1e-6
+
+
+def test_estimate_py_twostep_runs_without_engine():
+    # engine-free -twostep converges and stays a valid VARMA fit.
+    phi = [np.array([[0.5, 0.1], [0.0, 0.4]])]
+    th = [np.array([[0.3, 0.0], [0.1, 0.2]])]
+    sim = simulate_varma(phi=phi, theta=th, sigma=np.array([[1.0, 0.2], [0.2, 0.7]]),
+                         n=600, seed=8)
+    base = estimate_w_py(sim.data, p=1, q=1, include_mean=True, twostep=False)
+    ts = estimate_w_py(sim.data, p=1, q=1, include_mean=True, twostep=True)
+    assert ts["ifault"] == 0
+    assert ts["theta"].shape == (1, 2, 2)
+    # both reach (essentially) the same MLE on a well-identified series
+    assert abs(ts["logelf"] - base["logelf"]) < 1e-3
 
 
 def test_estimate_py_varma_is_mle():

@@ -595,7 +595,7 @@ def write_out(model, path, input_path="", output_path="", irf_horizon=None,
 def recursive_report(model, estwin, H):
     """Return the ``.recursive`` text: fixed-parameter forecasts from every origin.
 
-    Port of the ``-estwin`` writer in drvarma.c (q=0 only).
+    Port of the ``-estwin`` writer in drvarma.c (general VARMA(p,q)).
     """
     rows = model.recursive_forecast(estwin, H)        # (origin_raw, series, horizon, level)
     s = model.series

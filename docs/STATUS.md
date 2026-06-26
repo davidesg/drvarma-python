@@ -1,6 +1,6 @@
 # drvarma Python port — status & handoff
 
-Last updated: 2026-06-25. Read this first when resuming in a new session.
+Last updated: 2026-06-27. Read this first when resuming in a new session.
 
 ## What this is
 
@@ -30,7 +30,7 @@ reusable from fue. P3 status: the exact VARMA likelihood is now written in pure
 Python as a faithful port of Mauricio's **AS 311** (`_as311.py`, see below);
 `estimate_py` fits it without the C engine.
 
-## Done (P0–P5), all validated vs the C binary/engine on IPC3 (107 tests)
+## Done (P0–P5), all validated vs the C binary/engine on IPC3 (126 tests)
 
 | Phase | Module(s) | Validation |
 |-------|-----------|------------|
@@ -60,7 +60,7 @@ P2 numeric checks vs C (IPC3, `3 0 -mean [-deseason auto] [-forecast 12] [-estwi
 cd drvarma_source/drvarma
 # build the optional C engine (GSL dev headers required) straight into src/:
 python setup.py build_ext --inplace        # or: pip install -e .
-PYTHONPATH=src python -m pytest tests/ -q   # 107 tests
+PYTHONPATH=src python -m pytest tests/ -q   # 126 tests
 ```
 
 `pip install` builds the engine via `setup.py` (an *optional* cffi Extension:
@@ -106,10 +106,12 @@ src/drvarma/
   cli.py        `drvarma <file> p q [flags]` entry point (drvarma.cli:main)
   _as311.py     faithful port of Mauricio's AS 311 exact VARMA likelihood
   elfvarma_py.py elf_varma (AS 311 wrapper) + elf_var (fast q=0 specialisation)
-  estimate_py.py scipy exact-ML VARMA estimator (pure-Python fallback)
+  estimate_py.py exact-ML VARMA estimator (pure-Python fallback; C-faithful: PP1)
+  _qnewt.py     factored BFGS quasi-Newton (port of qnewtopt.c: raxopt etc.)
   plots.py      matplotlib plots: drvarma (forecast/IRF/FEVD/CCF) + JT diagnostics via pyfug
   _pyfug.py     MultiSeries/residual -> pyfug.core.Tseries adapter (JT rendering)
   _ascii.py     drvarma ASCII histogram + ACF/PACF/CCF correlograms (diagnose.c)
+  volatility.py exponential / moving-window residual volatility (volatility.c; PP3)
 tests/          one test module per area; compare to the C binary + synthetic
 ```
 
@@ -127,14 +129,54 @@ desirable *backup*, tracked in TODO.
 
 `elfvarma_py.elf_varma` wraps AS 311 (general p,q); `elf_var` is a fast vectorised
 q=0 specialisation (companion Lyapunov covariance), cross-checked against AS 311.
-`estimate_py.estimate_w_py` fits by scipy L-BFGS-B and returns the **same dict
-shape** as the C `_engine.estimate_w`, which now **falls back** to it on
-ImportError — so model/forecast/report work without the compiled engine.
-Validated vs the C engine to <1e-3 on params (q=0 and VARMA). Caveats: std errors
-come from a numerical Hessian (best-effort); the fallback reports `sigma2=1,
-sigma=Sigma` rather than the C's AS-311 sigma2/Q split; the L-BFGS-B start is
-θ=0 (no Hannan-Rissanen two-step), so for weakly-identified VARMA the optimum is
-the MLE but may sit far from a poorly-identified "truth" (the C agrees).
+`estimate_py.estimate_w_py` returns the **same dict shape** as the C
+`_engine.estimate_w`, which **falls back** to it on ImportError — so
+model/forecast/report work without the compiled engine.
+
+**PP1 (estimator parity, done 2026-06-26):** `estimate_py` now mirrors the C
+estimator exactly. It uses the C `shootx` packing `(μ, φ, θ, raw qq lower-tri)`,
+the `init_varma` start (OLS AR + qq = residual **correlation** matrix), the
+concentrated AS-311 objective `elf(σ²=1)`, and a **faithful port of the C's
+factored BFGS optimiser** (`_qnewt.py` ← `qnewtopt.c`). It reports the C's
+`sigma2 = f1/(n·m)`, `Q` (=`sigma`/`sigma2`) and `Σ = σ²·Q`, and the `cov[]`
+std errors come from the optimiser's factored Hessian `b` (`cov = 2·f·b⁻¹/n`).
+Engine-free IPC3 `.out`: parameter table + normalized model **byte-identical**
+to the C binary bar the 6th decimal of a few std errors (≤1.4e-4); vs the C
+engine, estimates/logelf/sigma2/Σ/residuals agree to ~1e-10. The σ²/Q split is
+fixable because the objective is **scale-invariant in qq** — the split is pinned
+by the correlation-matrix start, not by the likelihood.
+
+**PP2 (Hannan-Rissanen two-step, done 2026-06-26):** `estimate_py` ports
+`hannan_rissanen_diag` (per-series HR: AR(L) OLS → residuals → regress on AR+MA
+lags, `theta_d=-coef`, variances scaled to avg 1) and the `combine_vectors` merge
+(diagonal AR/MA/cov from HR into the full `init_varma` start, off-diagonals kept);
+`-twostep` is wired engine-free with the C's exact trigger (q>0, not fully
+diagonal). Validated vs the C engine (twostep=True): params <1e-5, logelf <1e-6 on
+VARMA(1,1)/(2,1). (`init_diag_varma` is dead C code — not ported.)
+
+**PP3 (volatility, done 2026-06-26):** `volatility.py` ports `volatility.c`:
+exponential weighting (φ from Mahalanobis-distance exceedances vs the (1-α)
+percentile) and the moving-window unbiased sample covariance, with `.volexp`/
+`.volmov` writers (C `%g`), the `.out` info line, and CLI `-volexp [alpha window]`
+/ `-volmov [window]`. Byte-identical to the C binary on IPC3 (engine path);
+engine-free only one last-digit `%g` rounding differs.
+
+**PP4 (recursive q>0, done 2026-06-27):** `recursive_forecast` now supports
+general VARMA(p,q). The MA term uses the estimation-window residuals (zero beyond
+the window) — established empirically vs the C binary (the full-series AS-311
+residual guess is off by ~1 level unit). Validated <1e-6 vs the C `.recursive`.
+`-seasonal` is a vestigial C flag (feeds only the discarded `v_seas`) — not ported.
+
+**PP5 (engine-free fidelity-complete, done 2026-06-27):** `test_pure_python_out.py`
+locks it in: the pure-Python estimator reproduces the C engine across the zoo
+(VAR(3) ±deseason, diag-ar/cov: logelf <1e-6, mu/phi/Σ <1e-5), and — engine off —
+the deterministic `.out` sections (OIRF/accumulated, FEVD, multivariate
+diagnostics, normalized model) are byte-identical to the C binary for VAR(3).
+Engine-free == cffi engine to ~1e-9 on raw data. **PP1–PP5 done: pure-Python is
+feature/fidelity-complete; the CFFI engine is an optional accelerator only.**
+Benign residual `.out` diffs: Inverse-roots ordering, and the σ²/Q split under
+deseason (~2.7e-5; Σ matches ~1e-12). The C *binary* can be numerically unstable
+on pathological synthetics where the pure-Python path stays stable.
 
 ## Reports & CLI (P2-presentation + P5-CLI, done 2026-06-25)
 
@@ -172,8 +214,10 @@ the MLE but may sit far from a poorly-identified "truth" (the C agrees).
   `../drvarma_v.04.1/src` if that changes — re-sync when the C engine is updated.
 - **default scale = 100** (matches the C; estimates are scale-invariant). Keep it
   so cross-validation against the C is exact.
-- **recursive_forecast is q=0 only** (the documented `-estwin` use); q>0 needs
-  full-data residuals at fixed params (not yet implemented).
+- **recursive_forecast supports general VARMA(p,q)** (PP4). For q>0 the MA term
+  uses the **estimation-window residuals** `varma1.a` (zero past the window),
+  matching the C `forecast_mean` — *not* full-series AS-311 residuals. Validated
+  <1e-6 vs the C binary.
 - The pass-through (WTI/IPC) cross-term SEs are ill-conditioned by design
   (variance disparity) — see the C `MODELS_RESULTS.md` caveat; expect the same.
 

@@ -38,7 +38,13 @@ def build_parser():
                    help="forecast H steps; writes <file>.forecast")
     p.add_argument("-estwin", type=int, default=None, metavar="N",
                    help="fixed-parameter recursive forecasts on first N raw obs; "
-                        "writes <file>.recursive (needs -forecast, q=0)")
+                        "writes <file>.recursive (needs -forecast)")
+    p.add_argument("-volexp", nargs="*", default=None, metavar="ARG",
+                   help="exponential volatility [alpha window] (defaults 0.05 20); "
+                        "writes <file>.volexp")
+    p.add_argument("-volmov", nargs="*", default=None, metavar="window",
+                   help="moving-window volatility [window] (default 20); "
+                        "writes <file>.volmov")
     return p
 
 
@@ -75,6 +81,24 @@ def main(argv=None):
         rec_path = base + ".recursive"
         report.write_recursive(model, args.estwin, args.forecast, rec_path)
         print("Recursive forecasts written to %s" % rec_path)
+
+    if args.volexp is not None or args.volmov is not None:
+        from . import volatility
+        res = model.result["residuals"]
+        if args.volexp is not None:
+            alpha = float(args.volexp[0]) if len(args.volexp) >= 1 else volatility.DEFAULT_ALPHA
+            window = int(args.volexp[1]) if len(args.volexp) >= 2 else volatility.DEFAULT_WINDOW
+            ve_path = base + ".volexp"
+            phi, thr = volatility.write_volexp(ve_path, res, model.result["sigma"],
+                                               alpha, window)
+            with open(out_path, "a") as f:
+                f.write(volatility.volexp_info_section(alpha, thr, phi))
+            print("Exponential volatility series written to %s" % ve_path)
+        if args.volmov is not None:
+            window = int(args.volmov[0]) if len(args.volmov) >= 1 else volatility.DEFAULT_WINDOW
+            vm_path = base + ".volmov"
+            volatility.write_volmov(vm_path, res, window)
+            print("Moving-window volatility series written to %s" % vm_path)
 
     return 0
 

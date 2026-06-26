@@ -95,15 +95,15 @@ def recursive_forecast(series, estwin, H, lam, d, D, scale, p, q,
     steps from every origin e in [estwin_eff, nobs_eff] with those FIXED params,
     integrating anchored at the origin and re-seasonalising.
 
-    Currently supports q=0 (VAR), the documented use of -estwin; for q>0 the
-    residuals over the full data at fixed params would be required.
+    Supports general VARMA(p, q).  For q>0 the MA term uses the estimation-window
+    residuals ``varma1.a`` (zeros beyond the window), matching the C binary's
+    ``forecast_mean`` (which indexes ``a[e]`` at each origin e and finds 0 past
+    the estimation window).
 
     Returns
     -------
     (rows, result) where rows is a list of (origin_raw, series_idx, horizon, level).
     """
-    if q != 0:
-        raise NotImplementedError("recursive_forecast supports q=0 (VAR) only")
     from ._engine import estimate_w
     from . import transform as _t
     from .deseason import deseasonalize_raw
@@ -131,7 +131,10 @@ def recursive_forecast(series, estwin, H, lam, d, D, scale, p, q,
 
     result = estimate_w(w_full[:estwin_eff], p=p, q=q, include_mean=include_mean,
                         diag_ar=diag_ar, diag_ma=diag_ma, diag_cov=diag_cov)
-    a_full = np.zeros_like(w_full)          # q=0: residuals unused for the mean
+    # MA term uses the estimation-window residuals (varma1.a), zero beyond the
+    # window — exactly as the C.  Harmless for q=0 (forecast_w ignores `a`).
+    a_full = np.zeros_like(w_full)
+    a_full[:estwin_eff] = result["residuals"]
 
     rows = []
     for e in range(estwin_eff, nobs_eff + 1):

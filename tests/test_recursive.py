@@ -8,7 +8,6 @@ pytest.importorskip("drvarma._drvarma_engine", reason="C engine not built")
 
 from drvarma import load
 from drvarma.model import Model
-from drvarma.forecast import recursive_forecast
 
 C_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "drvarma_v.04.1")
 IPC3 = os.path.join(C_DIR, "data", "models_group1", "IPC3.inp")
@@ -57,10 +56,29 @@ def test_recursive_matches_c(tmp_path, deseason_flag):
     assert max(abs(py[k] - c[k]) for k in common) < 1e-4
 
 
-def test_recursive_q_positive_not_supported():
-    s, _ = load(IPC3) if os.path.exists(IPC3) else (None, None)
-    if s is None:
-        pytest.skip("IPC3 not available")
-    with pytest.raises(NotImplementedError):
-        recursive_forecast(s, estwin=200, H=6, lam=0.0, d=1, D=0, scale=100.0,
-                           p=1, q=1, include_mean=True)
+@pytest.mark.skipif(not os.path.exists(C_BIN),
+                    reason="C binary not available")
+def test_recursive_varma_q_positive_matches_c(tmp_path):
+    # PP4: q>0 recursive forecasts vs the C binary (MA term uses the
+    # estimation-window residuals, zero beyond, exactly as forecast_mean).
+    import subprocess
+    from drvarma.datasets import simulate_varma
+    from drvarma.inp import save, InpSpec
+    phi = [np.array([[0.6, 0.1], [0.0, 0.5]])]
+    th = [np.array([[-0.3, 0.0], [0.1, -0.2]])]
+    sig = np.array([[1.0, 0.3], [0.3, 0.8]])
+    sim = simulate_varma(phi=phi, theta=th, sigma=sig, n=260,
+                         mu=np.array([50.0, 30.0]), seed=42, names=["Y1", "Y2"])
+    save(tmp_path / "sq.inp", sim, InpSpec(lam=1.0, d=0, D=0))
+    subprocess.run([os.path.abspath(C_BIN), str(tmp_path / "sq"), "1", "1", "-mean",
+                    "-forecast", "6", "-estwin", "240"],
+                   check=True, capture_output=True)
+    c = _parse_recursive(tmp_path / "sq.recursive")
+
+    s, spec = load(tmp_path / "sq.inp")
+    rows = Model(s, lam=spec.lam, d=spec.d, D=spec.D, scale=1.0, p=1, q=1,
+                 include_mean=True).recursive_forecast(estwin=240, H=6)
+    py = _py_dict(s, rows)
+    common = set(py) & set(c)
+    assert len(common) == len(c) == len(py)
+    assert max(abs(py[k] - c[k]) for k in common) < 1e-4
