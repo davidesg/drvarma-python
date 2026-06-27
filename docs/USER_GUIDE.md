@@ -228,6 +228,18 @@ report.write_recursive(model, 200, 12, "model.recursive")
 text = report.out_report(model)                 # as a string
 ```
 
+### HTML forecast report (SPS / fuf)
+
+A self-contained HTML forecast report **per series** (table + two-panel chart),
+homologable with the fue *fuf* reports. Needs jinja2
+(`pip install "drvarma[forecast-report]"`):
+
+```python
+from drvarma import report_forecast
+paths = report_forecast.write_forecast_report(model, "model", L=24)
+# -> ["model_IPC_ES.html", "model_IPC_FR.html", "model_IPC_DE.html"]
+```
+
 ### Command line
 
 The `drvarma` console script mirrors the C binary. Input is read from
@@ -235,13 +247,14 @@ The `drvarma` console script mirrors the C binary. Input is read from
 
 ```sh
 drvarma IPC3 3 0 -mean -deseason auto -forecast 12
+drvarma IPC3 3 0 -mean -forecast 24 -html            # + HTML report per series
 drvarma IPC3 3 0 -mean -estwin 200 -forecast 12      # writes .recursive
 drvarma IPC3 3 0 -mean -volexp 0.05 20 -volmov 20    # writes .volexp/.volmov
 ```
 
 Flags: `-mean -diagar -diagma -diagcov -m {1,2} -twostep -deseason [auto|force]
--scale S -forecast H -estwin N -volexp [alpha window] -volmov [window]`. (λ, d, D
-come from the `.inp` header.)
+-scale S -forecast H -html -estwin N -volexp [alpha window] -volmov [window]`.
+(λ, d, D come from the `.inp` header.)
 
 ---
 

@@ -36,6 +36,9 @@ def build_parser():
                    help="rescale factor after Box-Cox (default 100)")
     p.add_argument("-forecast", type=int, default=None, metavar="H",
                    help="forecast H steps; writes <file>.forecast")
+    p.add_argument("-html", action="store_true",
+                   help="also write an HTML SPS forecast report per series "
+                        "(<file>_<series>.html; needs -forecast and jinja2)")
     p.add_argument("-estwin", type=int, default=None, metavar="N",
                    help="fixed-parameter recursive forecasts on first N raw obs; "
                         "writes <file>.recursive (needs -forecast)")
@@ -74,6 +77,13 @@ def main(argv=None):
         fc_path = base + ".forecast"
         report.write_forecast(model, args.forecast, fc_path)
         print("Forecasts written to %s" % fc_path)
+        if args.html:
+            from . import report_forecast
+            paths = report_forecast.write_forecast_report(model, base,
+                                                          L=args.forecast)
+            print("HTML forecast reports written to %s" % ", ".join(paths))
+    elif args.html:
+        sys.exit("ERROR: -html requires -forecast H")
 
     if args.estwin:
         if args.forecast is None:

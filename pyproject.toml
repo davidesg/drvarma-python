@@ -26,6 +26,8 @@ drvarma = "drvarma.cli:main"
 # Optional CFFI-compiled C engine (P1): pip install "drvarma[c-engine]"
 c-engine = ["cffi>=1.15"]
 plots = ["matplotlib>=3.6", "pyfug>=2.0"]
+# HTML forecast reports (SPS / fuf format); add weasyprint for optional PDF.
+forecast-report = ["jinja2>=3.0", "matplotlib>=3.6"]
 test = ["pytest>=7"]
 
 [tool.setuptools.packages.find]

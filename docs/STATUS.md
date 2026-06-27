@@ -106,6 +106,7 @@ src/drvarma/
   irf.py        psi_weights, oirf, fevd
   datasets.py   simulate_varma
   report.py     .out/.forecast/.recursive writers (C-format text reports)
+  report_forecast.py  per-series SPS/fuf HTML forecast report (table+chart; jinja2)
   cli.py        `drvarma <file> p q [flags]` entry point (drvarma.cli:main)
   _as311.py     faithful port of Mauricio's AS 311 exact VARMA likelihood
   elfvarma_py.py elf_varma (AS 311 wrapper) + elf_var (fast q=0 specialisation)
