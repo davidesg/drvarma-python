@@ -20,6 +20,8 @@ C core.
   for the remaining presentation work: see `docs/FUE_REUSE.md`.
 - Plan to reach a **100% pure-Python** drvarma (engine optional): see
   `docs/PURE_PYTHON_PLAN.md` (phases PP1–PP5; Shea is out of scope).
+- Developer guide + performance study (pure-Python vs hybrid vs C, incl.
+  ill-conditioning): `docs/DEVELOPER_GUIDE.md` (reproduce via `bench/benchmark.py`).
 
 ## Strategy (decided: A, CFFI-first)
 

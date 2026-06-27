@@ -357,6 +357,8 @@ def estimate_w_py(w, p, q, include_mean=False, diag_ar=False, diag_ma=False,
         "phi": phi,
         "theta": theta,
         "sigma": sigma,
+        "nit": int(nit),            # BFGS iterations (pure-Python only)
+        "termcode": int(termcode),  # raxopt termination code (1/2 = converged)
     }
 
 

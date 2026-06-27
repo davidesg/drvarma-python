@@ -97,6 +97,13 @@ pure-Python fallback with no compiled engine. Remaining: the graphics finish
       `plot_mean_deviation`. `apply_jt_theme()` applies pyfug's JT matplotlib
       rcParams globally so drvarma's own forecast/IRF/FEVD/CCF plots adopt the JT
       style too. pyfug in `[plots]` extras; tests skip if pyfug absent (6 tests).
+- [x] Developer guide + performance study (done 2026-06-27): `docs/DEVELOPER_GUIDE.md`
+      — three paths (pure-Python / hybrid-CFFI / pure-C), complexity from the
+      literature (`../literature`: Mauricio 1995 JASA / 1997 AS 311 / 2002 JTSA),
+      and a reproducible benchmark battery (`bench/benchmark.py` → `results.json`):
+      hybrid is 13–100× faster than pure-Python; well-conditioned cross-path
+      agreement ~1e-9..1e-13; ill-conditioning (var_disparity cond≈1e8, 226 BFGS
+      iters) degrades agreement to ~6e-4 and explains the WTI/IPC caveat.
 - [ ] Docs: USER_GUIDE / API reference for the Python package; PyPI release.
 - [x] CI workflow (done 2026-06-27): `.github/workflows/ci.yml` — a **pure-Python**
       job (matrix py3.10–3.12, no GSL → engine degrades away, asserts it is absent)

@@ -14,3 +14,7 @@ csrc/**/*.o
 
 # stray object files anywhere
 *.o
+
+# benchmark scratch (keep bench/benchmark.py and bench/results.json)
+bench/_scratch/
+bench/full_run.log
