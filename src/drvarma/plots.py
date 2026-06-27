@@ -172,48 +172,44 @@ def plot_ccf(w1, w2, lags=None, freq=12, names=("1", "2"), ax=None):
     return fig
 
 
-def _draw_ccf_panel(ax, rho, lags, n, freq, label, q_label):
-    """One two-sided CCF panel matching the drvus gnuplot ``ccf`` plot.
+def _draw_ccf_panel(ax, rho, lags, n, freq, title, q_label):
+    """One two-sided CCF panel, copying the drvus gnuplot ``ccf`` plot exactly.
 
-    drvus (``x11plots.c``/``gnuplot_i.c``): thick black ``impulses`` (ls 5 lw 7-9),
-    solid black seasonal dividers (lt 1), dashed ±2/√N bands (ls 1 lt 2), a solid
-    zero line (ls 2), y-labels at ±cmax/±cmax·½/0, title ``ccf`` and the Hosking
-    ``Q ( k ) = …`` below.
+    drvus (``x11plots.c``): borderless (``set border 2`` → left axis only, **no
+    bottom axis**); thick black ``impulses`` (ls 5 lw 7-9); a solid zero line and
+    dashed ±2/√N bands; solid black seasonal grid lines at ±freq, ±2·freq, ±3·freq
+    with the lag labels floating beneath them; y-labels at ±cmax/±½cmax/0; the
+    residual pair as the title and the Hosking ``Q( k ) = …`` underneath.
     """
     band = 2.0 / np.sqrt(n)
     cmax = _snap_cmax(max(float(np.max(np.abs(rho))), band))
     x = np.arange(-lags, lags + 1)
-    # seasonal vertical dividers (solid black, full height), ±freq, ±2·freq, …
-    if freq > 1:
-        for s in range(freq, lags + 1, freq):
-            for xx in (s, -s):
-                ax.plot([xx, xx], [-cmax, cmax], color="k", lw=1.0, zorder=1)
+    seas = [s for s in range(freq, lags + 1, freq)] if freq > 1 else []
+    # seasonal vertical grid lines (solid black, full height) at ±freq·k
+    for s in seas:
+        for xx in (s, -s):
+            ax.plot([xx, xx], [-cmax, cmax], color="k", lw=0.8, zorder=1)
     ax.axhline(band, color="k", ls="--", lw=1.0, zorder=2)
     ax.axhline(-band, color="k", ls="--", lw=1.0, zorder=2)
-    ax.axhline(0.0, color="k", lw=1.6, zorder=2)                  # zero line
-    ax.vlines(x, 0.0, rho, color="k", lw=6.0, zorder=3)           # thick impulses
+    ax.axhline(0.0, color="k", lw=1.4, zorder=2)                  # zero line
+    ax.vlines(x, 0.0, rho, color="k", lw=5.0, zorder=3)           # thick impulses
     ax.set_ylim(-cmax, cmax)
     half = cmax / 2.0
     ax.set_yticks([-cmax, -half, 0.0, half, cmax])
-    ax.tick_params(axis="y", direction="out", labelsize=10)
     ax.set_xlim(-lags - 0.5, lags + 0.5)
-    seas = [s for s in range(freq, lags + 1, freq)] if freq > 1 else []
-    if seas:                                       # seasonal multiples in range
+    if seas:                                       # x labels only on the grid
         xt = [-s for s in reversed(seas)] + [0] + seas
-    else:                                          # else symmetric even spacing
+    else:
         xt = [-lags, -(lags // 2), 0, lags // 2, lags]
     ax.set_xticks(xt)
-    ax.tick_params(axis="x", direction="out", length=3, labelsize=10)
-    for sp in ("top", "right"):
+    ax.tick_params(axis="both", length=0, labelsize=10)          # no tick marks
+    # borderless except the left axis (drvus `set border 2`)
+    for sp in ("top", "right", "bottom"):
         ax.spines[sp].set_visible(False)
     ax.spines["left"].set_linewidth(1.6)
-    ax.spines["bottom"].set_linewidth(1.6)
-    ax.set_title("ccf", fontsize=15, pad=6)                      # drvus title
-    if label:                                                    # pair as a small note
-        ax.text(0.0, 1.02, label, transform=ax.transAxes, ha="left",
-                va="bottom", fontsize=9, style="italic")
+    ax.set_title(title, fontsize=14)                             # pair = title
     if q_label:
-        ax.set_xlabel(q_label, fontsize=12)
+        ax.set_xlabel(q_label, fontsize=12, labelpad=6)
 
 
 def plot_residual_ccf(model, lags=None, save_prefix=None, dpi=150, fig=None):
@@ -234,25 +230,23 @@ def plot_residual_ccf(model, lags=None, save_prefix=None, dpi=150, fig=None):
     names = getattr(model.series, "names", None) or ["a[%d]" % (k + 1)
                                                      for k in range(m)]
     freq = getattr(model.series, "freq", 1)
-    if lags is None:
-        lags = 3 * (1 + 2) if n >= 3 * (1 + 1) else (n - 1) // 2
+    if lags is None:                               # drvus graphic window = 3·(f+1)
+        lags = 3 * (freq + 1) if freq > 1 else min(3 * 3, n // 4)
         lags = min(lags, n - 2)
+    # drvus Q label: "Q( k )" for seasonal data (f>4), "Q ( k )" otherwise
+    qfmt = "Q( %d ) = %.1f" if freq > 4 else "Q ( %d ) = %.1f"
 
     pairs = [(i, j) for i in range(1, m) for j in range(i)]      # (1,0),(2,0),(2,1)
     if fig is None:
-        fig = plt.figure(figsize=(9.0, 2.1 * len(pairs) + 0.4),
+        fig = plt.figure(figsize=(11.0, 2.4 * len(pairs) + 0.4),
                          layout="constrained")
     axes = fig.subplots(len(pairs), 1, squeeze=False)[:, 0]
     for ax, (i, j) in zip(axes, pairs):
         # orient k>0 as i→j (i leading), matching the .out report's convention
         rho = _ccf(res[:, j], res[:, i], lags)
         Q, df, _ = _qccf(res[:, i], res[:, j], lags)
-        label = "%s – %s   (k>0: %s→%s)" % (
-            names[i], names[j], names[i], names[j])
-        _draw_ccf_panel(ax, rho, lags, n, freq, label,
-                        "Q ( %d ) = %.1f" % (lags, Q))
-    fig.suptitle("Residual cross-correlation functions", fontsize=15,
-                 fontweight="bold")
+        _draw_ccf_panel(ax, rho, lags, n, freq, "%s - %s" % (names[i], names[j]),
+                        qfmt % (lags, Q))
     if save_prefix is not None:
         fig.savefig("%s_ccf.png" % save_prefix, dpi=dpi, bbox_inches="tight")
     return fig
