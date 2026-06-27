@@ -63,7 +63,7 @@ CFFI C engine — needs GSL dev headers, ~10–100× faster but optional).
   charts.
 
 Everything runs with **no compiled code**. The optional CFFI engine wraps the
-validated, Numerical-Recipes-free drvarma C core and is bit-compatible with the
+validated drvarma C core and is bit-compatible with the
 pure-Python path on well-conditioned problems — an accelerator only. The
 numerical methods are tabulated [below](#numerical-methods); see
 [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) for the complexity discussion
