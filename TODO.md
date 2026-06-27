@@ -104,7 +104,11 @@ pure-Python fallback with no compiled engine. Remaining: the graphics finish
       hybrid is 13–100× faster than pure-Python; well-conditioned cross-path
       agreement ~1e-9..1e-13; ill-conditioning (var_disparity cond≈1e8, 226 BFGS
       iters) degrades agreement to ~6e-4 and explains the WTI/IPC caveat.
-- [ ] Docs: USER_GUIDE / API reference for the Python package; PyPI release.
+- [x] User guide (done 2026-06-27): `docs/USER_GUIDE.md` — install, quick start,
+      data I/O (.inp + arrays), model spec, fitting/accessors, forecasting
+      (+bands, recursive), diagnostics/IRF/FEVD, volatility, reports + CLI, plots,
+      troubleshooting (ifault codes, ill-conditioning). All snippets run-verified.
+- [ ] PyPI release: polish packaging metadata + publish (own repo decision below).
 - [x] CI workflow (done 2026-06-27): `.github/workflows/ci.yml` — a **pure-Python**
       job (matrix py3.10–3.12, no GSL → engine degrades away, asserts it is absent)
       and a **with-engine** job (libgsl-dev → builds the cffi extension, asserts it

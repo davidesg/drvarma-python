@@ -20,14 +20,21 @@ The C engine lives in the sibling directory `../drvarma_v.04.1` (published at
 | P2 | forecasting (+ bands, recursive `-estwin`), deseason, diagnostics, IRF/FEVD, report writers | **done** |
 | P3 | pure-Python exact-ML likelihood — faithful port of Mauricio's AS 311 | **done** (VAR + VARMA); Shea/multshea.c backup pending |
 | P4 | synthetic suite & reliability (`datasets.varma_cases`, recovery + agreement + formula tests) | **done** |
-| P5 | CLI **done**; packaging/docs/CI pending | in progress |
+| P5 | CLI, packaging, plots, **CI** | **done** |
+| PP1–PP5 | **100% pure-Python parity** — estimator (σ²/Q split + std errors via the ported BFGS), `-twostep`, volatility, recursive q>0, engine-free fidelity | **done** |
 
-All P1/P2 numerics are validated against the C engine on the IPC3 reference
-case (parameters, forecasts, bands, diagnostics, IRF/FEVD and recursive
-forecasts match to rounding precision).
+All numerics are validated against the C engine/binary (parameters, forecasts,
+bands, diagnostics, IRF/FEVD, recursive forecasts). **The pure-Python path is now
+feature- and fidelity-complete; the CFFI engine is an optional accelerator.**
 
-**Resuming work?** Read [`docs/STATUS.md`](docs/STATUS.md) (state, architecture,
-build/test/validate, gotchas) and [`TODO.md`](TODO.md) (next tasks).
+## Documentation
+
+- [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — install, API, CLI, examples.
+- [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) — internals, complexity from
+  the literature, and the pure-Python / hybrid / C performance study.
+- **Resuming dev work?** [`docs/STATUS.md`](docs/STATUS.md) (state, architecture,
+  gotchas) and [`TODO.md`](TODO.md) (next tasks); 100%-Python plan in
+  [`docs/PURE_PYTHON_PLAN.md`](docs/PURE_PYTHON_PLAN.md).
 
 ## Install (development)
 

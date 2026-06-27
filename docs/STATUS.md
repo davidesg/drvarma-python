@@ -22,6 +22,7 @@ C core.
   `docs/PURE_PYTHON_PLAN.md` (phases PP1–PP5; Shea is out of scope).
 - Developer guide + performance study (pure-Python vs hybrid vs C, incl.
   ill-conditioning): `docs/DEVELOPER_GUIDE.md` (reproduce via `bench/benchmark.py`).
+- End-user guide (install, API, CLI, examples): `docs/USER_GUIDE.md`.
 
 ## Strategy (decided: A, CFFI-first)
 
