@@ -31,9 +31,13 @@ def _cffi_extension():
 
 
 ext_modules = []
-try:
-    ext_modules = [_cffi_extension()]
-except Exception as exc:  # pragma: no cover - depends on the build environment
-    print("drvarma: skipping C engine extension (%s); pure-Python install." % exc)
+if os.environ.get("DRVARMA_NO_ENGINE"):
+    # Force a pure-Python build (e.g. to produce a py3-none-any wheel for PyPI).
+    print("drvarma: DRVARMA_NO_ENGINE set; building pure-Python (no C engine).")
+else:
+    try:
+        ext_modules = [_cffi_extension()]
+    except Exception as exc:  # pragma: no cover - depends on the build environment
+        print("drvarma: skipping C engine extension (%s); pure-Python install." % exc)
 
 setup(ext_modules=ext_modules)
