@@ -201,7 +201,8 @@ def _draw_ccf_panel(ax, rho, lags, n, freq, title, q_label):
     else:
         xt = [-lags, -(lags // 2), 0, lags // 2, lags]
     ax.set_xticks(xt)
-    ax.tick_params(axis="both", length=0, labelsize=10)          # no tick marks
+    ax.tick_params(axis="y", direction="out", length=4, labelsize=10)  # y tick marks
+    ax.tick_params(axis="x", length=0, labelsize=10)             # x labels float
     # borderless except the left axis (drvus `set border 2`)
     for sp in ("top", "right", "bottom"):
         ax.spines[sp].set_visible(False)
