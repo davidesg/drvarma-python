@@ -173,35 +173,47 @@ def plot_ccf(w1, w2, lags=None, freq=12, names=("1", "2"), ax=None):
 
 
 def _draw_ccf_panel(ax, rho, lags, n, freq, label, q_label):
-    """One two-sided CCF panel in the Jenkins-Treadway ACF style (see pyfug)."""
+    """One two-sided CCF panel matching the drvus gnuplot ``ccf`` plot.
+
+    drvus (``x11plots.c``/``gnuplot_i.c``): thick black ``impulses`` (ls 5 lw 7-9),
+    solid black seasonal dividers (lt 1), dashed ±2/√N bands (ls 1 lt 2), a solid
+    zero line (ls 2), y-labels at ±cmax/±cmax·½/0, title ``ccf`` and the Hosking
+    ``Q ( k ) = …`` below.
+    """
     band = 2.0 / np.sqrt(n)
     cmax = _snap_cmax(max(float(np.max(np.abs(rho))), band))
     x = np.arange(-lags, lags + 1)
-    # seasonal vertical dividers (gray), at ±freq, ±2·freq, … within range
+    # seasonal vertical dividers (solid black, full height), ±freq, ±2·freq, …
     if freq > 1:
         for s in range(freq, lags + 1, freq):
             for xx in (s, -s):
-                ax.axvline(xx, color="0.5", lw=0.8, zorder=1)
-    ax.axhline(0.0, color="k", lw=0.8, zorder=2)
-    ax.axhline(band, color="k", ls="--", lw=0.7, zorder=2)
-    ax.axhline(-band, color="k", ls="--", lw=0.7, zorder=2)
-    ax.vlines(x, 0.0, rho, color="k", lw=3.0, zorder=3)            # impulses
+                ax.plot([xx, xx], [-cmax, cmax], color="k", lw=1.0, zorder=1)
+    ax.axhline(band, color="k", ls="--", lw=1.0, zorder=2)
+    ax.axhline(-band, color="k", ls="--", lw=1.0, zorder=2)
+    ax.axhline(0.0, color="k", lw=1.6, zorder=2)                  # zero line
+    ax.vlines(x, 0.0, rho, color="k", lw=6.0, zorder=3)           # thick impulses
     ax.set_ylim(-cmax, cmax)
     half = cmax / 2.0
     ax.set_yticks([-cmax, -half, 0.0, half, cmax])
-    ax.tick_params(axis="y", direction="out", labelsize=9)
+    ax.tick_params(axis="y", direction="out", labelsize=10)
     ax.set_xlim(-lags - 0.5, lags + 0.5)
-    ax.set_xticks([-lags, -(lags // 2), 0, lags // 2, lags])
-    ax.tick_params(axis="x", direction="out", length=3, labelsize=9)
+    seas = [s for s in range(freq, lags + 1, freq)] if freq > 1 else []
+    if seas:                                       # seasonal multiples in range
+        xt = [-s for s in reversed(seas)] + [0] + seas
+    else:                                          # else symmetric even spacing
+        xt = [-lags, -(lags // 2), 0, lags // 2, lags]
+    ax.set_xticks(xt)
+    ax.tick_params(axis="x", direction="out", length=3, labelsize=10)
     for sp in ("top", "right"):
         ax.spines[sp].set_visible(False)
     ax.spines["left"].set_linewidth(1.6)
-    ax.spines["bottom"].set_linewidth(1.0)
-    ax.text(0.5, 1.02, label, transform=ax.transAxes, ha="center", va="bottom",
-            clip_on=False, fontsize=14, fontweight="bold")
+    ax.spines["bottom"].set_linewidth(1.6)
+    ax.set_title("ccf", fontsize=15, pad=6)                      # drvus title
+    if label:                                                    # pair as a small note
+        ax.text(0.0, 1.02, label, transform=ax.transAxes, ha="left",
+                va="bottom", fontsize=9, style="italic")
     if q_label:
-        ax.text(0.99, 0.96, q_label, transform=ax.transAxes, ha="right",
-                va="top", fontsize=10)
+        ax.set_xlabel(q_label, fontsize=12)
 
 
 def plot_residual_ccf(model, lags=None, save_prefix=None, dpi=150, fig=None):
@@ -235,10 +247,10 @@ def plot_residual_ccf(model, lags=None, save_prefix=None, dpi=150, fig=None):
         # orient k>0 as i→j (i leading), matching the .out report's convention
         rho = _ccf(res[:, j], res[:, i], lags)
         Q, df, _ = _qccf(res[:, i], res[:, j], lags)
-        label = "ccf  %s ↔ %s   (k>0: %s→%s)" % (
+        label = "%s – %s   (k>0: %s→%s)" % (
             names[i], names[j], names[i], names[j])
         _draw_ccf_panel(ax, rho, lags, n, freq, label,
-                        "Q(%d) = %.1f" % (lags, Q))
+                        "Q ( %d ) = %.1f" % (lags, Q))
     fig.suptitle("Residual cross-correlation functions", fontsize=15,
                  fontweight="bold")
     if save_prefix is not None:
