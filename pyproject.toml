@@ -11,9 +11,7 @@ requires-python = ">=3.10"
 license = "GPL-2.0-or-later"
 license-files = ["COPYING"]
 authors = [
-    { name = "A.B. Treadway" },
-    { name = "J.A. Mauricio" },
-    { name = "D.E. Guerrero" },
+    { name = "David E. Guerrero", email = "davidesg@ucm.es" },
 ]
 keywords = [
     "VARMA", "vector ARMA", "time series", "forecasting", "multivariate",

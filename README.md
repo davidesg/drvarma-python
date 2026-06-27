@@ -22,6 +22,17 @@ drvarma fits a stationary Gaussian VARMA(p, q),
 conditional/back-forecasting approximation), and gives forecasts (+ error bands),
 impulse responses, variance decompositions, residual diagnostics and volatility.
 
+> **What this provides.** drvarma is a pure-Python implementation of **Mauricio's
+> exact-likelihood algorithm for multivariate VARMA** (1995 JASA / 1997 AS 311):
+> an innovations-form factorisation that evaluates the exact Gaussian likelihood
+> *directly on the VARMA form, without a state-space / Kalman filter*, maximised
+> by a faithful factored-BFGS quasi-Newton. Exact ML for VARMA is *also* available
+> in Python through state-space methods (e.g. statsmodels' Kalman-filter `VARMAX`);
+> what drvarma adds is a faithful port of **this specific, non-Kalman algorithm** —
+> which, as far as we know, is not otherwise available in Python — together with
+> the surrounding forecasting/IRF/FEVD/diagnostics toolkit. It runs with no
+> compiled code; the optional C engine is only an accelerator.
+
 ## Install
 
 ```sh
@@ -32,45 +43,29 @@ Optional extras: `drvarma[plots]` (matplotlib + pyfug charts),
 `drvarma[forecast-report]` (HTML forecast reports), `drvarma[c-engine]` (build the
 CFFI C engine — needs GSL dev headers, ~10–100× faster but optional).
 
-## Algorithms
+## Features
 
-drvarma implements the published exact-ML machinery of Mauricio and the standard
-multivariate time-series toolkit:
+- **Exact-ML estimation** of stationary VARMA(p, q) for general dimension `m`,
+  with mean, diagonal AR/MA/covariance restrictions, and optional
+  Hannan–Rissanen two-step start.
+- **Forecasting** in original units: level, period and annual variation, each
+  with standard errors and 95 % bands; plus fixed-parameter **recursive**
+  (out-of-sample) forecasting.
+- **Structural analysis**: orthogonalised impulse responses, accumulated
+  responses, long-run gain, and the forecast-error variance decomposition.
+- **Diagnostics**: Hosking multivariate portmanteau, multivariate Jarque–Bera,
+  per-series ACF/PACF and two-sided cross-correlation (CCF).
+- **Volatility**: exponential-weight and moving-window residual covariance.
+- **Transforms**: Box-Cox + regular/seasonal differencing and harmonic
+  deseasonalisation (with re-seasonalised forecasts).
+- **I/O & reports**: `.inp` reader/writer, C-format `.out`/`.forecast`/
+  `.recursive` text reports, an HTML forecast report per series, and matplotlib
+  charts.
 
-- **Exact Gaussian VARMA likelihood.** The exact log-likelihood is evaluated by
-  **Mauricio's algorithm** (Mauricio 1995, *JASA*; published in code form as
-  *Algorithm AS 311*, Mauricio 1997) — an innovations-style factorisation that
-  works directly on the VARMA form, **not** a Kalman/state-space filter. Cost is
-  `O(n)` in the sample size; one of the two most efficient exact methods in the
-  literature (with Shea's AS 242). The faithful Python port is `drvarma._as311`.
-- **Maximum-likelihood optimisation.** A **factored-BFGS quasi-Newton** method
-  with a Dennis–Schnabel line search (Dennis & Schnabel 1983), maximising the
-  *concentrated* likelihood (the residual scale σ² profiled out, `Σ = σ²·Q`). The
-  parameter covariance / standard errors come from the optimiser's factored
-  Hessian. Ported in `drvarma._qnewt`.
-- **Initialisation.** OLS VAR(p) seed; optional **Hannan–Rissanen two-step** start
-  for VARMA (`-twostep`), which fits a long AR, recovers residuals, then regresses
-  on AR and MA lags.
-- **Forecasting.** Minimum-MSE forecasts of the modelled (Box-Cox + differenced)
-  series with exact forecast-error variances, integrated back to original units
-  (level, period and annual variation, each with std and 95 % bands). Includes
-  **fixed-parameter recursive forecasting** from multiple origins (`-estwin`) for
-  out-of-sample evaluation.
-- **Structural analysis.** **Orthogonalised impulse responses** (shocks
-  orthogonalised by the Cholesky factor of Σ), accumulated responses, long-run
-  gain, and the **forecast-error variance decomposition (FEVD)**.
-- **Diagnostics.** **Hosking's multivariate portmanteau** test, the
-  **multivariate Jarque–Bera** normality test, and per-series ACF/PACF and
-  two-sided cross-correlation (CCF) functions with Ljung–Box / bivariate Q.
-- **Volatility.** Conditional covariance of the residuals by **exponential
-  weighting** (rational inattention) and by a **moving window**.
-- **Transforms.** Box-Cox power + regular/seasonal differencing, and optional
-  **harmonic (deseasonalisation)** seasonal adjustment with re-seasonalised
-  forecasts.
-
-All of the above run with **no compiled code**. The optional CFFI engine wraps the
+Everything runs with **no compiled code**. The optional CFFI engine wraps the
 validated, Numerical-Recipes-free drvarma C core and is bit-compatible with the
-pure-Python path on well-conditioned problems; it is an accelerator only. See
+pure-Python path on well-conditioned problems — an accelerator only. The
+numerical methods are tabulated [below](#numerical-methods); see
 [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) for the complexity discussion
 and a pure-Python vs hybrid vs C performance study.
 
@@ -95,21 +90,27 @@ drvarma IPC3 3 0 -mean -volexp 0.05 20 -volmov 20        # volatility (.volexp/.
 - [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) — internals, algorithmic
   complexity from the literature, and the performance study.
 
-## References
+## Numerical methods
 
-- Mauricio, J. A. (1995). *Exact maximum likelihood estimation of stationary
-  vector ARMA models.* **JASA** 90(429), 282–291.
-- Mauricio, J. A. (1997). *Algorithm AS 311: the exact likelihood function of a
-  vector ARMA process.* **Applied Statistics** 46(1), 157–171.
-- Mauricio, J. A. (2002). *An algorithm for the exact likelihood of a stationary
-  vector ARMA model.* **J. Time Series Analysis** 23(4), 473–486.
-- Shea, B. L. (1989). *Algorithm AS 242: the exact likelihood of a vector ARMA
-  model.* **Applied Statistics** 38(1), 161–184.
-- Dennis, J. E. & Schnabel, R. B. (1983). *Numerical Methods for Unconstrained
-  Optimization and Nonlinear Equations.*
-- Hosking, J. R. M. (1980); Jarque, C. M. & Bera, A. K. (1980).
+| Algorithm | Reference | Used for |
+|-----------|-----------|----------|
+| Exact Gaussian VARMA log-likelihood (innovations factorisation, not Kalman) | Mauricio (1995) JASA; Mauricio (1997) AS 311 | Exact likelihood (`drvarma._as311`) |
+| Factored-BFGS quasi-Newton + Dennis–Schnabel line search | Dennis & Schnabel (1983) | ML optimisation (`drvarma._qnewt.raxopt`) |
+| Concentrated objective `f1ᵐ·f2` (σ² profiled, Σ = σ²·Q) | Mauricio (1995) JASA §3 | Conditioning; covariance / std errors |
+| Hannan–Rissanen two-step | Hannan & Rissanen (1982) | VARMA start (`-twostep`) |
+| Companion-form Lyapunov / autocovariances | Mauricio (1997) AS 311 | Stationary covariance, ψ-weights |
+| Orthogonalised IRF & FEVD (Cholesky of Σ) | Lütkepohl (2005) | Structural analysis |
+| Hosking multivariate portmanteau; multivariate Jarque–Bera | Hosking (1980); Jarque & Bera (1980) | Residual diagnostics |
+| Exponential / moving-window conditional covariance | — | Volatility (`drvarma.volatility`) |
 
-## License
+Cross-references: Mauricio (2002, *JTSA* 23(4)) and Shea (1989, AS 242) are the
+other efficient exact-likelihood methods compared in the literature.
 
-GNU General Public License v2 or later — © A. B. Treadway, J. A. Mauricio,
-D. E. Guerrero. See [`COPYING`](COPYING).
+## Authors and licence
+
+**drvarma** is developed by **David E. Guerrero** and Arthur B. Treadway, based on
+the exact-likelihood algorithms designed and coded by **José Alberto Mauricio**
+(Universidad Complutense de Madrid).
+
+Released under the **GNU General Public License v2.0 or later**
+(GPL-2.0-or-later) — see [`COPYING`](COPYING).
