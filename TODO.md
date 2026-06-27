@@ -108,7 +108,20 @@ pure-Python fallback with no compiled engine. Remaining: the graphics finish
       data I/O (.inp + arrays), model spec, fitting/accessors, forecasting
       (+bands, recursive), diagnostics/IRF/FEVD, volatility, reports + CLI, plots,
       troubleshooting (ifault codes, ill-conditioning). All snippets run-verified.
-- [ ] PyPI release: polish packaging metadata + publish (own repo decision below).
+- [x] PyPI release (done 2026-06-28): **drvarma 0.1.0 published to PyPI**
+      (<https://pypi.org/project/drvarma/0.1.0/>) — sdist + pure-Python wheel,
+      twine check PASSED, install-from-PyPI verified. Metadata polished (SPDX
+      licence, classifiers, URLs, author David E. Guerrero); README is the PyPI
+      landing page (Features + "Numerical methods" table + honest contribution
+      note); `RELEASING.md` + `.github/workflows/publish.yml` (tag-triggered,
+      Trusted Publishing). Annotated tag `v0.1.0` created locally.
+- [ ] **PENDING — git remote + push.** This repo has **no git remote** (and `gh`
+      CLI is absent here). Decide own-repo vs the C-engine repo, then
+      `git remote add origin <URL>` and `git push -u origin master --tags`.
+      Note: pushing the `v0.1.0` tag triggers `publish.yml`, which will re-attempt
+      the 0.1.0 upload and fail harmlessly (already on PyPI). For trusted
+      publishing on future tags, configure the GitHub publisher on PyPI
+      (project → Settings → Publishing; workflow `publish.yml`, environment `pypi`).
 - [x] CI workflow (done 2026-06-27): `.github/workflows/ci.yml` — a **pure-Python**
       job (matrix py3.10–3.12, no GSL → engine degrades away, asserts it is absent)
       and a **with-engine** job (libgsl-dev → builds the cffi extension, asserts it
