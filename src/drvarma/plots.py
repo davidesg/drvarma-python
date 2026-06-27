@@ -172,6 +172,80 @@ def plot_ccf(w1, w2, lags=None, freq=12, names=("1", "2"), ax=None):
     return fig
 
 
+def _draw_ccf_panel(ax, rho, lags, n, freq, label, q_label):
+    """One two-sided CCF panel in the Jenkins-Treadway ACF style (see pyfug)."""
+    band = 2.0 / np.sqrt(n)
+    cmax = _snap_cmax(max(float(np.max(np.abs(rho))), band))
+    x = np.arange(-lags, lags + 1)
+    # seasonal vertical dividers (gray), at ±freq, ±2·freq, … within range
+    if freq > 1:
+        for s in range(freq, lags + 1, freq):
+            for xx in (s, -s):
+                ax.axvline(xx, color="0.5", lw=0.8, zorder=1)
+    ax.axhline(0.0, color="k", lw=0.8, zorder=2)
+    ax.axhline(band, color="k", ls="--", lw=0.7, zorder=2)
+    ax.axhline(-band, color="k", ls="--", lw=0.7, zorder=2)
+    ax.vlines(x, 0.0, rho, color="k", lw=3.0, zorder=3)            # impulses
+    ax.set_ylim(-cmax, cmax)
+    half = cmax / 2.0
+    ax.set_yticks([-cmax, -half, 0.0, half, cmax])
+    ax.tick_params(axis="y", direction="out", labelsize=9)
+    ax.set_xlim(-lags - 0.5, lags + 0.5)
+    ax.set_xticks([-lags, -(lags // 2), 0, lags // 2, lags])
+    ax.tick_params(axis="x", direction="out", length=3, labelsize=9)
+    for sp in ("top", "right"):
+        ax.spines[sp].set_visible(False)
+    ax.spines["left"].set_linewidth(1.6)
+    ax.spines["bottom"].set_linewidth(1.0)
+    ax.text(0.5, 1.02, label, transform=ax.transAxes, ha="center", va="bottom",
+            clip_on=False, fontsize=14, fontweight="bold")
+    if q_label:
+        ax.text(0.99, 0.96, q_label, transform=ax.transAxes, ha="right",
+                va="top", fontsize=10)
+
+
+def plot_residual_ccf(model, lags=None, save_prefix=None, dpi=150, fig=None):
+    """Cross-correlation functions between residual series, JT (ACF) style.
+
+    One two-sided CCF panel per residual pair (i>j), stacked in a single figure —
+    the multivariate residual cross-check that accompanies the per-series
+    ACF/PACF.  Lags default to the report's window (``3·(1+2)=9``), and each panel
+    carries the ±2/√N bands, seasonal dividers and the bivariate Hosking Q, so it
+    matches the ``.out`` "Cross-correlation functions" section.
+
+    ``k>0`` pairs series *i* leading *j*; ``k<0`` the reverse (as in the report).
+    """
+    plt = _need_mpl()
+    from .diagnostics import ccf as _ccf, qccf as _qccf
+    res = model.result["residuals"]
+    n, m = res.shape
+    names = getattr(model.series, "names", None) or ["a[%d]" % (k + 1)
+                                                     for k in range(m)]
+    freq = getattr(model.series, "freq", 1)
+    if lags is None:
+        lags = 3 * (1 + 2) if n >= 3 * (1 + 1) else (n - 1) // 2
+        lags = min(lags, n - 2)
+
+    pairs = [(i, j) for i in range(1, m) for j in range(i)]      # (1,0),(2,0),(2,1)
+    if fig is None:
+        fig = plt.figure(figsize=(9.0, 2.1 * len(pairs) + 0.4),
+                         layout="constrained")
+    axes = fig.subplots(len(pairs), 1, squeeze=False)[:, 0]
+    for ax, (i, j) in zip(axes, pairs):
+        # orient k>0 as i→j (i leading), matching the .out report's convention
+        rho = _ccf(res[:, j], res[:, i], lags)
+        Q, df, _ = _qccf(res[:, i], res[:, j], lags)
+        label = "ccf  %s ↔ %s   (k>0: %s→%s)" % (
+            names[i], names[j], names[i], names[j])
+        _draw_ccf_panel(ax, rho, lags, n, freq, label,
+                        "Q(%d) = %.1f" % (lags, Q))
+    fig.suptitle("Residual cross-correlation functions", fontsize=15,
+                 fontweight="bold")
+    if save_prefix is not None:
+        fig.savefig("%s_ccf.png" % save_prefix, dpi=dpi, bbox_inches="tight")
+    return fig
+
+
 def plot_fevd(model, horizon, axes=None):
     """Stacked-area forecast-error variance decomposition, one panel per variable."""
     plt = _need_mpl()
@@ -256,6 +330,37 @@ def plot_residual_diagnostics(model, j=0, npar=None, **kw):
     if npar is None:
         npar = model.result["npar"]
     return G.plot_combined(_pyfug.residual_to_tseries(model, j), npar=npar, **kw)
+
+
+def plot_residual_diagnostics_all(model, npar=None, save_prefix=None, dpi=150,
+                                  **kw):
+    """JT residual diagnostics (standardized series + ACF/PACF) for *every* series.
+
+    The multivariate analogue of fue's single-series ``plot_model_diagnostics``:
+    one Jenkins-Treadway combined panel per residual column, each at pyfug's
+    native landscape proportions (do **not** resize the returned figures — that
+    squashes the time-series panel; save them directly).
+
+    If ``save_prefix`` is given, writes ``<save_prefix>_resid_<j>_<name>.png`` for
+    each series at ``dpi`` with ``bbox_inches='tight'``.  Returns the list of
+    figures (one per series).
+    """
+    from . import _pyfug
+    G = _jt_graphics()
+    if npar is None:
+        npar = model.result["npar"]
+    m = model.result["sigma"].shape[0]
+    names = getattr(model.series, "names", None) or ["a[%d]" % (j + 1)
+                                                     for j in range(m)]
+    figs = []
+    for j in range(m):
+        fig = G.plot_combined(_pyfug.residual_to_tseries(model, j), npar=npar,
+                              title="A.%s (residuals)" % names[j], **kw)
+        if save_prefix is not None:
+            fig.savefig("%s_resid_%d_%s.png" % (save_prefix, j + 1, names[j]),
+                        dpi=dpi, bbox_inches="tight")
+        figs.append(fig)
+    return figs
 
 
 def plot_mean_deviation(series, j=0, **kw):

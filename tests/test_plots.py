@@ -60,6 +60,12 @@ def test_plot_ccf(fitted):
     assert _is_figure(fig) and len(fig.axes) == 1
 
 
+def test_plot_residual_ccf(fitted):
+    mdl, _ = fitted
+    fig = plots.plot_residual_ccf(mdl)           # m=2 -> 1 residual pair, 1 panel
+    assert _is_figure(fig) and len(fig.axes) == 1
+
+
 def test_plot_before_fit_raises():
     sim = simulate_varma(phi=[np.array([[0.5, 0.0], [0.0, 0.4]])], n=50, seed=2)
     mdl = Model(sim, lam=1.0, d=0, D=0, scale=1.0, p=1, q=0, include_mean=True)

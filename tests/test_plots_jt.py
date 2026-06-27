@@ -42,6 +42,13 @@ def test_plot_residual_diagnostics_combined(fitted):
     assert isinstance(fig, Figure) and len(fig.axes) >= 2
 
 
+def test_plot_residual_diagnostics_all(fitted):
+    mdl, _ = fitted
+    figs = plots.plot_residual_diagnostics_all(mdl)    # one per series (m=2)
+    assert len(figs) == 2 and all(isinstance(f, Figure) for f in figs)
+    assert all(tuple(f.get_size_inches()) == (15.0, 5.5) for f in figs)
+
+
 def test_plot_mean_deviation(fitted):
     _, sim = fitted
     assert isinstance(plots.plot_mean_deviation(sim, 0), Figure)
