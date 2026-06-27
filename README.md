@@ -109,8 +109,7 @@ other efficient exact-likelihood methods compared in the literature.
 ## Authors and licence
 
 **drvarma** is developed by **David E. Guerrero** and Arthur B. Treadway, based on
-the exact-likelihood algorithms designed and coded by **José Alberto Mauricio**
-(Universidad Complutense de Madrid).
+the exact-likelihood algorithms designed and coded by **José Alberto Mauricio**.
 
 Released under the **GNU General Public License v2.0 or later**
 (GPL-2.0-or-later) — see [`COPYING`](COPYING).
