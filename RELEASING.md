@@ -83,6 +83,15 @@ git tag -a vX.Y.Z -m "drvarma X.Y.Z"
 git push --tags
 ```
 
+## Automated publish (recommended)
+
+`.github/workflows/publish.yml` does steps 2–5 automatically when a `v*` tag is
+pushed: it builds the sdist + pure-Python wheel, runs `twine check`, and uploads
+to PyPI via **Trusted Publishing** (OIDC — no token in secrets). One-time setup on
+PyPI: project → Settings → Publishing → add a GitHub publisher for this repo,
+workflow `publish.yml`, environment `pypi`. After that, `git push --tags` releases.
+(Token alternative: see the comment at the top of the workflow.)
+
 ## Notes
 
 * **Name availability** — confirm `drvarma` is free/owned on PyPI before the first

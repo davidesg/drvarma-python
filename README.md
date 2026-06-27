@@ -1,90 +1,115 @@
-# drvarma (Python)
+# drvarma
 
-Python port of **drvarma** — maximum-likelihood estimation, diagnostics and
-forecasting of multivariate **VARMA** models. Work in progress.
-
-This package mirrors the architecture of the fue Python port: pure-Python layers
-(I/O, model API, forecasting, diagnostics) with an optional CFFI-compiled C
-engine for speed (the validated, Numerical-Recipes-free drvarma C core). See
-[`docs/MIGRATION_PLAN.md`](docs/MIGRATION_PLAN.md).
-
-The C engine lives in the sibling directory `../drvarma_v.04.1` (published at
-<https://github.com/davidesg/drvarma>); this folder is the Python port.
-
-## Status
-
-| Phase | Scope | State |
-|-------|-------|-------|
-| P0 | package skeleton, `.inp` I/O, Box-Cox/differencing transform, synthetic VARMA simulator | **done** |
-| P1 | estimation via CFFI over a `drvarma_api.c` | **done** |
-| P2 | forecasting (+ bands, recursive `-estwin`), deseason, diagnostics, IRF/FEVD, report writers | **done** |
-| P3 | pure-Python exact-ML likelihood — faithful port of Mauricio's AS 311 | **done** (VAR + VARMA); Shea/multshea.c backup pending |
-| P4 | synthetic suite & reliability (`datasets.varma_cases`, recovery + agreement + formula tests) | **done** |
-| P5 | CLI, packaging, plots, **CI** | **done** |
-| PP1–PP5 | **100% pure-Python parity** — estimator (σ²/Q split + std errors via the ported BFGS), `-twostep`, volatility, recursive q>0, engine-free fidelity | **done** |
-
-All numerics are validated against the C engine/binary (parameters, forecasts,
-bands, diagnostics, IRF/FEVD, recursive forecasts). **The pure-Python path is now
-feature- and fidelity-complete; the CFFI engine is an optional accelerator.**
-
-## Documentation
-
-- [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — install, API, CLI, examples.
-- [`docs/INP_FORMAT.md`](docs/INP_FORMAT.md) — the `.inp` input format (precise,
-  assistant-friendly spec for preparing inputs).
-- [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) — internals, complexity from
-  the literature, and the pure-Python / hybrid / C performance study.
-- **Resuming dev work?** [`docs/STATUS.md`](docs/STATUS.md) (state, architecture,
-  gotchas) and [`TODO.md`](TODO.md) (next tasks); 100%-Python plan in
-  [`docs/PURE_PYTHON_PLAN.md`](docs/PURE_PYTHON_PLAN.md).
-
-## Install (development)
-
-```sh
-python -m pip install -e .
-pytest            # or: PYTHONPATH=src python -m pytest tests/
-```
-
-Dependencies: `numpy`, `scipy` (runtime); `cffi` only for the optional C engine.
-
-## Quick taste
+**Exact maximum-likelihood estimation, forecasting and diagnostics of
+multivariate VARMA (vector ARMA) models** — in pure Python, with an optional
+compiled C engine for speed.
 
 ```python
-import drvarma
-series, spec = drvarma.load("../drvarma_v.04.1/data/models_group1/IPC3.inp")
-w, bc = drvarma.transform.transform(series.data, lam=spec.lam, d=spec.d,
-                                    D=spec.D, s=series.freq)
-
-from drvarma.datasets import simulate_varma
 import numpy as np
-sim = simulate_varma(phi=[np.array([[0.5, 0.0], [0.2, 0.4]])], n=300, seed=1)
+from drvarma import Model, datasets
+
+series = datasets.simulate_varma(phi=[np.diag([0.5, 0.4, 0.3])], sigma=np.eye(3),
+                                 n=300, mu=[100., 50., 75.], seed=1,
+                                 names=["A", "B", "C"])
+m = Model(series, p=2, q=0, include_mean=True).fit()
+print(m.phi, m.sigma, m.loglik)
+levels, lo, hi = m.forecast(12, bands=True)     # + 95% bands
+print(m.diagnostics())                          # Hosking Q, Jarque-Bera
 ```
+
+drvarma fits a stationary Gaussian VARMA(p, q),
+`Φ(B)(wₜ − μ) = Θ(B) aₜ`, `aₜ ~ N(0, Σ)`, by **exact** maximum likelihood (no
+conditional/back-forecasting approximation), and gives forecasts (+ error bands),
+impulse responses, variance decompositions, residual diagnostics and volatility.
+
+## Install
+
+```sh
+pip install drvarma                       # pure-Python (numpy + scipy)
+```
+
+Optional extras: `drvarma[plots]` (matplotlib + pyfug charts),
+`drvarma[forecast-report]` (HTML forecast reports), `drvarma[c-engine]` (build the
+CFFI C engine — needs GSL dev headers, ~10–100× faster but optional).
+
+## Algorithms
+
+drvarma implements the published exact-ML machinery of Mauricio and the standard
+multivariate time-series toolkit:
+
+- **Exact Gaussian VARMA likelihood.** The exact log-likelihood is evaluated by
+  **Mauricio's algorithm** (Mauricio 1995, *JASA*; published in code form as
+  *Algorithm AS 311*, Mauricio 1997) — an innovations-style factorisation that
+  works directly on the VARMA form, **not** a Kalman/state-space filter. Cost is
+  `O(n)` in the sample size; one of the two most efficient exact methods in the
+  literature (with Shea's AS 242). The faithful Python port is `drvarma._as311`.
+- **Maximum-likelihood optimisation.** A **factored-BFGS quasi-Newton** method
+  with a Dennis–Schnabel line search (Dennis & Schnabel 1983), maximising the
+  *concentrated* likelihood (the residual scale σ² profiled out, `Σ = σ²·Q`). The
+  parameter covariance / standard errors come from the optimiser's factored
+  Hessian. Ported in `drvarma._qnewt`.
+- **Initialisation.** OLS VAR(p) seed; optional **Hannan–Rissanen two-step** start
+  for VARMA (`-twostep`), which fits a long AR, recovers residuals, then regresses
+  on AR and MA lags.
+- **Forecasting.** Minimum-MSE forecasts of the modelled (Box-Cox + differenced)
+  series with exact forecast-error variances, integrated back to original units
+  (level, period and annual variation, each with std and 95 % bands). Includes
+  **fixed-parameter recursive forecasting** from multiple origins (`-estwin`) for
+  out-of-sample evaluation.
+- **Structural analysis.** **Orthogonalised impulse responses** (shocks
+  orthogonalised by the Cholesky factor of Σ), accumulated responses, long-run
+  gain, and the **forecast-error variance decomposition (FEVD)**.
+- **Diagnostics.** **Hosking's multivariate portmanteau** test, the
+  **multivariate Jarque–Bera** normality test, and per-series ACF/PACF and
+  two-sided cross-correlation (CCF) functions with Ljung–Box / bivariate Q.
+- **Volatility.** Conditional covariance of the residuals by **exponential
+  weighting** (rational inattention) and by a **moving window**.
+- **Transforms.** Box-Cox power + regular/seasonal differencing, and optional
+  **harmonic (deseasonalisation)** seasonal adjustment with re-seasonalised
+  forecasts.
+
+All of the above run with **no compiled code**. The optional CFFI engine wraps the
+validated, Numerical-Recipes-free drvarma C core and is bit-compatible with the
+pure-Python path on well-conditioned problems; it is an accelerator only. See
+[`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) for the complexity discussion
+and a pure-Python vs hybrid vs C performance study.
 
 ## Command line
 
-Mirrors the C binary (`<file>.inp` in, `.out`/`.forecast`/`.recursive` out):
-
 ```sh
-drvarma data/models_group1/IPC3 3 0 -mean -deseason auto -forecast 24
-# or, without installing: PYTHONPATH=src python -m drvarma.cli <file> p q [flags]
+drvarma IPC3 3 0 -mean -deseason auto -forecast 24        # writes IPC3.out, .forecast
+drvarma IPC3 3 0 -mean -forecast 24 -html                # + HTML report per series
+drvarma IPC3 3 0 -mean -estwin 200 -forecast 12          # recursive (.recursive)
+drvarma IPC3 3 0 -mean -volexp 0.05 20 -volmov 20        # volatility (.volexp/.volmov)
 ```
 
-Flags: `-mean -diagar -diagma -diagcov -m METHOD -twostep -deseason [auto|force]
--scale FACTOR -forecast H -estwin N`. The `.forecast` output is byte-identical to
-the C engine; see [`docs/STATUS.md`](docs/STATUS.md) for `.out` fidelity notes.
+`<file>.inp` in, text reports out. Flags: `-mean -diagar -diagma -diagcov
+-m {1,2} -twostep -deseason [auto|force] -scale S -forecast H -html -estwin N
+-volexp [α w] -volmov [w]` (λ, d, D come from the `.inp` header).
 
-## Plots (optional)
+## Documentation
 
-With matplotlib (`pip install "drvarma[plots]"`), `drvarma.plots` offers
-`plot_series`, `plot_forecast` (history + forecast + 95% bands), `plot_irf`
-(m×m OIRF grid), `plot_fevd` and `plot_ccf` (two-sided cross-correlation). Each
-returns a matplotlib `Figure`.
+- [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — install, API, CLI, worked examples.
+- [`docs/INP_FORMAT.md`](docs/INP_FORMAT.md) — the `.inp` input format (a precise,
+  assistant-friendly spec for preparing inputs).
+- [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) — internals, algorithmic
+  complexity from the literature, and the performance study.
 
-The `[plots]` extra also pulls in **pyfug**, whose Jenkins-Treadway diagnostic
-plots are reused per series/residual: `plot_series_jt`, `plot_residual_acf_pacf`,
-`plot_residual_histogram`, `plot_residual_diagnostics` (series + ACF/PACF) and
-`plot_mean_deviation`; `apply_jt_theme()` styles the rest with the JT theme.
+## References
+
+- Mauricio, J. A. (1995). *Exact maximum likelihood estimation of stationary
+  vector ARMA models.* **JASA** 90(429), 282–291.
+- Mauricio, J. A. (1997). *Algorithm AS 311: the exact likelihood function of a
+  vector ARMA process.* **Applied Statistics** 46(1), 157–171.
+- Mauricio, J. A. (2002). *An algorithm for the exact likelihood of a stationary
+  vector ARMA model.* **J. Time Series Analysis** 23(4), 473–486.
+- Shea, B. L. (1989). *Algorithm AS 242: the exact likelihood of a vector ARMA
+  model.* **Applied Statistics** 38(1), 161–184.
+- Dennis, J. E. & Schnabel, R. B. (1983). *Numerical Methods for Unconstrained
+  Optimization and Nonlinear Equations.*
+- Hosking, J. R. M. (1980); Jarque, C. M. & Bera, A. K. (1980).
 
 ## License
 
-GNU General Public License v2 or later (see [`COPYING`](COPYING)).
+GNU General Public License v2 or later — © A. B. Treadway, J. A. Mauricio,
+D. E. Guerrero. See [`COPYING`](COPYING).
