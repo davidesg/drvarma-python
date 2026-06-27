@@ -185,10 +185,9 @@ def _draw_ccf_panel(ax, rho, lags, n, freq, title, q_label):
     cmax = _snap_cmax(max(float(np.max(np.abs(rho))), band))
     x = np.arange(-lags, lags + 1)
     seas = [s for s in range(freq, lags + 1, freq)] if freq > 1 else []
-    # seasonal vertical grid lines (solid black, full height) at ±freq·k
-    for s in seas:
-        for xx in (s, -s):
-            ax.plot([xx, xx], [-cmax, cmax], color="k", lw=0.8, zorder=1)
+    # seasonal vertical grid lines (solid black, full height) at 0 and ±freq·k
+    for xx in [0] + seas + [-s for s in seas]:
+        ax.plot([xx, xx], [-cmax, cmax], color="k", lw=0.8, zorder=1)
     ax.axhline(band, color="k", ls="--", lw=1.0, zorder=2)
     ax.axhline(-band, color="k", ls="--", lw=1.0, zorder=2)
     ax.axhline(0.0, color="k", lw=1.4, zorder=2)                  # zero line
@@ -212,16 +211,17 @@ def _draw_ccf_panel(ax, rho, lags, n, freq, title, q_label):
         ax.set_xlabel(q_label, fontsize=12, labelpad=6)
 
 
-def plot_residual_ccf(model, lags=None, save_prefix=None, dpi=150, fig=None):
-    """Cross-correlation functions between residual series, JT (ACF) style.
+def plot_residual_ccf(model, lags=None, save_prefix=None, dpi=150):
+    """Residual cross-correlation functions, copying the drvus gnuplot ``ccf`` plot.
 
-    One two-sided CCF panel per residual pair (i>j), stacked in a single figure —
-    the multivariate residual cross-check that accompanies the per-series
-    ACF/PACF.  Lags default to the report's window (``3·(1+2)=9``), and each panel
-    carries the ±2/√N bands, seasonal dividers and the bivariate Hosking Q, so it
-    matches the ``.out`` "Cross-correlation functions" section.
+    Produces **one figure per residual pair** (i>j) — as drvus writes a separate
+    ``ccf<i>_<j>.eps`` for each — in the drvus borderless style (pair as title,
+    seasonal grid incl. lag 0, ±2/√N bands, thick impulses, ``Q( k ) = …``).
+    Lags default to the drvus graphic window ``3·(freq+1)``.  ``k>0`` pairs series
+    *i* leading *j* (as in the ``.out`` report).
 
-    ``k>0`` pairs series *i* leading *j*; ``k<0`` the reverse (as in the report).
+    If ``save_prefix`` is given, writes ``<save_prefix>_ccf_<i>_<j>_<ni>_<nj>.png``
+    per pair.  Returns the list of figures.
     """
     plt = _need_mpl()
     from .diagnostics import ccf as _ccf, qccf as _qccf
@@ -237,19 +237,20 @@ def plot_residual_ccf(model, lags=None, save_prefix=None, dpi=150, fig=None):
     qfmt = "Q( %d ) = %.1f" if freq > 4 else "Q ( %d ) = %.1f"
 
     pairs = [(i, j) for i in range(1, m) for j in range(i)]      # (1,0),(2,0),(2,1)
-    if fig is None:
-        fig = plt.figure(figsize=(11.0, 2.4 * len(pairs) + 0.4),
-                         layout="constrained")
-    axes = fig.subplots(len(pairs), 1, squeeze=False)[:, 0]
-    for ax, (i, j) in zip(axes, pairs):
+    figs = []
+    for (i, j) in pairs:
+        fig, ax = plt.subplots(figsize=(11.0, 3.0), layout="constrained")
         # orient k>0 as i→j (i leading), matching the .out report's convention
         rho = _ccf(res[:, j], res[:, i], lags)
-        Q, df, _ = _qccf(res[:, i], res[:, j], lags)
+        Q, _df, _ = _qccf(res[:, i], res[:, j], lags)
         _draw_ccf_panel(ax, rho, lags, n, freq, "%s - %s" % (names[i], names[j]),
                         qfmt % (lags, Q))
-    if save_prefix is not None:
-        fig.savefig("%s_ccf.png" % save_prefix, dpi=dpi, bbox_inches="tight")
-    return fig
+        if save_prefix is not None:
+            fig.savefig("%s_ccf_%d_%d_%s_%s.png" % (save_prefix, i + 1, j + 1,
+                                                    names[i], names[j]),
+                        dpi=dpi, bbox_inches="tight")
+        figs.append(fig)
+    return figs
 
 
 def plot_fevd(model, horizon, axes=None):

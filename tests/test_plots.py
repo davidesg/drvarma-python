@@ -62,8 +62,8 @@ def test_plot_ccf(fitted):
 
 def test_plot_residual_ccf(fitted):
     mdl, _ = fitted
-    fig = plots.plot_residual_ccf(mdl)           # m=2 -> 1 residual pair, 1 panel
-    assert _is_figure(fig) and len(fig.axes) == 1
+    figs = plots.plot_residual_ccf(mdl)          # one figure per pair (m=2 -> 1)
+    assert len(figs) == 1 and all(_is_figure(f) and len(f.axes) == 1 for f in figs)
 
 
 def test_plot_before_fit_raises():
