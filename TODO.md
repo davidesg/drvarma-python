@@ -98,7 +98,13 @@ pure-Python fallback with no compiled engine. Remaining: the graphics finish
       rcParams globally so drvarma's own forecast/IRF/FEVD/CCF plots adopt the JT
       style too. pyfug in `[plots]` extras; tests skip if pyfug absent (6 tests).
 - [ ] Docs: USER_GUIDE / API reference for the Python package; PyPI release.
-- [ ] CI workflow running pytest (pure-Python and with the engine).
+- [x] CI workflow (done 2026-06-27): `.github/workflows/ci.yml` — a **pure-Python**
+      job (matrix py3.10–3.12, no GSL → engine degrades away, asserts it is absent)
+      and a **with-engine** job (libgsl-dev → builds the cffi extension, asserts it
+      imports), both running `pytest`. Tests that need the C binary / engine / the
+      sibling repo's IPC3 skip themselves, so both jobs are green on a standalone
+      checkout. (To exercise the C-binary comparisons in CI, also check out
+      `../drvarma_v.04.1` and `make drvarma` — left out to keep CI self-contained.)
 
 ## PP — 100% pure-Python parity  (full plan: `docs/PURE_PYTHON_PLAN.md`)
 
