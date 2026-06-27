@@ -317,7 +317,6 @@ def estimate_w_py(w, p, q, include_mean=False, diag_ar=False, diag_ma=False,
         fk, bfac, nit, termcode = _qnewt.raxopt(
             func1, npar, xk, maxits, grtol, sptol)
         x_hat = xk[1:npar + 1].copy()
-        ifault = 0 if termcode in (1, 2) else 6
     else:
         fk, bfac = 1.0, None
         x_hat = x0
@@ -325,8 +324,13 @@ def estimate_w_py(w, p, q, include_mean=False, diag_ar=False, diag_ma=False,
 
     mu, phi, theta, qq = model_of(x_hat)
     f1, f2, lf = _elf_f1f2(w, mu, phi, theta, qq, xitol)
-    if lf:
-        ifault = ifault or lf
+    # ifault reports MODEL adequacy (as the C `est`/`elf`): 0 OK, 1 Q not PD,
+    # 2 AR unit root, 3 non-stationary, 4 MA non-invertible, 5 numerical.  The
+    # optimiser's termination is reported separately (`termcode`/`nit`); a line
+    # search that cannot find a lower point (termcode 3) means it is AT the
+    # optimum, so it is not a fault — matching the C, which never sets ifault
+    # from the optimiser.
+    ifault = if0 or lf
 
     # Concentrated log-likelihood and variance (drvmlest.c:est, [4]).
     sigma2 = f1 / (n * m)
