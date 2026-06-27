@@ -80,7 +80,8 @@ series, spec = load("IPC3.inp")     # series: MultiSeries; spec: InpSpec(lam, d,
 
 The header carries the transform orders, so you usually pass them straight to the
 model: `Model(series, lam=spec.lam, d=spec.d, D=spec.D, ...)`. The CLI (`§9`) does
-this for you. A `.inp` file looks like:
+this for you. The full `.inp` token spec (for hand- or assistant-authoring an
+input) is in [`docs/INP_FORMAT.md`](INP_FORMAT.md). A `.inp` file looks like:
 
 ```
 * Trivariate consumer price indices

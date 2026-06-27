@@ -30,6 +30,8 @@ feature- and fidelity-complete; the CFFI engine is an optional accelerator.**
 ## Documentation
 
 - [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — install, API, CLI, examples.
+- [`docs/INP_FORMAT.md`](docs/INP_FORMAT.md) — the `.inp` input format (precise,
+  assistant-friendly spec for preparing inputs).
 - [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) — internals, complexity from
   the literature, and the pure-Python / hybrid / C performance study.
 - **Resuming dev work?** [`docs/STATUS.md`](docs/STATUS.md) (state, architecture,
