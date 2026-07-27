@@ -61,7 +61,9 @@ jobs:
           sudo apt-get install -y libgsl-dev
       - name: Install with the C engine
         run: |
-          python -m pip install --upgrade pip
+          # setuptools is needed at runtime for the direct `setup.py build_ext`
+          # below (modern venvs / isolated pip builds don't provide it).
+          python -m pip install --upgrade pip setuptools
           pip install -e ".[test,c-engine]"
           # Build the extension straight into src/drvarma/ (see docs/STATUS.md).
           python setup.py build_ext --inplace
