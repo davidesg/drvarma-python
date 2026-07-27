@@ -69,6 +69,14 @@ pure-Python fallback with no compiled engine. Remaining: the graphics finish
       `cffi` added to build-system requires; `MANIFEST.in` ships `csrc/` in the
       sdist. (Entry point `drvarma = drvarma.cli:main` already wired.)
       Remaining: real pure-Python *compute* fallback needs P3; binary wheels/CI.
+- [ ] **Binary (compiled-engine) wheels — cibuildwheel, next release.** Today PyPI
+      ships only the `py3-none-any` pure-Python wheel + sdist, so `pip install
+      drvarma` installs cleanly everywhere (Windows too) but runs the **slow**
+      pure-Python path; the ~10-100× C engine needs GSL + a compiler
+      (`drvarma[c-engine]` / sdist build). Replicate **fue-python's `wheels.yml`**
+      (cibuildwheel: cp310-313 × Win/macOS-arm64/Linux manylinux+musllinux
+      x86_64+aarch64, GSL bundled) so the fast engine ships out-of-the-box, matching
+      fue. Not an install *fix* (drvarma already installs) — a **speed** parity item.
 - [x] **Per-series diagnostics** migrated from `diagnose.c` into `diagnostics.py`
       (drvarma owns these): `series_stats` (mean/var/std/SE/skew/kurt/min/max —
       **exact** vs `IPC3.out`), `acf`, `pacf` (Durbin-Levinson), `ljung_box`
