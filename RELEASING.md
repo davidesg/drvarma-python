@@ -97,8 +97,8 @@ workflow `publish.yml`, environment `pypi`. After that, `git push --tags` releas
 * **Name availability** — confirm `drvarma` is free/owned on PyPI before the first
   upload (an upload to a name you don't own will fail). If taken, change
   `[project] name` (e.g. `drvarma-py`) and the import stays `drvarma`.
-* **Project URLs** — `[project.urls]` currently points at the C-engine repo
-  (`github.com/davidesg/drvarma`); update if the Python port gets its own repo.
+* **Project URLs** — `[project.urls]` points at the Python port's own repo
+  `github.com/davidesg/drvarma-python` (the C-engine lives in `davidesg/drvarma`).
 * **Optional extras** at install time: `drvarma[c-engine]` (GSL build),
   `drvarma[plots]` (matplotlib + pyfug), `drvarma[forecast-report]` (jinja2),
   `drvarma[test]`.

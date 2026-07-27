@@ -210,6 +210,24 @@ against. **Deferred — not part of the 100% Python goal.** If ever revived: wir
 `marma()` into a new C engine version first, compare C-Shea vs C-Mauricio, then
 port faithfully (never a Kalman/state-space stand-in — that *is* Shea's route).
 
+## Seasonality detection
+- [ ] **Use a HAC F-test in the seasonality detection (superior to the plain OLS
+      F).** `deseason.harmonic_regression_differenced` computes the standard OLS
+      F, `(ssr/(s-1))/(sse/(n-s))`, which assumes i.i.d. homoskedastic errors. But
+      the regression is run on the DIFFERENCED series, whose residuals are
+      autocorrelated (differencing induces MA structure; the noise itself may be
+      serially correlated), so the OLS F has an incorrect size in general. A
+      Newey-West HAC F (Wald on the harmonic coefficients with a Bartlett-kernel
+      sandwich covariance, divided by s-1) is robust to that autocorrelation and is
+      the more principled test. On the WTI / euro-area IPC / CPI_USA / PCE series
+      the correctly-scaled HAC F and this OLS F agree (WTI ~0.95 both, IPCs both
+      SEAS, PCE ~1 both), so the two coincide on those cases; but the HAC version
+      dominates in general. NB: the correct HAC "meat" is a SUM over t
+      (`sum_t x_t x_t' u_t^2 + lags`), NOT an average — dividing by n makes the
+      covariance n× too small and the F n× too large (this was a bug in ART's
+      `seasonal_detection`, now fixed; see art-python). Port ART's fixed
+      `_newey_west_hac` here and offer it as the (default) test.
+
 ## Decisions / open questions
 - [ ] Publish the Python port to its own GitHub repo? (own remote, CI, PyPI.)
 - [ ] Single source of truth for forecasting/diagnostics: numpy (current) vs the
