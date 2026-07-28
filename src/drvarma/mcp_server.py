@@ -59,9 +59,11 @@ FLUJO (VARMA clásico estacionario — v1)
    • seed_from_art  → exploración univariante automática de ART por serie
      (λ, diferenciación d, estacionalidad D, techo de órdenes). RECOMENDADO.
    • o el usuario informado responde y se salta la siembra.
-3. identify_varma_order — sobre las series preparadas: rejilla AIC/BIC/HQ de (p,q)
-   (v1). [CCM + matrices de autocorrelación parcial Tiao-Box: pendientes.] Propón
-   (p,q) y ESPERA confirmación.
+3. Identificación del orden sobre las series preparadas — combina:
+   • cross_correlation_matrices (CCM) → corte tras lag q ⇒ MA(q);
+   • partial_autoregression_matrices (Tiao-Box) → último lag signif. ⇒ AR(p);
+   • identify_varma_order → rejilla AIC/BIC/HQ como contraste cuantitativo.
+   Propón (p,q) razonado y ESPERA confirmación.
 4. confirm_and_estimate — Model(p,q).fit() por ML exacta.
 5. diagnose — Hosking Q (autocorrelación cruzada de residuos) + Jarque-Bera. Si Q
    es significativo, sube el orden y reestima.
@@ -260,6 +262,91 @@ def confirm_and_estimate(name: str, lam: float = 0.0, d: int = 1, D: int = 0,
         pass
     out.append("\nSiguiente (pendiente en el scaffold): diagnose, impulse_response, "
                "fevd, generate_forecast.")
+    return "\n".join(out)
+
+
+def _prepared_w(ms: MultiSeries, lam: float, d: int, D: int) -> np.ndarray:
+    """The stationary differenced series w = ∇^d ∇_s^D BoxCox_λ(level).
+
+    scale is irrelevant for correlations/partial-autoregression (scale-invariant),
+    so we transform at scale=1.
+    """
+    w, _ = transform.transform(ms.data, lam=lam, d=d, D=D, s=ms.freq, scale=1.0)
+    w = np.asarray(w, dtype=float)
+    if not np.all(np.isfinite(w)):
+        raise ValueError(
+            f"la serie transformada tiene valores no finitos (λ={lam}): λ=0 (log) "
+            "exige datos positivos. Usa λ=1 o revisa los datos. (No devuelvo un "
+            "resultado silencioso con NaN.)")
+    return w
+
+
+@mcp.tool()
+def cross_correlation_matrices(name: str, lam: float = 0.0, d: int = 1, D: int = 0,
+                               n_lags: int = 6) -> str:
+    """Sample cross-correlation matrices (CCM) of the differenced series.
+
+    Tiao-Box +/-/. display (bound 2/√n). CCM that **cut off** after lag q point to
+    a pure MA(q); a slow decay points to AR terms. Complements
+    partial_autoregression_matrices (AR order) for VARMA order identification.
+    """
+    ms = _require(name)
+    w = _prepared_w(ms, lam, d, D)
+    n, m = w.shape
+    wc = w - w.mean(0)
+    sd = np.sqrt(np.diag((wc.T @ wc) / n))
+    bound = 2.0 / np.sqrt(n)
+    out = [f"# Matrices de correlación cruzada (CCM) — {name} (n={n}, m={m})",
+           f"Símbolos: + (ρ>2/√n={bound:.3f}), - (ρ<-2/√n), . (no signif.). "
+           f"Series: {ms.names}", ""]
+    for k in range(1, n_lags + 1):
+        Rk = ((wc[k:].T @ wc[:-k]) / n) / np.outer(sd, sd)   # corr(w_i(t), w_j(t-k))
+        out.append(f"lag {k}:")
+        for i in range(m):
+            out.append("  " + " ".join(
+                "+" if Rk[i, j] > bound else "-" if Rk[i, j] < -bound else "."
+                for j in range(m)))
+    return "\n".join(out)
+
+
+@mcp.tool()
+def partial_autoregression_matrices(name: str, lam: float = 0.0, d: int = 1,
+                                    D: int = 0, max_order: int = 6) -> str:
+    """Tiao-Box partial autoregression matrices — AR-order identification.
+
+    Fits VAR(k) by OLS for k=1..max_order; the partial autoregression matrix is the
+    last coefficient block Φ_kk. For a VAR(p) it is ≈0 (all '.') for k>p, so the AR
+    order p is the last lag with significant symbols. Symbols from t-ratios (|t|>1.96).
+    """
+    ms = _require(name)
+    w = _prepared_w(ms, lam, d, D)
+    n0, m = w.shape
+    out = [f"# Matrices de autocorrelación parcial (Tiao-Box) — {name} (m={m})",
+           f"Símbolos por t-ratio: + (t>1.96), - (t<-1.96), . (no signif.). "
+           f"Series: {ms.names}",
+           "AR order p = último lag con símbolos significativos.", ""]
+    for k in range(1, max_order + 1):
+        Y = w[k:]
+        T = len(Y)
+        if T <= 1 + k * m:
+            out.append(f"lag {k}: (muestra insuficiente)"); continue
+        X = np.column_stack([np.ones(T)] + [w[k - l:n0 - l] for l in range(1, k + 1)])
+        try:
+            XtXi = np.linalg.inv(X.T @ X)
+        except np.linalg.LinAlgError:
+            out.append(f"lag {k}: (singular)"); continue
+        B = XtXi @ X.T @ Y
+        resid = Y - X @ B
+        Sig = (resid.T @ resid) / (T - X.shape[1])
+        r0 = 1 + (k - 1) * m                       # first row of the Φ_kk block
+        out.append(f"lag {k}:")
+        for i in range(m):
+            syms = []
+            for j in range(m):
+                se = np.sqrt(Sig[i, i] * XtXi[r0 + j, r0 + j])
+                t = B[r0 + j, i] / se if se > 0 else 0.0
+                syms.append("+" if t > 1.96 else "-" if t < -1.96 else ".")
+            out.append("  " + " ".join(syms))
     return "\n".join(out)
 
 
