@@ -5,6 +5,7 @@ series `w` (shape nobs x m) via the C engine and returns a result dict.  When th
 C extension is not built it falls back to the pure-Python estimator
 (`estimate_py`, exact VAR only) — mirroring fue's `_engine.py`.
 """
+import os
 import numpy as np
 
 
@@ -16,9 +17,16 @@ def estimate_w(w, p, q, include_mean=False,
     Uses the compiled C engine when available; otherwise falls back to the
     pure-Python exact-ML estimator (`estimate_py.estimate_w_py`, q=0 only).
     """
-    try:
-        from drvarma._drvarma_engine import ffi, lib
-    except ImportError:
+    # Runtime opt-out: DRVARMA_NO_ENGINE forces the pure-Python estimator (e.g. to
+    # dodge a C-engine issue) without rebuilding.  Otherwise use the C engine if
+    # built, falling back to pure-Python when it is not.
+    ffi = lib = None
+    if not os.environ.get("DRVARMA_NO_ENGINE"):
+        try:
+            from drvarma._drvarma_engine import ffi, lib
+        except ImportError:
+            ffi = lib = None
+    if lib is None:
         from .estimate_py import estimate_w_py
         return estimate_w_py(w, p, q, include_mean=include_mean,
                              diag_ar=diag_ar, diag_ma=diag_ma, diag_cov=diag_cov,
