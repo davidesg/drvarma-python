@@ -1,0 +1,267 @@
+"""multiart — MCP server for multivariate VARMA analysis with drvarma.
+
+The multivariate counterpart of ART's univariate Box-Jenkins MCP. See
+`docs/DESIGN_MCP.md` for the full design. This is the v1 scaffold: the guided
+protocol shell plus the first tools (load_data, series_info, seed_from_art,
+identify_varma_order, confirm_and_estimate).
+
+Rescaling note (docs/DESIGN_MCP.md §5b): drvarma's `scale` (default 100) is the
+single source of truth. Never hardcode 100; use drvarma's native, level-unit
+forecast bands; carry `scale` through any rebuild. This avoids the ATSW
+BUG-0007/0008 class.
+"""
+from __future__ import annotations
+
+import json
+import numpy as np
+from mcp.server.fastmcp import FastMCP
+
+from .series import MultiSeries
+from .model import Model
+from . import diagnostics, transform
+
+# ---------------------------------------------------------------------------
+# In-process session state: named multivariate datasets and fitted models.
+# The server is a single long-running process, so a module dict is enough for
+# a session; file persistence (.inp/.pre-style) is a later refinement.
+# ---------------------------------------------------------------------------
+_DATA: dict[str, MultiSeries] = {}
+_FITS: dict[str, Model] = {}
+
+
+_INSTRUCTIONS = """
+Eres multiart — asistente de análisis de series temporales MULTIVARIANTE (modelos
+VARMA por máxima verosimilitud exacta, motor drvarma). Contraparte multivariante de
+ART (univariante).
+
+══════════════════════════════════════════════════════
+IDIOMA / LANGUAGE
+══════════════════════════════════════════════════════
+Responde SIEMPRE en el idioma del usuario (inglés por defecto si es ambiguo). Estas
+instrucciones y las salidas de las herramientas pueden venir en español: tradúcelas
+al idioma del usuario; nunca pegues español a un usuario que escribe en inglés.
+── Always respond in the user's language (default English). Tool output may be in
+Spanish; translate it — never paste Spanish to an English-speaking user.
+
+══════════════════════════════════════════════════════
+PREGUNTA INICIAL OBLIGATORIA
+══════════════════════════════════════════════════════
+Al iniciar, pregunta SIEMPRE:
+  "¿Cómo deseas proceder?
+   1) GUIADO (paso a paso, con confirmación en cada etapa)
+   2) AUTÓNOMO (identificación + estimación automáticas)"
+
+══════════════════════════════════════════════════════
+FLUJO (VARMA clásico estacionario — v1)
+══════════════════════════════════════════════════════
+1. load_data — carga las m series (CSV o JSON).
+2. SIEMBRA de la especificación (sin esto, un VARMA es "palos de ciego"):
+   • seed_from_art  → exploración univariante automática de ART por serie
+     (λ, diferenciación d, estacionalidad D, techo de órdenes). RECOMENDADO.
+   • o el usuario informado responde y se salta la siembra.
+3. identify_varma_order — sobre las series preparadas: rejilla AIC/BIC/HQ de (p,q)
+   (v1). [CCM + matrices de autocorrelación parcial Tiao-Box: pendientes.] Propón
+   (p,q) y ESPERA confirmación.
+4. confirm_and_estimate — Model(p,q).fit() por ML exacta.
+5. [pendiente: diagnose (Hosking Q, CCM de residuos), impulse_response, fevd,
+   generate_forecast con bandas.]
+
+NOTA (cointegración): v1 asume series llevadas a estacionariedad por diferenciación.
+Si las series parecen I(1) que se mueven juntas (posible cointegración), AVISA de que
+lo estás dejando de lado — es alcance de v2.
+"""
+
+mcp = FastMCP("multiart — Multivariate VARMA Analysis (drvarma)",
+              instructions=_INSTRUCTIONS)
+
+
+def _require(name: str) -> MultiSeries:
+    if name not in _DATA:
+        raise ValueError(f"no dataset named {name!r}; call load_data first "
+                         f"(known: {sorted(_DATA)})")
+    return _DATA[name]
+
+
+def _npar(m: int, p: int, q: int, include_mean: bool) -> int:
+    """Free parameters of a full VARMA(p,q): AR+MA blocks, mean, covariance."""
+    return m * m * (p + q) + (m if include_mean else 0) + m * (m + 1) // 2
+
+
+# ---------------------------------------------------------------------------
+# Tools
+# ---------------------------------------------------------------------------
+@mcp.tool()
+def load_data(name: str, csv_path: str = "", values_json: str = "",
+              freq: int = 12, start_year: int = 2000, start_period: int = 1,
+              series_names: str = "") -> str:
+    """Load an m-variate time series into the session under `name`.
+
+    Provide EITHER csv_path (one column per series, optional header row) OR
+    values_json (a JSON list of rows, each row a list of m values). freq is
+    observations/year (1/4/12); start is (start_year, start_period). series_names
+    is an optional comma-separated list of labels.
+    """
+    names = [s.strip() for s in series_names.split(",") if s.strip()] or None
+    if csv_path:
+        try:
+            arr = np.genfromtxt(csv_path, delimiter=",", names=None)
+            if arr.dtype.names or np.isnan(arr).all(axis=1)[0]:
+                arr = np.genfromtxt(csv_path, delimiter=",", skip_header=1)
+        except Exception as e:  # noqa: BLE001
+            return f"Error leyendo {csv_path}: {e}"
+        data = np.atleast_2d(arr)
+    elif values_json:
+        data = np.asarray(json.loads(values_json), dtype=float)
+    else:
+        return "Falta csv_path o values_json."
+    if data.ndim == 1:
+        data = data.reshape(-1, 1)
+    try:
+        ms = MultiSeries(data, freq=freq, start=(start_year, start_period), names=names)
+    except Exception as e:  # noqa: BLE001
+        return f"Error construyendo la serie: {e}"
+    _DATA[name] = ms
+    return (f"Cargado {name!r}: {ms.nobs} obs × {ms.m} series {ms.names}, "
+            f"freq={ms.freq}, inicio={ms.start}. Siguiente: seed_from_art({name!r}) "
+            f"o series_info({name!r}).")
+
+
+@mcp.tool()
+def series_info(name: str) -> str:
+    """Per-series descriptive statistics (mean/var/std/skew/kurt/min/max)."""
+    ms = _require(name)
+    lines = [f"# {name}: {ms.nobs} obs × {ms.m} series (freq={ms.freq}, inicio={ms.start})", ""]
+    for j, lab in enumerate(ms.names):
+        try:
+            st = diagnostics.series_stats(ms.data[:, j])
+            lines.append(f"- {lab}: " + "  ".join(f"{k}={v:.4g}" for k, v in
+                         (st.items() if hasattr(st, "items") else [])) or f"- {lab}: {st}")
+        except Exception as e:  # noqa: BLE001
+            lines.append(f"- {lab}: (series_stats no disponible: {e})")
+    return "\n".join(lines)
+
+
+@mcp.tool()
+def seed_from_art(name: str) -> str:
+    """Seed the VARMA spec from ART's automatic univariate identification.
+
+    Runs ART/fue per component to propose λ (Box-Cox), differencing d, seasonal D
+    and a sensible ARMA ceiling — so the multivariate order search is not blind.
+    Defensive: falls back to log/d=1 when a component analysis is unavailable.
+    """
+    ms = _require(name)
+    try:
+        import fue
+        from art import identification as _id
+    except Exception as e:  # noqa: BLE001
+        return (f"ART/fue no disponibles para la siembra ({e}). Instala "
+                f"`drvarma[mcp]` (arrastra art-tseries) o usa la ruta 'usuario "
+                f"informado' pasando lam/d/D a identify_varma_order.")
+    rows, lam_all, d_all, D_all = [], [], [], []
+    for j, lab in enumerate(ms.names):
+        ts = fue.TimeSeries.from_array(ms.data[:, j].tolist(), freq=ms.freq,
+                                       start=ms.start, name=lab)
+        lam = 0.0
+        try:
+            lam = float(_id.boxcox_selection(ts).lam)  # type: ignore[attr-defined]
+        except Exception:  # noqa: BLE001
+            pass
+        d, D = 1, 0   # v1 default; per-series ADF/seasonal wiring is a refinement
+        rows.append(f"- {lab}: λ={lam:.2f}, d={d}, D={D}")
+        lam_all.append(lam); d_all.append(d); D_all.append(D)
+    lam_c = 0.0 if all(abs(x) < 0.25 for x in lam_all) else float(np.median(lam_all))
+    d_c, D_c = int(np.round(np.median(d_all))), int(np.round(np.median(D_all)))
+    return ("Siembra univariante (ART) por serie:\n" + "\n".join(rows) +
+            f"\n\nConsenso para el VARMA: λ={lam_c:.2f}, d={d_c}, D={D_c}. "
+            f"Siguiente: identify_varma_order({name!r}, lam={lam_c}, d={d_c}, D={D_c}). "
+            f"(Nota v1: d/D por serie usan el default; el cableado ADF/estacional "
+            f"fino queda como refinamiento.)")
+
+
+@mcp.tool()
+def identify_varma_order(name: str, lam: float = 0.0, d: int = 1, D: int = 0,
+                         p_max: int = 2, q_max: int = 2,
+                         include_mean: bool = True) -> str:
+    """Rank VARMA(p,q) orders by information criteria (AIC/BIC/HQ).
+
+    Fits every (p,q) with p≤p_max, q≤q_max by exact ML and ranks them. v1 uses the
+    IC grid; CCM and Tiao-Box partial-autoregression matrices are pending. Returns
+    a table and a recommendation to confirm.
+    """
+    ms = _require(name)
+    n, m = ms.nobs, ms.m
+    results = []
+    for p in range(p_max + 1):
+        for q in range(q_max + 1):
+            if p == 0 and q == 0:
+                continue
+            try:
+                mod = Model(ms, lam=lam, d=d, D=D, p=p, q=q,
+                            include_mean=include_mean).fit()
+                ll = float(mod.loglik)
+                k = _npar(m, p, q, include_mean)
+                aic = -2 * ll + 2 * k
+                bic = -2 * ll + k * np.log(n)
+                hq = -2 * ll + 2 * k * np.log(np.log(n))
+                results.append((p, q, ll, k, aic, bic, hq))
+            except Exception as e:  # noqa: BLE001
+                results.append((p, q, None, None, None, None, str(e)[:40]))
+    ok = [r for r in results if r[4] is not None]
+    if not ok:
+        return "Ninguna especificación convergió. Revisa la preparación (lam/d/D)."
+    ok.sort(key=lambda r: r[5])   # by BIC
+    hdr = f"VARMA order search (lam={lam}, d={d}, D={D}, mean={include_mean}) — ranked by BIC\n"
+    hdr += "| p | q | loglik | k | AIC | BIC | HQ |\n|---|---|--------|---|-----|-----|----|"
+    body = "\n".join(f"| {p} | {q} | {ll:.2f} | {k} | {aic:.1f} | {bic:.1f} | {hq:.1f} |"
+                     for (p, q, ll, k, aic, bic, hq) in ok)
+    bp, bq = ok[0][0], ok[0][1]
+    return (hdr + "\n" + body +
+            f"\n\nRecomendación (mín. BIC): **VARMA({bp},{bq})**. Confirma y llama a "
+            f"confirm_and_estimate({name!r}, lam={lam}, d={d}, D={D}, p={bp}, q={bq}, "
+            f"include_mean={include_mean}).")
+
+
+@mcp.tool()
+def confirm_and_estimate(name: str, lam: float = 0.0, d: int = 1, D: int = 0,
+                         p: int = 1, q: int = 0, include_mean: bool = True,
+                         diag_ar: bool = False, diag_ma: bool = False,
+                         diag_cov: bool = False) -> str:
+    """Estimate the final VARMA(p,q) by exact ML and store the fit under `name`.
+
+    diag_ar/diag_ma/diag_cov impose diagonal AR/MA/covariance (as drvarma's C
+    flags). Returns log-likelihood, the Φ/Θ/Σ summary and residual diagnostics.
+    """
+    ms = _require(name)
+    try:
+        mod = Model(ms, lam=lam, d=d, D=D, p=p, q=q, include_mean=include_mean,
+                    diag_ar=diag_ar, diag_ma=diag_ma, diag_cov=diag_cov).fit()
+    except Exception as e:  # noqa: BLE001
+        return f"La estimación de VARMA({p},{q}) falló: {e}"
+    _FITS[name] = mod
+    m = ms.m
+    k = _npar(m, p, q, include_mean)
+    out = [f"# VARMA({p},{q}) estimado — {name} ({m} series, {ms.nobs} obs)",
+           f"log-likelihood = {mod.loglik:.4f}   (k={k}, "
+           f"AIC={-2*mod.loglik + 2*k:.1f}, BIC={-2*mod.loglik + k*np.log(ms.nobs):.1f})",
+           f"scale (reescalado) = {mod.scale}"]
+    try:
+        phi = np.asarray(mod.phi)
+        out.append("Φ₁ =\n" + np.array2string(phi[0], precision=3, suppress_small=True))
+    except Exception:  # noqa: BLE001
+        pass
+    try:
+        out.append("Σ =\n" + np.array2string(np.asarray(mod.sigma), precision=4,
+                                              suppress_small=True))
+    except Exception:  # noqa: BLE001
+        pass
+    out.append("\nSiguiente (pendiente en el scaffold): diagnose, impulse_response, "
+               "fevd, generate_forecast.")
+    return "\n".join(out)
+
+
+def main():
+    mcp.run()
+
+
+if __name__ == "__main__":
+    main()
