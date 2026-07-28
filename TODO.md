@@ -6,6 +6,24 @@ per-series diagnostics, base plots) are done and validated against the C engine
 pure-Python fallback with no compiled engine. Remaining: the graphics finish
 (pyfug JT formats, deferred to last), P5 docs/CI, and the deferred Shea backup.
 
+## BUGS
+
+- [ ] **BUG (C engine, HIGH) — `double free or corruption` on the deseason+VARMA
+      path.** Surfaced building the multiart MCP (2026-07-28). Repro: 2-variate
+      seasonal series → `Model(..., deseason="auto").fit()` via the compiled engine
+      crashes the process. The pure-Python estimator runs the same call fine.
+      **Workaround shipped:** `_engine.py` now honours a runtime `DRVARMA_NO_ENGINE`
+      env var (force pure-Python without rebuilding); the multiart MCP is registered
+      with it. Needs a proper fix in the C engine (likely a free of a
+      deseason/dummy buffer, or an ownership bug in the cast when levels were
+      deseasonalized upstream). Until fixed, the C engine must not be the default
+      for the deseason path.
+- [ ] **BUG (pure-Python, MEDIUM) — `inf` log-likelihood for some MA-bearing specs
+      with deseason.** e.g. VARMA(0,1) on the deseasonalized seasonal repro returns
+      `loglik=inf` → `-inf` AIC/BIC, polluting the order-search ranking (it doesn't
+      crash). Likely a degenerate factorisation in `estimate_py` for q>0 on that
+      data. Guard/clean the pure-Python MA path.
+
 ## P2 — remaining (presentation only)
 - [x] **Report writers** (`report.py`): `.forecast` is **byte-exact** vs the C
       (incl. mon%/ann% rates+std); `.recursive` matches the validated engine path
