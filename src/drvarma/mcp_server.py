@@ -63,8 +63,12 @@ FLUJO (VARMA clásico estacionario — v1)
    (v1). [CCM + matrices de autocorrelación parcial Tiao-Box: pendientes.] Propón
    (p,q) y ESPERA confirmación.
 4. confirm_and_estimate — Model(p,q).fit() por ML exacta.
-5. [pendiente: diagnose (Hosking Q, CCM de residuos), impulse_response, fevd,
-   generate_forecast con bandas.]
+5. diagnose — Hosking Q (autocorrelación cruzada de residuos) + Jarque-Bera. Si Q
+   es significativo, sube el orden y reestima.
+6. impulse_response (OIRF) y variance_decomposition (FEVD) — análisis estructural.
+7. generate_forecast — previsión con bandas 95% (en unidades de nivel, nativas).
+[Pendiente: CCM + matrices de autocorrelación parcial (Tiao-Box) en la identificación;
+full_report; SPS update_and_forecast.]
 
 NOTA (cointegración): v1 asume series llevadas a estacionariedad por diferenciación.
 Si las series parecen I(1) que se mueven juntas (posible cointegración), AVISA de que
@@ -256,6 +260,83 @@ def confirm_and_estimate(name: str, lam: float = 0.0, d: int = 1, D: int = 0,
         pass
     out.append("\nSiguiente (pendiente en el scaffold): diagnose, impulse_response, "
                "fevd, generate_forecast.")
+    return "\n".join(out)
+
+
+def _require_fit(name: str) -> Model:
+    if name not in _FITS:
+        raise ValueError(f"no fitted model for {name!r}; call confirm_and_estimate first")
+    return _FITS[name]
+
+
+@mcp.tool()
+def diagnose(name: str, lag: int = 0) -> str:
+    """Multivariate residual diagnostics of the fitted VARMA.
+
+    Hosking's multivariate portmanteau Q (residual cross-correlation) and the
+    multivariate Jarque-Bera. `lag` defaults to freq+2. A significant Q means the
+    order (p or q) is too low.
+    """
+    mod = _require_fit(name)
+    d = mod.diagnostics(lag or None)
+    ok_q = d["hosking_p"] > 0.05
+    ok_jb = d["JB_p"] > 0.05
+    return (f"# Diagnóstico de residuos — {name}\n"
+            f"- Hosking Q({d['hosking_lag']}) = {d['hosking_Q']:.2f}  df={d['hosking_df']}  "
+            f"p={d['hosking_p']:.3f} → "
+            f"{'sin autocorrelación cruzada ✓' if ok_q else 'AUTOCORRELACIÓN residual ⚠ (sube p/q)'}\n"
+            f"- Jarque-Bera = {d['JB']:.2f}  df={d['JB_df']}  p={d['JB_p']:.3f} → "
+            f"{'normalidad ok ✓' if ok_jb else 'no-normal ⚠'}\n"
+            + ("Modelo adecuado." if ok_q else "Revisa la especificación (orden)."))
+
+
+@mcp.tool()
+def generate_forecast(name: str, horizon: int = 12) -> str:
+    """Forecast the fitted VARMA `horizon` steps ahead with 95% bands.
+
+    Uses drvarma's native, level-unit bands (scale-correct — never a hand-rolled
+    level ± 1.96·std, which would resurrect the ATSW BUG-0008 relative-std band).
+    """
+    mod = _require_fit(name)
+    levels, low, high = mod.forecast(horizon, bands=True)
+    ms = mod.series
+    out = [f"# Previsión VARMA — {name} ({horizon} pasos, bandas 95%, scale={mod.scale})"]
+    for j, lab in enumerate(ms.names):
+        out += [f"\n## {lab}", "| h | previsión | IC 95% |", "|---|-----------|--------|"]
+        out += [f"| {h+1} | {levels[h, j]:.3f} | [{low[h, j]:.3f}, {high[h, j]:.3f}] |"
+                for h in range(horizon)]
+    return "\n".join(out)
+
+
+@mcp.tool()
+def impulse_response(name: str, horizon: int = 12) -> str:
+    """Orthogonalised impulse responses (OIRF) of the fitted VARMA."""
+    mod = _require_fit(name)
+    irf = np.asarray(mod.irf(horizon, orthogonalized=True))   # (H+1, m, m)
+    nm = mod.series.names
+    hs = sorted({h for h in (0, 1, 2, 4, 8, horizon) if 0 <= h <= horizon})
+    out = [f"# Respuestas al impulso ortogonalizadas (OIRF) — {name}"]
+    for i in range(mod.series.m):        # response variable
+        for k in range(mod.series.m):    # orthogonal shock
+            path = irf[:, i, k]
+            out.append(f"- {nm[i]} ← shock {nm[k]}: " +
+                       ", ".join(f"h{h}={path[h]:+.3f}" for h in hs))
+    return "\n".join(out)
+
+
+@mcp.tool()
+def variance_decomposition(name: str, horizon: int = 12) -> str:
+    """Forecast-error variance decomposition (FEVD, %) at the given horizon."""
+    mod = _require_fit(name)
+    fevd = np.asarray(mod.fevd(horizon))   # (H, m, m)
+    nm = mod.series.names
+    dec = fevd[-1]                          # at the final horizon
+    out = [f"# FEVD — {name}, h={horizon} (fila = % de la varianza de esa serie por cada shock)",
+           "| serie ↓ / shock → | " + " | ".join(nm) + " |",
+           "|" + "---|" * (mod.series.m + 1)]
+    for i in range(mod.series.m):
+        out.append(f"| {nm[i]} | " +
+                   " | ".join(f"{dec[i, k]:.1f}" for k in range(mod.series.m)) + " |")
     return "\n".join(out)
 
 
