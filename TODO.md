@@ -8,6 +8,98 @@ pure-Python fallback with no compiled engine. Remaining: the graphics finish
 
 ## BUGS
 
+- [x] **FIXED (deseason, was CRITICAL) — phase off-by-one in `start_sub`:
+      `deseason="auto"` makes seasonality WORSE for any series not starting at
+      subperiod 1, silently.** Found 2026-07-28 in the oil pass-through exercise.
+      Repro: `bench/repro_multiart_passthrough.py` (BUG 4).
+      Series start in **February**, and `mcp_server._prepared_w` correctly passes
+      `start_sub=ms.start[1]=2` to `deseasonalize_raw`. Lag-12 autocorrelation of
+      `dlog(CPI)` after deseasonalising, vs not deseasonalising at all:
+
+      | country | none | start_sub=2 (used) | start_sub=1 | monthly-dummy OLS |
+      |---|---|---|---|---|
+      | US | +0.328 | +0.245 | **-0.140** | -0.137 |
+      | ES | +0.798 | **+0.866** | **+0.098** | +0.056 |
+      | FR | +0.728 | **+0.862** | **+0.250** | +0.201 |
+      | DE | +0.608 | **+0.808** | **+0.177** | +0.163 |
+
+      Sweeping `start_sub` over 1..12 puts the minimum |ACF(12)| at **1 for all four
+      countries**, where the output matches a plain monthly-dummy OLS regression to
+      ~0.04. So the harmonic algorithm itself is CORRECT — the phase convention
+      between caller and callee is off by one. At the phase actually used the
+      adjustment *adds* seasonal variance (it subtracts the pattern in the wrong
+      month), which is why ES/FR/DE get worse than doing nothing.
+      **Impact: contaminates the entire pipeline** — characterization seed, CCM,
+      Tiao-Box, order search, estimation, IRF, FEVD — with no warning. In this
+      exercise it produced residual ACF(12) ≈ 0.7 in the CPI equation, an implausible
+      AR(1) persistence of -0.707 for DE inflation and a -12.7 coefficient on lagged
+      CPI in the US WTI equation, all of which looked like modelling problems rather
+      than a transform bug.
+      **Root cause:** the amplitudes are estimated by `harmonic_regression_differenced`
+      → `_harmonic_design(n, d, s)`, which takes NO `start_sub` and builds harmonics
+      from `t = i + d + 1` — i.e. the dummies come out indexed by OFFSET FROM THE
+      START of the series. They were then applied in ABSOLUTE subperiod phase,
+      `(np.arange(nobs) + start_sub - 1) % s`. The two agree only at `start_sub == 1`.
+      **FIX APPLIED** (`deseason.py`): rotate the estimated dummies into absolute
+      subperiod indexing before storing/applying them —
+      `level[(np.arange(s) + start_sub - 1) % s] = level_rel`. Identity at
+      `start_sub == 1`, so C-parity goldens are untouched.
+      Verified two ways: (a) synthetic series with a known pattern started at each of
+      the 12 subperiods now recovers it to <0.1 and drives seasonal sd to ~0.001;
+      (b) on real IPC data, estimating from January vs from February changed the
+      pattern by 36–83 % of its amplitude before the fix (the vector came out
+      circularly shifted by one month) and by <1 % after.
+      Regression tests: `tests/test_regression_bugs.py` (36 phase tests +
+      `test_seasonal_pattern_invariant_to_dropping_leading_observations`).
+      **NB — the same defect exists in the C** (`drvarma_v.04.1/src/deseason.c:82-90`,
+      reached from `src/drvarma.c:356`, so the main executable is affected). Declared
+      in `drvarma_v.04.1/BUGS.md` with the equivalent C patch; NOT fixed there yet.
+      Historical impact is limited because `start_sub` defaults to 1 and most series
+      start in January — the published pass-through note is unaffected.
+      Secondary (separate, lower priority): the seasonal component is estimated on the
+      **simple difference of levels** and subtracted in levels, *before* the Box-Cox
+      log in `transform`. For a multiplicative seasonal pattern on a trending index
+      (ES CPI runs 69→98) an additive level adjustment is the wrong scale; consider
+      deseasonalising after the Box-Cox transform.
+- [x] **FIXED (report + Model, was HIGH) — the convergence banner was driven by
+      `ifault`, not by the optimiser's termination code, and dropped the criterion
+      and the iteration count.** Found 2026-07-28.
+      The C (`qnewtopt.c:148-153`) prints
+      `OPTIMIZER CONVERGED|STOPPED after <k> iterations` — CONVERGED **iff
+      `termcode in (1,2)`** — plus `Convergence criterion:` chosen from termcode
+      1..5. The port's `_convergence_block` instead did
+      `"CONVERGED" if r["ifault"] == 0 else "FAILED"`, omitted `nit`, and printed
+      the `termcode == 1` criterion **unconditionally**. Its docstring claimed
+      `termcode`/`nit` were "not exposed by the CFFI result", but both ARE present
+      in `result` on the pure-Python path.
+      `ifault` is MODEL adequacy, not convergence (`estimate_py.py:327-332` says so
+      explicitly), so a run that stopped short of an optimum but yielded a formally
+      adequate model was labelled "OPTIMIZER CONVERGED" with a fabricated reason.
+      **Why it matters (per David):** in multivariate VARMA the *reason* for
+      stopping is a first-order diagnostic — ill-conditioned likelihoods, near
+      non-identification and common factors show up as termination on `steptol`
+      rather than on the gradient. Measured here: the four final VAR(1)/VAR(2) fits
+      all stop on **termcode=1 (gradtol)** — genuine convergence — while every
+      VARMA(3,2) stops on **termcode=3** ("last global step failed to locate a lower
+      point") **with ifault=0**, i.e. non-converged fits were silently entering the
+      order-search ranking.
+      **Fixes applied:** (a) `report._convergence_block` mirrors the C, reports the
+      real criterion and the iteration count, warns explicitly on termcode 2
+      (steptol → suspect ill-conditioning, distrust the standard errors) and on
+      3/4/5 (not a convergence at all); (b) `Model` now exposes `termcode`,
+      `nit` and `converged`; (c) `mcp_server.confirm_and_estimate` reports the
+      convergence diagnosis, and `identify_varma_order` **rejects non-converged
+      fits** from the ranking instead of ranking them.
+      Also handled: **termcode 0**, which is not a termination code at all (in the C
+      it is the "keep iterating" state). It means the optimiser never ran — no free
+      parameters, or the initial evaluation failed — so the reported values are the
+      STARTING values, not estimates. Now reported as `OPTIMIZER NOT RUN`.
+      Tests: `test_convergence_is_reported_from_termcode_not_ifault`,
+      `test_optimizer_not_run_is_reported_as_such`.
+      Open follow-up: `estimate_py.py:329-331` argues termcode 3 "means it is AT the
+      optimum, so it is not a fault". The C disagrees (it prints STOPPED). Worth
+      settling, since termcode 3 also arises from a bad search direction under
+      ill-conditioning, not only from sitting at the optimum.
 - [ ] **BUG (C engine, HIGH) — `double free or corruption` on the deseason+VARMA
       path.** Surfaced building the multiart MCP (2026-07-28). Repro: 2-variate
       seasonal series → `Model(..., deseason="auto").fit()` via the compiled engine
@@ -18,11 +110,139 @@ pure-Python fallback with no compiled engine. Remaining: the graphics finish
       deseason/dummy buffer, or an ownership bug in the cast when levels were
       deseasonalized upstream). Until fixed, the C engine must not be the default
       for the deseason path.
-- [ ] **BUG (pure-Python, MEDIUM) — `inf` log-likelihood for some MA-bearing specs
-      with deseason.** e.g. VARMA(0,1) on the deseasonalized seasonal repro returns
-      `loglik=inf` → `-inf` AIC/BIC, polluting the order-search ranking (it doesn't
-      crash). Likely a degenerate factorisation in `estimate_py` for q>0 on that
-      data. Guard/clean the pure-Python MA path.
+- [x] **FIXED in the order search (pure-Python numerics still open, HIGH) — `inf` log-likelihood for some
+      MA-bearing specs with deseason, and it drives the order *recommendation*.**
+      Raised from MEDIUM after the oil pass-through exercise (2026-07-28).
+      Repro: `bench/repro_multiart_passthrough.py` (BUG 2), real data, 4 independent
+      bivariate datasets (WTI + CPI for US/ES/FR/DE, monthly 2002:02–2019:12, n=215).
+      New facts vs the original filing:
+      * **Systematic, not data-specific.** Exactly (0,1), (0,2) and (1,2) blow up on
+        all four datasets — identical set every time.
+      * **Root cause located:** `estimate_py.py:337-338`,
+        `logelf = ... - 0.5*n*(m*np.log(f1) + np.log(f2))`. When `f1` or `f2` → 0 the
+        log gives `-inf` and the leading minus flips it to `+inf` (hence the
+        `RuntimeWarning: divide by zero encountered in log`). It is a sign trap, so
+        the bad value sorts *best* under every information criterion.
+      * **The diagnosis already exists and is correct:** those fits carry
+        **`ifault=3`** (non-stationary). Nothing propagates it.
+      * **It corrupts the recommendation, not just the ranking.**
+        `mcp_server.identify_varma_order` filters with `r[4] is not None`, which only
+        drops raised exceptions; non-finite entries survive, sort first, and `ok[0]`
+        is emitted as "Recomendación (mín. BIC): **VARMA(0,1)**" — on all four
+        countries. A pure MA(1) for monthly inflation is indefensible and contradicts
+        the CCM evidence, so in AUTONOMOUS mode this silently yields a wrong model.
+      * **Fix (two lines, independent of the numerical fix):** in
+        `identify_varma_order`, keep only `np.isfinite(ll)` **and** `ifault == 0`;
+        report the discarded specs instead of hiding them. Then guard the
+        degenerate factorisation in the pure-Python MA path.
+- [x] **RESOLVED — it was a CONSEQUENCE of the deseason phase bug — exact
+      log-likelihood not monotone in `p`: a nested model fitted *better* than the
+      larger one, with `ifault=0`.**
+      **Update after fixing the phase bug:** the same DE dataset (still starting in
+      February, i.e. the case that used to fail) now gives a monotone sequence
+      VAR(1) −752.74 → VAR(2) −745.76 → VAR(3) −743.30. The mis-phased
+      deseasonalisation was injecting spurious structure that made the optimiser
+      fail on the larger model; with the correct phase the failure disappears. No
+      separate optimiser bug. The nesting sanity check added to
+      `identify_varma_order` stays as a guard, and non-converged fits are now
+      rejected outright via `termcode` (see the convergence entry above).
+      Original observation, kept for the record:
+      Found 2026-07-28, same exercise. Repro: `bench/repro_multiart_passthrough.py`
+      (BUG 3). For the DE dataset (WTI + IPC_DE, λ=0, d=1, deseason="auto"):
+      `VAR(1) = -865.54`, `VAR(2) = -859.29`, **`VAR(3) = -1032.49`**. VAR(1) is
+      nested in VAR(3), so the maximised likelihood cannot decrease — this is an
+      optimiser convergence failure reported as a valid fit. US/ES/FR are monotone
+      on the same call, so it is specific to this fit, not a systematic formula bug.
+      Worse than the `inf` case: the bad fit reports **`ifault=0`**, so there is no
+      existing flag to propagate, and `termcode`/`nit` (computed in `estimate_py`,
+      see the comment at lines 327-332) are **not exposed as attributes of the fitted
+      `Model`** — a caller has no way to detect it. It silently corrupts every
+      information criterion derived from it: in the order search DE's VAR(3) row
+      showed AIC/BIC/HQ ≈ 2099/2156/2122 against ≈1745/1788/1762 for VAR(2).
+      Suggested: expose `termcode`/`nit` on the fit; add a cheap nesting sanity check
+      (or a multi-start / better initialisation) in the order search.
+- [x] **FIXED (MCP) — `load_data` silently dropped observation 1 of a
+      header-less numeric CSV, and ignores the header row when there is one.**
+      Found 2026-07-28. Repro: `bench/repro_multiart_passthrough.py` (BUG 1).
+      `mcp_server.py:172-177` applies `np.genfromtxt(path, delimiter=",",
+      skip_header=1)` unconditionally and only retries without the skip when the
+      result is **all** NaN. A purely numeric CSV with no header parses fine after
+      skipping, so the retry never fires: `US_levels.csv` (215 rows) loads as 214
+      obs starting at the *second* row, with no warning. In the pass-through
+      exercise that silently changed the estimation sample (the first differenced
+      observation is lost) — exactly the class of error that invalidates a
+      published result without ever looking wrong.
+      Second defect, same function: the CSV branch never reads column names from the
+      header (only the Excel branch does, lines 168-169), so a well-formed CSV loads
+      as `['y1', 'y2']` unless `series_names` is passed.
+      Fix: sniff the first line (try `float()` on its fields) to decide header vs
+      no-header, and take `names` from it when it is a header.
+
+- [x] **FIXED (MCP) — the unit-root search was not capped at d=1, so a seasonal
+      series could be over-differenced to d=2.** Found 2026-07-28.
+      ART's identification order is λ → d → seasonality *by design*: d is chosen
+      before seasonality is handled. ADF/KPSS have low power against a seasonal
+      series, so they can fail to reject at d=1 and escalate to d=2 spuriously —
+      over-differencing an I(1) series and injecting a spurious MA unit root (the
+      same failure mode `recommended_d` already documents as BUG-0002 for KPSS).
+      `characterize_series` called `unit_root_tests(ts, lam=lam)` with the default
+      `max_d=2`. Measured on IPC_ES (seasonal R²=0.79), ADF is right at the margin:
+
+      | sample | d=0 | d=1 | d=2 | recommended_d |
+      |---|---|---|---|---|
+      | from January (n=216) | no reject | **no reject** | reject | **2** |
+      | from February (n=215) | no reject | **reject** | reject | 1 |
+      | deseasonalised | reject | reject | reject | 0 |
+
+      One observation flips the order of integration — the signature of a test with
+      no power, not of a genuine I(2) series. **Fix applied:** pass `max_d=1`, so the
+      search only goes d=0 → d=1 and the seasonality step handles the rest. All five
+      series (WTI, CPI_USA, IPC_ES/FR/DE) then give a stable d=1 on both samples.
+      Regression test: `test_characterize_d_stable_to_one_extra_observation`.
+      NB: this is a cap in the multiart seed only — `recommended_d` itself behaves as
+      specified and was not changed.
+
+## multiart MCP — design gaps (not bugs, but they hid the bugs above)
+
+Found while running the oil pass-through exercise end to end (2026-07-28). Each of
+these is a reason a wrong result went unnoticed.
+
+- [x] **FIXED — `confirm_and_estimate` reported only Φ₁ and Σ.** No Φ₂..Φ_p, no Θ, and no
+      standard errors — although `Model.std_errors` exists. For a VARMA(3,1) the user
+      sees 4 of 16 AR/MA coefficients and cannot judge significance at all. The
+      published note's central table is a *t*-ratio table (pass-through coefficient
+      and its stars), which multiart currently cannot produce. Emit all Φ_k, Θ_k,
+      std errors and t-ratios.
+- [x] **FIXED — `diagnose` had no power against seasonal residual autocorrelation.**
+      It reports only an aggregated Hosking Q(14) with df=56 plus Jarque-Bera. On the
+      US fit it returned "sin autocorrelación cruzada ✓, Modelo adecuado" (p=0.447)
+      while the CPI residuals had ACF(12)=+0.27 and ACF(24)=+0.26, both well outside
+      2/√n. A single spike at the seasonal lag is diluted by 56 degrees of freedom.
+      Report the residual ACF lag by lag (at least s and 2s), or add a seasonal-lag
+      Ljung-Box, and never print "Modelo adecuado" on the aggregate test alone.
+- [ ] **Nothing verifies that deseasonalisation worked.** `characterize_series`
+      detects seasonality and sets `deseason=auto`, but no step checks the result. A
+      one-line post-condition — ACF(s) of the prepared series must drop in absolute
+      value versus not adjusting — would have caught the CRITICAL phase bug above
+      immediately, on the first run.
+- [ ] **`characterize_series` reports seasonality as a yes/no.** No F statistic, no
+      seasonal R², no amplitude. Here the seasonal component was 40–79 % of the
+      variance of monthly inflation (ES R²=0.79, amplitude 2.05 pp) — a first-order
+      feature of the data that the summary table renders as "sí".
+- [ ] **The seed's (p,q) ceiling is too tight to be useful.** The consensus saved for
+      these datasets was `(p,q)≤(0,1)`, and `identify_varma_order` treats
+      `p_max=0`/`q_max=0` as "use the seed", so the DEFAULT call searches VMA(1) only
+      — it cannot even reach the VAR(1)/VAR(2) of the published note. Combined with
+      the `inf` bug this makes "VARMA(0,1)" the default answer twice over.
+- [ ] **No access to residuals or fitted parameters through the MCP surface.** Every
+      cross-check in this exercise (residual ACF, OLS arbitration, reproducing the
+      published table) had to bypass multiart and drive `drvarma` directly. Expose
+      residuals and the full parameter vector.
+- [ ] **IRF/FEVD come without confidence bands**, so there is no way to tell a
+      pass-through share of 5 % from one of 26 % in terms of significance.
+- [ ] **The cointegration warning promised in the server instructions never fired.**
+      The instructions say to warn when series look I(1) and move together; loading
+      four I(1) level pairs produced no such notice.
 
 ## P2 — remaining (presentation only)
 - [x] **Report writers** (`report.py`): `.forecast` is **byte-exact** vs the C
