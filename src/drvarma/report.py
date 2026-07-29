@@ -181,18 +181,73 @@ def _header_block(model, input_path, output_path):
     return "".join(out)
 
 
-def _convergence_block(model):
-    """Convergence banner.
+_TERMCODE_CRIT = {
+    1: "norm of scaled gradient <= gradtol",
+    2: "scaled distance between last two steps <= steptol",
+    3: "last global step failed to locate a lower point",
+    4: "iteration limit reached",
+    5: "five consecutive steps of maximum length taken",
+}
 
-    The C engine's internal iteration count and optimizer objective scalar are
-    not exposed by the CFFI result, so this reports the exact log-likelihood
-    instead (see docs/STATUS.md).
+
+def _convergence_block(model):
+    """Convergence banner, mirroring the C `qnewtopt.c` optimizer report.
+
+    CONVERGED/STOPPED is decided by the OPTIMIZER's termination code, as in the C
+    (`termcode in (1, 2)`), not by `ifault`. `ifault` reports MODEL adequacy
+    (0 OK, 1 Q not PD, 2 AR unit root, 3 non-stationary, 4 MA non-invertible,
+    5 numerical) — a run can stop early at a non-optimum and still yield a
+    formally adequate model, which the old `ifault`-based banner mislabelled as
+    "OPTIMIZER CONVERGED". It also printed the `termcode == 1` criterion
+    unconditionally, so the stated reason could be simply wrong. Both are
+    reported separately here, plus the iteration count.
+
+    `termcode`/`nit` are present in the pure-Python result; when a backend does
+    not supply them the banner degrades to the log-likelihood only.
     """
     r = model.result
-    status = "CONVERGED" if r["ifault"] == 0 else "FAILED (code %d)" % r["ifault"]
-    return ("\n\n%s\n  OPTIMIZER %s\n  Log-likelihood = %.6f\n"
-            "  Convergence criterion: norm of scaled gradient <= gradtol\n%s\n"
-            % (EQ, status, r["logelf"], EQ))
+    tc = r.get("termcode")
+    nit = r.get("nit")
+    lines = [EQ]
+    if tc is None:
+        lines.append("  OPTIMIZER status unavailable (backend reports no termcode)")
+    elif tc == 0:
+        # In the C, 0 is the "keep iterating" state, so it can never be a
+        # termination code: here it means the optimiser was never run (no free
+        # parameters, or the initial evaluation already failed). The reported
+        # values are then the STARTING values, not estimates.
+        lines.append("  OPTIMIZER NOT RUN — no free parameters, or the initial "
+                     "evaluation failed.")
+        lines.append("  ⚠ the reported values are the STARTING values, not "
+                     "maximum-likelihood estimates.")
+    else:
+        status = "CONVERGED" if tc in (1, 2) else "STOPPED"
+        lines.append("  OPTIMIZER %s%s"
+                     % (status, "" if nit is None else " after %d iterations" % nit))
+    lines.append("  Log-likelihood = %.6f" % r["logelf"])
+    if tc is not None and tc in _TERMCODE_CRIT:
+        lines.append("  Convergence criterion: %s" % _TERMCODE_CRIT[tc])
+    # WHY it stopped matters as much as WHETHER it stopped. Only termcode 1 is
+    # convergence on the gradient. termcode 2 means the step became too small
+    # while the gradient may still be appreciable — the usual signature of an
+    # ill-conditioned likelihood, which is common in multivariate VARMA (near
+    # non-identification, common factors, weak MA roots). Say so explicitly.
+    if tc == 2:
+        lines.append("  ⚠ stopped on steptol, NOT on the gradient: the step "
+                     "collapsed while the gradient may still be appreciable.")
+        lines.append("    Typical of an ill-conditioned likelihood (near "
+                     "non-identification / common factors). Treat the standard "
+                     "errors with caution and re-estimate from other starting "
+                     "values or with a smaller order.")
+    elif tc in (3, 4, 5):
+        lines.append("  ⚠ NOT a convergence: the optimiser gave up (%s). The "
+                     "estimates are not a maximum; every criterion derived from "
+                     "this fit is unreliable." % _TERMCODE_CRIT.get(tc, "?"))
+    if r["ifault"] != 0:
+        lines.append("  ⚠ MODEL ADEQUACY: ifault=%d — the fit is not adequate"
+                     % r["ifault"])
+    lines.append(EQ)
+    return "\n\n" + "\n".join(lines) + "\n"
 
 
 def _param_labels(model):

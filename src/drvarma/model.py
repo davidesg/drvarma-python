@@ -34,18 +34,36 @@ class Model:
         self._dummies = None
         self._deseason_info = None
 
-    def fit(self):
-        """Deseasonalise (optional), transform and estimate by exact ML (C engine)."""
-        from ._engine import estimate_w
+    def prepare(self, scale=None):
+        """Deseasonalise (optional) and transform, WITHOUT estimating.
+
+        Single source of truth for how a Model turns ORIGINAL levels into the
+        stationary series it estimates on. Identification tools (CCM, Tiao-Box)
+        must call this instead of replaying the same steps themselves, so that
+        "the series we identify on" and "the series we estimate on" cannot drift
+        apart when this pipeline changes.
+
+        Returns (w, bc, levels_after_deseason).
+        """
         levels = self.series.data
+        dummies = deseason_info = None
         if self.deseason:
             from .deseason import deseasonalize_raw
             yr, sub = self.series.start
-            levels, self._dummies, self._deseason_info = deseasonalize_raw(
+            levels, dummies, deseason_info = deseasonalize_raw(
                 levels, s=self.series.freq, start_sub=sub, mode=self.deseason)
+        w, bc = transform.transform(levels, lam=self.lam, d=self.d, D=self.D,
+                                    s=self.series.freq,
+                                    scale=self.scale if scale is None else scale)
+        return w, bc, levels, dummies, deseason_info
+
+    def fit(self):
+        """Deseasonalise (optional), transform and estimate by exact ML (C engine)."""
+        from ._engine import estimate_w
+        w, bc, levels, dummies, dsinfo = self.prepare()
+        if self.deseason:
+            self._dummies, self._deseason_info = dummies, dsinfo
         self._levels = levels
-        w, bc = transform.transform(levels, lam=self.lam, d=self.d,
-                                    D=self.D, s=self.series.freq, scale=self.scale)
         self._w, self._bc = w, bc
         self.result = estimate_w(
             w, p=self.p, q=self.q, include_mean=self.include_mean,
@@ -184,4 +202,37 @@ class Model:
 
     @property
     def ifault(self):
+        """MODEL adequacy code (0 OK, 1 Q not PD, 2 AR unit root, 3 non-stationary,
+        4 MA non-invertible, 5 numerical). NOT an optimiser convergence flag —
+        see `termcode`."""
         return self._get("ifault")
+
+    @property
+    def termcode(self):
+        """OPTIMIZER termination code (raxopt): 1 gradient <= gradtol, 2 step
+        <= steptol (both = converged), 3 line search found no lower point,
+        4 iteration limit, 5 five max-length steps. None if the backend does not
+        report it. A fit can have ifault == 0 and still not have converged."""
+        try:
+            return self.result.get("termcode")
+        except AttributeError:
+            return None
+
+    @property
+    def converged(self):
+        """True/False from `termcode`; None when the backend does not report it.
+
+        termcode 0 means the optimiser never ran (no free parameters, or the
+        initial evaluation failed), so the values are the starting ones — that is
+        not convergence either.
+        """
+        tc = self.termcode
+        return None if tc is None else tc in (1, 2)
+
+    @property
+    def nit(self):
+        """Optimiser iteration count, or None if not reported."""
+        try:
+            return self.result.get("nit")
+        except AttributeError:
+            return None
