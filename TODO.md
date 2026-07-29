@@ -100,6 +100,35 @@ pure-Python fallback with no compiled engine. Remaining: the graphics finish
       optimum, so it is not a fault". The C disagrees (it prints STOPPED). Worth
       settling, since termcode 3 also arises from a bad search direction under
       ill-conditioning, not only from sitting at the optimum.
+- [ ] **BUG (pure-Python, HIGH — NEW) — `elf` rechaza VARMA estacionarios cuando
+      Φ_p es singular, que es lo normal en un VARMA NO BALANCEADO.**
+      Encontrado 2026-07-29 portando el cast empotrado de drtran.
+      Repro: `bench/repro_phi_p_singular.py`.
+      Un VARMA cuyas ecuaciones tienen órdenes distintos tiene ceros en los
+      retardos altos de las filas de menor orden ⇒ Φ_p de rango deficiente. Es la
+      situación normal de: (a) el cast EMPOTRADO de drtran
+      (`build_embedded_varma`), donde el orden de la fila i es deg(φ_i·D_i); y
+      (b) cualquier forma ECHELON con índices de Kronecker desiguales.
+      `_elf_f1f2` devuelve **ifault=3** ("non-stationary") sobre estos modelos
+      aunque todas las raíces de det(Φ(B)) estén fuera del círculo unidad:
+
+      | Φ₂ | raíz mín. | ifault |
+      |---|---|---|
+      | `[[-0.12,0],[0,0]]` (fila nula) | 2.500 | **3** |
+      | `[[-0.12,0],[0,-0.05]]` | 2.500 | 0 |
+      | `[[-0.12,0],[0,1e-8]]` | 2.500 | **0** |
+      | `[[-0.12,0],[0,0.0]]` | 2.500 | **3** |
+
+      Perturbar el cero con 1e-8 lo arregla: no es degradación numérica, es un
+      test que falla exactamente en el caso singular. Origen: `_as311.cgamma`
+      («ifault: 1 if the Yule-Walker system is singular»), que `elf` traduce a 3.
+      **ES DEL PORT, NO DEL C** (comprobado): el `drtran` compilado estima esos
+      mismos modelos con el cast empotrado —
+      `-b 0 -r 1 -s 0 -V` → −721.801539, `-b 1 -r 1 -s 1 -V` → −756.602851 —
+      mientras la ruta pure-Python devuelve ifault=3 sobre la misma estructura.
+      Impacto: bloquea el puerto del cast empotrado de drtran, que es el cast por
+      DEFECTO del C, y cierra la puerta a la forma echelon. El cast por resta no
+      está afectado (validado contra el C a 1e-7 en 4 combinaciones de b/r/s).
 - [ ] **BUG (C engine, HIGH) — `double free or corruption` on the deseason+VARMA
       path.** Surfaced building the multiart MCP (2026-07-28). Repro: 2-variate
       seasonal series → `Model(..., deseason="auto").fit()` via the compiled engine
