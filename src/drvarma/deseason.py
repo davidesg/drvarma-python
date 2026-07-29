@@ -138,7 +138,16 @@ def deseasonalize_raw(raw, s, start_sub=1, mode="auto", d=1, alpha=0.05):
         is_seasonal = f_stat > f_crit
         do_des = True if force else is_seasonal
         if do_des:
-            level = harmonics_to_dummies(coeffs, s)
+            # `_harmonic_design` builds the harmonics from t = i + d + 1, i.e. in a
+            # phase RELATIVE to the start of the series, and never sees `start_sub`.
+            # So `level` is indexed by offset-from-start, not by absolute subperiod.
+            # Rotate it into absolute-subperiod indexing before using it, otherwise
+            # the pattern is estimated in one phase and subtracted in another — which
+            # for start_sub != 1 ADDS seasonal variance instead of removing it.
+            # With start_sub == 1 the rotation is the identity (back-compatible).
+            level_rel = harmonics_to_dummies(coeffs, s)
+            level = np.empty(s)
+            level[(np.arange(s) + start_sub - 1) % s] = level_rel
             dummies[j] = level
             periods = (np.arange(nobs) + start_sub - 1) % s
             adjusted[:, j] = raw[:, j] - level[periods]
