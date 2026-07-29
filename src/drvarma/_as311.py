@@ -14,6 +14,8 @@ forward substitution, quadratic forms) use NumPy, matching the C ``choldcp`` /
 License: GPL-2.0-or-later
 """
 
+import math
+
 import numpy as np
 
 _LOG2PI = 1.837877066
@@ -35,21 +37,82 @@ def _to_1based_cube(arr, p, m):
     return out
 
 
+_MACHEPS = float(np.finfo(float).eps)
+
+
 def _chol_lower(A_1, n):
-    """Cholesky lower factor of a 1-indexed symmetric PD matrix A_1 (n x n).
+    """Cholesky lower factor of a 1-indexed symmetric matrix A_1 (n x n).
+
+    Faithful port of `nlatools.c:choldcp` — the MODIFIED Cholesky of
+    Gill-Murray-Wright (Dennis & Schnabel, Algorithm A5.5.2), NOT a plain
+    Cholesky.  The difference matters: it accepts matrices that are positive
+    SEMI-definite, replacing a too-small pivot by `minljj` and carrying on,
+    and only fails when a pivot is negative AND its magnitude exceeds
+    `minl2 = sqrt(macheps)*maxoffl`.
+
+    The port originally used `np.linalg.cholesky`, which is strict and rejects
+    any non-PD matrix.  That made `elf` return ifault=3 on perfectly stationary
+    VARMA models whose Omega is singular — which is the normal situation for a
+    NON-BALANCED VARMA (different orders per equation), i.e. the embedded cast of
+    drtran and any echelon form with unequal Kronecker indices.  The C estimated
+    those models fine; the port did not.  See `bench/repro_phi_p_singular.py`.
 
     Returns (L_1, detfac, ifault): L_1 is 1-indexed lower-triangular with
-    A = L L'; detfac = det(A); ifault=1 if not positive definite.
+    A ~ L L'; detfac = product of the squared diagonal of L; ifault=1 if the
+    matrix is indefinite beyond tolerance.
     """
     A = A_1[1:n + 1, 1:n + 1]
-    A = 0.5 * (A + A.T)
-    try:
-        L = np.linalg.cholesky(A)
-    except np.linalg.LinAlgError:
-        return None, 0.0, 1
+    mat = np.array(0.5 * (A + A.T), dtype=float, copy=True)
+
+    sqrteps = math.sqrt(_MACHEPS)
+
+    # [1] is the matrix numerically zero?
+    maxoffl = 0.0
+    for j in range(n):
+        v = math.sqrt(abs(mat[j, j]))
+        if v > maxoffl:
+            maxoffl = v
+    if maxoffl * maxoffl <= sqrteps:
+        return np.zeros((n + 1, n + 1)), 0.0, 0
+
+    # [2] finite-arithmetic constants
+    minl = 0.0
+    minl2 = sqrteps * maxoffl
+
+    # [3] j-th column of the Cholesky factor
+    for j in range(n):
+        s = mat[j, j] - float(np.dot(mat[j, :j], mat[j, :j]))
+        if s < 0.0 and abs(s) > minl2:
+            return None, 0.0, 1                  # indefinite beyond tolerance
+        mat[j, j] = s
+
+        minljj = 0.0
+        for i in range(j + 1, n):
+            s = mat[j, i] - float(np.dot(mat[i, :j], mat[j, :j]))
+            mat[i, j] = s
+            if abs(s) > minljj:
+                minljj = abs(s)
+
+        minljj = minljj / maxoffl if (minljj / maxoffl) > minl else minl
+
+        if mat[j, j] > minljj * minljj:
+            mat[j, j] = math.sqrt(mat[j, j])
+        else:
+            # Too small (or zero): substitute, do not fail. This is what lets a
+            # positive SEMI-definite Omega through.
+            if minljj < minl2:
+                minljj = minl2
+            mat[j, j] = minljj
+
+        for i in range(j + 1, n):
+            mat[i, j] /= mat[j, j]
+
+    for j in range(1, n):                        # clear the upper triangle
+        mat[:j, j] = 0.0
+
     L1 = np.zeros((n + 1, n + 1))
-    L1[1:n + 1, 1:n + 1] = L
-    detfac = float(np.prod(np.diag(L)) ** 2)
+    L1[1:n + 1, 1:n + 1] = mat
+    detfac = float(np.prod(np.diag(mat)) ** 2)
     return L1, detfac, 0
 
 

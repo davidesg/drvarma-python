@@ -5,11 +5,13 @@ just a golden value. Run before and after any change:
 
     DRVARMA_NO_ENGINE=1 pytest tests/test_regression_bugs.py -q
 
-Known PRE-EXISTING failures elsewhere in the suite (unrelated to these fixes, they
-fail on a clean tree too — do not treat as regressions caused by this work):
-  * tests/test_deseason.py::test_deseason_params_and_forecast_match_c
-  * tests/test_report.py::test_out_deterministic_sections_byte_exact[marker_pair4]
-  * tests/test_volatility.py::test_volexp_volmov_byte_exact   (1e-6 drift)
+UPDATE (2026-07-29): the three pre-existing failures that used to be listed here —
+`test_deseason_params_and_forecast_match_c`,
+`test_out_deterministic_sections_byte_exact[marker_pair4]` and
+`test_volexp_volmov_byte_exact` — now PASS. All three were C-parity tests, and all
+three had the same cause: `_chol_lower` used a strict `np.linalg.cholesky` instead
+of the C's MODIFIED Cholesky (`nlatools.c:choldcp`). Porting it faithfully restored
+parity. The suite is now 195 passed / 0 failed.
 """
 import os
 
@@ -278,6 +280,67 @@ def test_ccf_uses_the_dot_out_orientation_convention(tmp_path):
     k_neg = float(np.abs(rho[:6]).max())
     assert k_pos > k_neg, ("with s0 leading s1 the mass must sit at k>0 under the "
                            ".out convention")
+
+
+def test_elf_accepts_stationary_varma_with_singular_phi_p():
+    """Un VARMA NO BALANCEADO tiene Φ_p singular por construcción, y `elf` debe
+    estimarlo si es estacionario.
+
+    El port usaba `np.linalg.cholesky` (estricta) donde el C usa la Cholesky
+    MODIFICADA de `nlatools.c:choldcp`, que acepta matrices semidefinidas
+    sustituyendo un pivote demasiado pequeño en vez de fallar. Con la estricta,
+    `elf` devolvía ifault=3 ("non-stationary") sobre modelos perfectamente
+    estacionarios, bloqueando el cast empotrado de drtran y cualquier forma
+    echelon con índices de Kronecker desiguales.
+
+    La firma del bug era una discontinuidad: perturbar el cero con 1e-8 lo
+    arreglaba. Aquí se fija el caso singular exacto.
+    """
+    from drvarma.estimate_py import _elf_f1f2
+
+    rng = np.random.default_rng(0)
+    w = rng.normal(0, 1, (215, 2))
+    # (1-0.7B+0.12B^2)(1-0.3B) = (1-0.4B)(1-0.3B)(1-0.3B): estacionario
+    phi = np.array([[[0.7, 0.0], [0.0, 0.3]],
+                    [[-0.12, 0.0], [0.0, 0.0]]])      # Phi_2 con la fila 2 nula
+    assert abs(np.linalg.det(phi[-1])) < 1e-14, "Phi_p debe ser singular"
+
+    f1, f2, ifault = _elf_f1f2(w, np.zeros(2), phi, np.zeros((0, 2, 2)),
+                               np.eye(2), -1e-3)
+    assert ifault == 0, "un VARMA estacionario con Phi_p singular debe estimarse"
+    assert f1 > 0.0 and f2 > 0.0
+
+    # y el resultado debe ser continuo: perturbar el cero no puede cambiar nada
+    phi_eps = phi.copy()
+    phi_eps[1, 1, 1] = 1e-10
+    f1e, _f2e, ife = _elf_f1f2(w, np.zeros(2), phi_eps, np.zeros((0, 2, 2)),
+                               np.eye(2), -1e-3)
+    assert ife == 0
+    assert f1e == pytest.approx(f1, rel=1e-6)
+
+
+def test_chol_lower_accepts_semidefinite_and_rejects_indefinite():
+    """`choldcp` acepta semidefinidas positivas y sólo rechaza las indefinidas
+    más allá de la tolerancia sqrt(macheps)·maxoffl."""
+    from drvarma._as311 import _chol_lower
+
+    def envolver(A):
+        n = A.shape[0]
+        A1 = np.zeros((n + 1, n + 1))
+        A1[1:, 1:] = A
+        return A1, n
+
+    pd = np.array([[2.0, 0.5], [0.5, 1.0]])
+    L, det, ifa = _chol_lower(*envolver(pd))
+    assert ifa == 0 and det == pytest.approx(np.linalg.det(pd), rel=1e-8)
+
+    semi = np.array([[1.0, 0.0], [0.0, 0.0]])          # singular, PSD
+    _L, _d, ifa = _chol_lower(*envolver(semi))
+    assert ifa == 0, "una PSD singular debe aceptarse, no fallar"
+
+    indef = np.array([[1.0, 0.0], [0.0, -5.0]])        # claramente indefinida
+    _L, _d, ifa = _chol_lower(*envolver(indef))
+    assert ifa == 1, "una indefinida sí debe rechazarse"
 
 
 def test_convergence_is_reported_from_termcode_not_ifault():

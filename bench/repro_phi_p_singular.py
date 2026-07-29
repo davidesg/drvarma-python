@@ -1,4 +1,7 @@
-"""Repro: `elf` rechaza un VARMA estacionario cuando Φ_p es singular.
+"""Repro: `elf` rechazaba un VARMA estacionario cuando Φ_p es singular.
+
+ARREGLADO el 2026-07-29 (ver el final del docstring). El script se conserva
+como regresión ejecutable: ahora debe imprimir 0 modelos rechazados.
 
 Encontrado el 2026-07-29 portando el cast EMPOTRADO de drtran, que produce
 Φ_p de rango deficiente por construcción.
@@ -37,10 +40,21 @@ estima. La ruta pure-Ython devuelve ifault=3 sobre la misma estructura. El
 arreglo va, por tanto, en `_as311.cgamma` (o en cómo se monta el sistema de
 Yule-Walker), no en el algoritmo.
 
-Impacto: bloquea el cast empotrado del puerto de drtran — que es el cast POR
+Impacto: bloqueaba el cast empotrado del puerto de drtran — que es el cast POR
 DEFECTO del C — y cualquier VARMA con órdenes desiguales por ecuación, incluida
-la forma echelon. El cast por resta no está afectado (se validó contra el C a
-1e-7 en cuatro combinaciones de b/r/s).
+la forma echelon.
+
+CAUSA RAÍZ Y ARREGLO (2026-07-29)
+---------------------------------
+Fallo de PORT: `_chol_lower` usaba `np.linalg.cholesky` (estricta) donde el C usa
+la Cholesky MODIFICADA de Gill-Murray-Wright (`nlatools.c:choldcp`). El C falla
+sólo si un pivote es negativo Y `|sum1| > sqrt(macheps)*maxoffl`; un pivote cero
+o demasiado pequeño lo SUSTITUYE por `minljj` y continúa. numpy aborta ante
+cualquier matriz no estrictamente definida positiva.
+
+`_chol_lower` es ahora un puerto fiel de `choldcp`. Tras el arreglo, el cast
+empotrado de drtran homologa con el binario C a ~1e-7, y los TRES tests de
+paridad con el C que arrastraba la suite pasan (192/3 -> 195/0).
 """
 import os
 

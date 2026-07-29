@@ -100,8 +100,29 @@ pure-Python fallback with no compiled engine. Remaining: the graphics finish
       optimum, so it is not a fault". The C disagrees (it prints STOPPED). Worth
       settling, since termcode 3 also arises from a bad search direction under
       ill-conditioning, not only from sitting at the optimum.
-- [ ] **BUG (pure-Python, HIGH — NEW) — `elf` rechaza VARMA estacionarios cuando
+- [x] **FIXED (pure-Python, era HIGH) — `elf` rechazaba VARMA estacionarios cuando
       Φ_p es singular, que es lo normal en un VARMA NO BALANCEADO.**
+      **CAUSA RAÍZ: un fallo de PORT.** `_chol_lower` usaba
+      `np.linalg.cholesky`, que es estricta, donde el C usa la Cholesky
+      **MODIFICADA** de Gill-Murray-Wright (`nlatools.c:choldcp`, Dennis &
+      Schnabel A5.5.2). La diferencia es exactamente el caso semidefinido: el C
+      falla sólo si un pivote es negativo **y** `|sum1| > sqrt(macheps)·maxoffl`;
+      si el pivote es cero o demasiado pequeño lo **sustituye** por `minljj` y
+      sigue. numpy aborta con cualquier matriz no estrictamente PD.
+      **Arreglo:** `_chol_lower` es ahora un puerto fiel de `choldcp`.
+      **Verificación:** el cast empotrado de drtran (que produce Φ_p singular por
+      construcción) homologa con el binario C a ~1e-7 en las cuatro
+      combinaciones probadas: (0,0,0) −736.774158, (0,1,0) −721.801539,
+      (0,0,1) −718.287406, (1,1,1) −756.602851.
+      **Efecto colateral: cerró los TRES fallos que arrastraba la suite.**
+      `test_deseason_params_and_forecast_match_c`,
+      `test_out_deterministic_sections_byte_exact[marker_pair4]` y
+      `test_volexp_volmov_byte_exact` eran los tres tests de paridad con el C, y
+      los tres fallaban por esta misma desviación numérica. La suite pasa de
+      192/3 a **195 passed, 0 failed**.
+      Tests: `test_elf_accepts_stationary_varma_with_singular_phi_p`,
+      `test_chol_lower_accepts_semidefinite_and_rejects_indefinite`.
+      Descripción original del síntoma:
       Encontrado 2026-07-29 portando el cast empotrado de drtran.
       Repro: `bench/repro_phi_p_singular.py`.
       Un VARMA cuyas ecuaciones tienen órdenes distintos tiene ceros en los
