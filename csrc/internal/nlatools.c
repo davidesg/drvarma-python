@@ -412,9 +412,17 @@ int **imatrix( long nrl, long nrh, long ncl, long nch )
 real ***tensor( long nrl, long nrh, long ncl, long nch, long ndl, long ndh )
 {
    long i, j, nrow = nrh - nrl + 1, ncol = nch - ncl + 1;
-   real ***t = (real ***)calloc( (size_t)(nrh + 1), sizeof(real **) );
+   real ***t = (real ***)calloc( (size_t)nrow, sizeof(real **) );
    real **planes; real *data;
    if ( !t ) nrerror( "ALLOCATION FAILURE 1 in tensor()" );
+   t -= nrl;   /* Offset the base so t[nrl..nrh] is addressable, matching the
+                  (i-nrl) offsets used for planes/data below. Without this a
+                  tensor with a negative lower row index (e.g. gamwa's -q+1,
+                  q>0) writes t[nrl<0] out of bounds -> heap corruption and a
+                  double free in free_tensor. Undone there via free(t + nrl).
+                  (Restores the behaviour of the original NR t -= nrl.)
+                  Same fix as fue's nlatools.c, commit b3e7dfd: these two
+                  copies of this file must not drift apart.                 */
    planes = (real **)calloc( (size_t)(nrow * (nch + 1)), sizeof(real *) );
    if ( !planes ) nrerror( "ALLOCATION FAILURE 2 in tensor()" );
    data = (real *)calloc( (size_t)(nrow * ncol * (ndh + 1)), sizeof(real) );
@@ -436,7 +444,7 @@ void free_imatrix( int **m, long nrl, long nrh, long ncl, long nch )
    { if ( m ) { free( m[nrl] ); free( m ); } }
 void free_tensor( real ***t, long nrl, long nrh, long ncl, long nch,
                   long ndl, long ndh )
-   { if ( t ) { free( t[nrl][ncl] ); free( t[nrl] ); free( t ); } }
+   { if ( t ) { free( t[nrl][ncl] ); free( t[nrl] ); free( t + nrl ); } }
 
 real rmax( real a, real b )
 
