@@ -1061,6 +1061,20 @@ int drvarma_elf(int m, int n, int p, int q,
 
     if (m < 1 || n < 1 || mu == NULL || qq == NULL || w == NULL) return 5;
 
+    /* p = q = 0 no lo sobrevive el motor: g = max(p,q) = 0 y por dentro se
+       reserva matrix(1, m*g, 1, m*g), degenerada, que acaba en segfault.  Es
+       una limitacion PREEXISTENTE -- drvarma_estimate(p=0,q=0) vuelca core
+       igual -- y no algo de esta entrada, pero esta puerta no va a entregarle
+       un caso que no aguanta.  El puerto de Python (_as311.elf) SI lo resuelve.
+       Un VARMA sin AR ni MA es ruido blanco: su verosimilitud es inmediata y no
+       necesita este motor.                                                    */
+    if (p == 0 && q == 0) return 6;
+
+    /* macheps es un GLOBAL que fija el main de cada programa (y, aqui,
+       drvarma_estimate).  Entrando por esta puerta nadie lo habia fijado, asi
+       que valia 0 y las tolerancias que dependen de el dejaban de cortar: elf
+       no volvia.  Se fija aqui, que es lo que hace todo llamante de elf.      */
+    macheps = cmacheps();
     Mu = vector(1, m);
     Qq = matrix(1, m, 1, m);
     W  = matrix(1, n, 1, m);
