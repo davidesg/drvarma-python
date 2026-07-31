@@ -88,3 +88,70 @@ def estimate_w(w, p, q, include_mean=False,
         lib.drvarma_result_free(res)
     _ = _wbuf  # keep buffer alive until here
     return out
+
+
+# -- elf: the exact likelihood at a GIVEN structure ------------------------- #
+
+def elf_c(m, n, p, q, mu, phi, theta, qq, w, sigma2=1.0, xitol=-1e-3, atf=False):
+    """Compiled `elf`, evaluated at a structure the caller built.
+
+    Same contract as `_as311.elf` but with **0-based, flat** arrays, which is
+    what a caller naturally has: `mu` (m,), `phi` (p, m, m), `theta` (q, m, m),
+    `qq` (m, m), `w` (n, m). Returns `(logelf, f1, f2, a, ifault)`, with `a`
+    (n, m) filled only when `atf=True`.
+
+    Why this exists: `estimate_w` fits a FREE VARMA(p, q); a restricted model —
+    a transfer function, a network, anything whose structure comes from a cast —
+    needs the likelihood *scored* at a given Phi/Theta/Sigma, and that could not
+    be asked for through the estimate entry point. The pure-Python `_as311.elf`
+    could, but it is ~250x slower, which is the difference between validating a
+    six-series system and being able to work with it.
+
+    Falls back to `_as311.elf` when the extension is not built.
+    """
+    import numpy as np
+
+    mu = np.ascontiguousarray(mu, dtype=np.float64)
+    qq = np.ascontiguousarray(qq, dtype=np.float64)
+    w = np.ascontiguousarray(w, dtype=np.float64)
+    phi = (np.ascontiguousarray(phi, dtype=np.float64) if p
+           else np.zeros((0, m, m)))
+    theta = (np.ascontiguousarray(theta, dtype=np.float64) if q
+             else np.zeros((0, m, m)))
+
+    try:
+        from drvarma._drvarma_engine import ffi, lib
+    except ImportError:                                    # pragma: no cover
+        from ._as311 import elf as _elf_py
+        Mu = np.zeros(m + 1); Mu[1:] = mu
+        Phi = np.zeros((max(p, 1) + 1, m + 1, m + 1))
+        for k in range(p):
+            Phi[k + 1, 1:, 1:] = phi[k]
+        Theta = np.zeros((max(q, 1) + 1, m + 1, m + 1))
+        for k in range(q):
+            Theta[k + 1, 1:, 1:] = theta[k]
+        Qq = np.zeros((m + 1, m + 1)); Qq[1:, 1:] = qq
+        W = np.zeros((n + 1, m + 1)); W[1:, 1:] = w
+        return _elf_py(m, n, p, q, Mu, Phi, Theta, Qq, W, sigma2, xitol, atf)
+
+    a_out = np.zeros(n * m, dtype=np.float64) if atf else None
+    f1 = ffi.new("double *")
+    f2 = ffi.new("double *")
+    lg = ffi.new("double *")
+
+    ifault = lib.drvarma_elf(
+        m, n, p, q,
+        ffi.from_buffer("double[]", mu.ravel()),
+        ffi.from_buffer("double[]", phi.ravel()) if p else ffi.NULL,
+        ffi.from_buffer("double[]", theta.ravel()) if q else ffi.NULL,
+        ffi.from_buffer("double[]", qq.ravel()),
+        ffi.from_buffer("double[]", w.ravel()),
+        float(sigma2), float(xitol), 1 if atf else 0,
+        ffi.from_buffer("double[]", a_out) if atf else ffi.NULL,
+        f1, f2, lg)
+
+    # 1-based (n+1, m+1) on the way out, to match `_as311.elf`
+    a = np.zeros((n + 1, m + 1))
+    if atf:
+        a[1:, 1:] = a_out.reshape(n, m)
+    return float(lg[0]), float(f1[0]), float(f2[0]), a, int(ifault)

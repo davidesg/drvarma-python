@@ -41,4 +41,33 @@ DrvarmaResult *drvarma_estimate(const DrvarmaModelSpec *spec);
 void           drvarma_result_free(DrvarmaResult *r);
 const char    *drvarma_strerror(int ifault);
 
+/* ------------------------------------------------------------------------- */
+/* drvarma_elf -- the exact likelihood, evaluated at a GIVEN structure.       */
+/*                                                                           */
+/* drvarma_estimate fits a FREE VARMA(p,q) from the data.  This is the other  */
+/* direction: score a Phi/Theta/Sigma that the caller built.  It is what a    */
+/* restricted model needs -- a transfer function, a network, anything whose   */
+/* structure comes from a cast rather than from (p,q) -- and it could not be  */
+/* asked for through the estimate entry point.                                */
+/*                                                                           */
+/* Arrays are FLAT and 0-based, row-major; this routine does the 1-based      */
+/* marshalling that `elf` expects:                                            */
+/*                                                                           */
+/*   mu     [m]           means                                              */
+/*   phi    [p*m*m]       phi[k*m*m + i*m + j] = Phi_(k+1)[i][j]              */
+/*   theta  [q*m*m]       likewise                                           */
+/*   qq     [m*m]         innovation covariance (or its ratios; see sigma2)   */
+/*   w      [n*m]         the stationary series, w[t*m + i]                   */
+/*   a_out  [n*m]         residuals, filled only when atf != 0 (may be NULL)  */
+/*                                                                           */
+/* Returns ifault (0 = ok), and writes f1, f2 and logelf.  Passing sigma2=1   */
+/* with qq normalised gives the CONCENTRATED likelihood, which is what the    */
+/* estimators use.                                                           */
+/* ------------------------------------------------------------------------- */
+int drvarma_elf(int m, int n, int p, int q,
+                const double *mu, const double *phi, const double *theta,
+                const double *qq, const double *w,
+                double sigma2, double delta, int atf,
+                double *a_out, double *f1, double *f2, double *logelf);
+
 #endif

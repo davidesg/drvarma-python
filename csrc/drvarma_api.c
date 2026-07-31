@@ -1037,3 +1037,86 @@ DrvarmaResult *drvarma_estimate(const DrvarmaModelSpec *spec)
     free_matrix(datamat, 1, nobs, 1, nser);
     return r;
 }
+
+/* ========================================================================= */
+/* drvarma_elf -- the exact likelihood at a GIVEN structure.                 */
+/*                                                                           */
+/* `elf` wants 1-based vectors/matrices/tensors (Numerical-Recipes style);    */
+/* callers across the FFI have flat 0-based buffers.  All this does is the    */
+/* marshalling, so that a restricted model -- a transfer function, a network  */
+/* -- can be scored by the same reference likelihood the estimators use,      */
+/* instead of being re-implemented on the other side of the binding.         */
+/* ========================================================================= */
+
+int drvarma_elf(int m, int n, int p, int q,
+                const double *mu, const double *phi, const double *theta,
+                const double *qq, const double *w,
+                double sigma2, double delta, int atf,
+                double *a_out, double *f1, double *f2, double *logelf)
+{
+    real  *Mu, **Qq, **W, **A = NULL;
+    real ***Phi = NULL, ***Theta = NULL;
+    real   lf1 = 0.0, lf2 = 0.0, llog = 0.0;
+    int    i, j, k, t, ifault = 0;
+
+    if (m < 1 || n < 1 || mu == NULL || qq == NULL || w == NULL) return 5;
+
+    Mu = vector(1, m);
+    Qq = matrix(1, m, 1, m);
+    W  = matrix(1, n, 1, m);
+    A  = matrix(1, n, 1, m);            /* elf writes here when atf != 0 */
+
+    /* Lower bound 0, NOT 1: elf touches lag zero, so the allocation has to
+       include it -- exactly as this file already does for armax->phi/theta
+       above.  Starting at 1 corrupts the heap ("double free or corruption")
+       instead of failing cleanly, which is how this was found.               */
+    Phi   = tensor(0, p, 1, m, 1, m);
+    Theta = tensor(0, q, 1, m, 1, m);
+
+    for (i = 1; i <= m; i++) Mu[i] = mu[i - 1];
+    for (i = 1; i <= m; i++)
+        for (j = 1; j <= m; j++) Qq[i][j] = qq[(i - 1) * m + (j - 1)];
+    for (t = 1; t <= n; t++)
+        for (i = 1; i <= m; i++) W[t][i] = w[(t - 1) * m + (i - 1)];
+
+    /* Lag ZERO is Phi_0 = Theta_0 = IDENTITY -- the convention elf expects, and
+       what this file already does for armax->phi/theta.  Zero-filling it hands
+       elf a singular Phi_0 and the run ends in heap corruption, not in a clean
+       ifault.  The caller passes only lags 1..p / 1..q, which is the natural
+       thing to have on the other side of the binding.                        */
+    for (k = 0; k <= p; k++)
+        for (i = 1; i <= m; i++)
+            for (j = 1; j <= m; j++)
+                Phi[k][i][j] = (k == 0) ? (i == j ? 1.0 : 0.0)
+                             : (phi != NULL
+                                ? phi[((k - 1) * m + (i - 1)) * m + (j - 1)] : 0.0);
+    for (k = 0; k <= q; k++)
+        for (i = 1; i <= m; i++)
+            for (j = 1; j <= m; j++)
+                Theta[k][i][j] = (k == 0) ? (i == j ? 1.0 : 0.0)
+                               : (theta != NULL
+                                  ? theta[((k - 1) * m + (i - 1)) * m + (j - 1)] : 0.0);
+
+    for (t = 1; t <= n; t++)
+        for (i = 1; i <= m; i++) A[t][i] = 0.0;
+
+    elf(m, n, p, q, Mu, Phi, Theta, Qq, W, sigma2, delta, atf, A,
+        &lf1, &lf2, &llog, &ifault);
+
+    if (f1)     *f1     = lf1;
+    if (f2)     *f2     = lf2;
+    if (logelf) *logelf = llog;
+
+    if (atf && a_out != NULL)
+        for (t = 1; t <= n; t++)
+            for (i = 1; i <= m; i++) a_out[(t - 1) * m + (i - 1)] = A[t][i];
+
+    free_tensor(Theta, 0, q, 1, m, 1, m);
+    free_tensor(Phi,   0, p, 1, m, 1, m);
+    free_matrix(A,  1, n, 1, m);
+    free_matrix(W,  1, n, 1, m);
+    free_matrix(Qq, 1, m, 1, m);
+    free_vector(Mu, 1, m);
+
+    return ifault;
+}
