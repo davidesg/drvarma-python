@@ -1,6 +1,12 @@
 /*****************************************************************************/
 /*  nlatools.c -- part of drvarma (multivariate VARMA modelling).
  *
+ *  SHARED, Numerical-Recipes-free version: kept byte-identical to
+ *  drvarma_v.04.1/src/nlatools.c and to drtran/src/nlatools.c.  Three
+ *  independent NR cleanups each dropped the same base offset in the memory
+ *  routines; one shared copy is the answer to that.  If you fix something here,
+ *  fix it there.
+ *
  *  Copyright (C) 1995-2026 A.B. Treadway, J.A. Mauricio & D.E. Guerrero.
  *
  *  This program is free software: you can redistribute it and/or modify it
@@ -371,41 +377,52 @@ void nrerror( char error_text[] )
    exit( 1 );
 }
 
+/*  Las rutinas de memoria devuelven el puntero DESPLAZADO (v - nl), de modo
+ *  que v[nl..nh] sea direccionable para CUALQUIER nl, negativo incluido, y las
+ *  free_* deshacen el desplazamiento.  Es la semantica que suponen todos los
+ *  llamantes -- la identificacion de drtran reserva vector(-nlags, nlags) y elf
+ *  reserva tensor(-q+1, 0, ...) -- y es lo que se perdio al reescribir el
+ *  fichero para liberarlo de Numerical Recipes: sin el desplazamiento se
+ *  reserva de menos y se indexa fuera.  El codigo es propio; lo que se conserva
+ *  es el CONTRATO.                                                            */
+
 real *vector( long nl, long nh )
 {
-   real *v = (real *)calloc( (size_t)(nh + 1), sizeof(real) );
+   real *v = (real *)calloc( (size_t)(nh - nl + 1), sizeof(real) );
    if ( !v ) nrerror( "ALLOCATION FAILURE in vector()" );
-   return( v );
+   return( v - nl );
 }
 
 int *ivector( long nl, long nh )
 {
-   int *v = (int *)calloc( (size_t)(nh + 1), sizeof(int) );
+   int *v = (int *)calloc( (size_t)(nh - nl + 1), sizeof(int) );
    if ( !v ) nrerror( "ALLOCATION FAILURE in ivector()" );
-   return( v );
+   return( v - nl );
 }
 
 real **matrix( long nrl, long nrh, long ncl, long nch )
 {
-   long i, nrow = nrh - nrl + 1;
-   real **m = (real **)calloc( (size_t)(nrh + 1), sizeof(real *) );
+   long i, nrow = nrh - nrl + 1, ncol = nch - ncl + 1;
+   real **m = (real **)calloc( (size_t)nrow, sizeof(real *) );
    real *data;
    if ( !m ) nrerror( "ALLOCATION FAILURE 1 in matrix()" );
-   data = (real *)calloc( (size_t)(nrow * (nch + 1)), sizeof(real) );
+   m -= nrl;
+   data = (real *)calloc( (size_t)(nrow * ncol), sizeof(real) );
    if ( !data ) nrerror( "ALLOCATION FAILURE 2 in matrix()" );
-   for ( i = nrl; i <= nrh; i++ ) m[i] = data + (i - nrl) * (nch + 1);
+   for ( i = nrl; i <= nrh; i++ ) m[i] = data + (i - nrl) * ncol - ncl;
    return( m );
 }
 
 int **imatrix( long nrl, long nrh, long ncl, long nch )
 {
-   long i, nrow = nrh - nrl + 1;
-   int **m = (int **)calloc( (size_t)(nrh + 1), sizeof(int *) );
+   long i, nrow = nrh - nrl + 1, ncol = nch - ncl + 1;
+   int **m = (int **)calloc( (size_t)nrow, sizeof(int *) );
    int *data;
    if ( !m ) nrerror( "ALLOCATION FAILURE 1 in imatrix()" );
-   data = (int *)calloc( (size_t)(nrow * (nch + 1)), sizeof(int) );
+   m -= nrl;
+   data = (int *)calloc( (size_t)(nrow * ncol), sizeof(int) );
    if ( !data ) nrerror( "ALLOCATION FAILURE 2 in imatrix()" );
-   for ( i = nrl; i <= nrh; i++ ) m[i] = data + (i - nrl) * (nch + 1);
+   for ( i = nrl; i <= nrh; i++ ) m[i] = data + (i - nrl) * ncol - ncl;
    return( m );
 }
 
@@ -420,9 +437,7 @@ real ***tensor( long nrl, long nrh, long ncl, long nch, long ndl, long ndh )
                   tensor with a negative lower row index (e.g. gamwa's -q+1,
                   q>0) writes t[nrl<0] out of bounds -> heap corruption and a
                   double free in free_tensor. Undone there via free(t + nrl).
-                  (Restores the behaviour of the original NR t -= nrl.)
-                  Same fix as fue's nlatools.c, commit b3e7dfd: these two
-                  copies of this file must not drift apart.                 */
+                  (Restores the behaviour of the original NR t -= nrl.)       */
    planes = (real **)calloc( (size_t)(nrow * (nch + 1)), sizeof(real *) );
    if ( !planes ) nrerror( "ALLOCATION FAILURE 2 in tensor()" );
    data = (real *)calloc( (size_t)(nrow * ncol * (ndh + 1)), sizeof(real) );
@@ -436,12 +451,12 @@ real ***tensor( long nrl, long nrh, long ncl, long nch, long ndl, long ndh )
    return( t );
 }
 
-void free_vector( real *v, long nl, long nh ) { free( v ); }
-void free_ivector( int *v, long nl, long nh ) { free( v ); }
+void free_vector( real *v, long nl, long nh ) { if ( v ) free( v + nl ); }
+void free_ivector( int *v, long nl, long nh ) { if ( v ) free( v + nl ); }
 void free_matrix( real **m, long nrl, long nrh, long ncl, long nch )
-   { if ( m ) { free( m[nrl] ); free( m ); } }
+   { if ( m ) { free( m[nrl] + ncl ); free( m + nrl ); } }
 void free_imatrix( int **m, long nrl, long nrh, long ncl, long nch )
-   { if ( m ) { free( m[nrl] ); free( m ); } }
+   { if ( m ) { free( m[nrl] + ncl ); free( m + nrl ); } }
 void free_tensor( real ***t, long nrl, long nrh, long ncl, long nch,
                   long ndl, long ndh )
    { if ( t ) { free( t[nrl][ncl] ); free( t[nrl] ); free( t + nrl ); } }
