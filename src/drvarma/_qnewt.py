@@ -83,6 +83,61 @@ def cdgrad(func, n, x, eta, g):
 
 
 # --------------------------------------------------------------------------- #
+#  fdhess : finite-difference Hessian                                         #
+# --------------------------------------------------------------------------- #
+
+def fdhess(func, n, x, f, eta, H):
+    """Second-derivative matrix by finite differences at `x`. Port of
+    `qnewtopt.c:fdhess` (Dennis & Schnabel, Algorithm A5.6.2).
+
+    Why this exists and is not the optimiser's matrix: `raxopt` leaves in `b`
+    the Hessian ACCUMULATED by BFGS along the search path. That is what steers
+    the search, but it is not the curvature at the optimum -- it depends on the
+    path taken (two different starts give different standard errors) and it
+    degrades precisely in the flattest directions, which are the ones with the
+    largest standard errors. It is also never built at all when the search
+    starts AT the optimum and stops immediately, which is the normal situation
+    when the seeds come from a previous rung of the ladder.
+
+    `f` is `func(x)`, already evaluated. `H` is 1-indexed (n+1, n+1) and is
+    written in place; `x` is 1-indexed and is restored on return.
+
+    Cost: (n^2 + 3n)/2 evaluations of `func`.
+    """
+    third = pow(eta, 1.0 / 3.0)
+    step = np.zeros(n + 1)
+    fneigh = np.zeros(n + 1)
+
+    for i in range(1, n + 1):
+        if x[i] == abs(x[i]):
+            step[i] = third * _rmax(x[i], 1.0)
+        else:
+            step[i] = third * _rmin(x[i], -1.0)
+        tempi = x[i]
+        x[i] = x[i] + step[i]
+        step[i] = x[i] - tempi           # reduce finite-precision error
+        fneigh[i] = func(x)
+        x[i] = tempi
+
+    for i in range(1, n + 1):
+        tempi = x[i]
+        x[i] = x[i] + 2.0 * step[i]
+        fii = func(x)
+        H[i][i] = (f + fii - 2.0 * fneigh[i]) / (step[i] * step[i])
+        x[i] = tempi + step[i]
+
+        for j in range(i + 1, n + 1):
+            tempj = x[j]
+            x[j] = x[j] + step[j]
+            fij = func(x)
+            H[i][j] = (f - fneigh[i] + fij - fneigh[j]) / (step[i] * step[j])
+            H[j][i] = H[i][j]
+            x[j] = tempj
+
+        x[i] = tempi
+
+
+# --------------------------------------------------------------------------- #
 #  jacrot / qrupdate / bfgsfac : factored BFGS update                         #
 # --------------------------------------------------------------------------- #
 
