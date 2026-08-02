@@ -1,8 +1,40 @@
-# multiart — design of the drvarma MCP (multivariate VARMA analysis)
+# sima — design of the drvarma MCP (SIMULTANEOUS multivariate VARMA)
 
-Status: **design, v1 scope agreed** (2026-07-27). Not yet implemented.
+Status: **implemented** (14 tools). Renamed from `multiart` on 2026-08-02 — see
+§0 and `drtran-python/docs/ARCHITECTURE_MCP.md`, which settles the suite's MCP
+architecture.
 
-`multiart` is the multivariate counterpart of ART's univariate Box-Jenkins MCP: an
+## 0. The name, and the assistant next door
+
+`multiart` read as "the multivariate ART", claiming a lineage it does not have.
+**ART's natural continuation is drtran**, which consumes ART's `.pre` files
+directly and inherits Box–Jenkins' prewhitening. drvarma is a *classical
+symmetric VARMA* with a different ancestry (Mauricio's exact likelihood, AS 311).
+
+The suite's three assistants:
+
+| | models | engine |
+|---|---|---|
+| `art` | one series: ARIMA + interventions | fue |
+| `mtram` | transfer functions and networks (DAG) | drtran |
+| **`sima`** | **simultaneous VARMA** | drvarma |
+
+`sima` — **SI**multaneous **M**ultivariate **A**nalysis — says the thing an
+analyst most needs to know before touching it: everything in here is
+simultaneous, so the impulse response is **not identified without an ordering**.
+`mtram`'s is, because its exogeneity is declared and tested. Two different claims
+about the world, which is why they are two servers.
+
+**The handoff.** When `mtram`'s `identify_network` proposes a DAG with a
+**cycle**, the system has no topological order and cannot be cast as a triangular
+VARMA: it is simultaneous, and that is exactly when the analyst should come here.
+It is a contrast, not a preference — it fires on the m6 system.
+
+Section 7's roadmap said "v3 — transfer functions / VARMA networks (converge with
+the drtran Python port)". That is superseded: transfer networks are **not** a
+later layer of this server, they are `mtram`.
+
+`sima` is the simultaneous-multivariate counterpart of ART's univariate Box-Jenkins MCP: an
 MCP server that walks an analyst (and/or an LLM) through building a **VARMA** model
 with drvarma, the way ART does it for univariate ARIMA with fue.
 
@@ -18,7 +50,7 @@ diagnosis, structural analysis (IRF / FEVD) and forecasting.
 
 - **Cointegration / common trends.** v1 assumes the series are brought to
   stationarity by (per-series) differencing; it does **not** test for common
-  trends or model a VECM. multiart should, however, *flag* when the data smell
+  trends or model a VECM. sima should, however, *flag* when the data smell
   non-stationary/cointegrated (e.g. individually I(1) series that move together)
   and say it is setting that aside — answering it properly is the headline v2 goal.
 - **Transfer functions / VARMA networks** (drtran's territory: exogenous inputs,
@@ -29,7 +61,7 @@ diagnosis, structural analysis (IRF / FEVD) and forecasting.
 
 ## 2. The central idea — art-seeded identification
 
-Specifying a VARMA cold is *palos de ciego* (blind guessing). So multiart **seeds**
+Specifying a VARMA cold is *palos de ciego* (blind guessing). So sima **seeds**
 the VARMA spec from a univariate pass before doing anything multivariate:
 
 - **Route A (default) — art-seeded.** Run ART's **automatic** univariate exploration
@@ -40,7 +72,7 @@ the VARMA spec from a univariate pass before doing anything multivariate:
 - **Route B — user-informed.** If the analyst knows the data, they answer a few
   questions (stationary? transform? seasonal?) and **skip** the ART pass.
 
-With the series prepared, multiart proceeds to the **canonical VARMA
+With the series prepared, sima proceeds to the **canonical VARMA
 identification** (below). Seasonality, if present, is handled by **drvarma's own
 routines** (`deseason.py`), not necessarily ART.
 
@@ -48,14 +80,14 @@ routines** (`deseason.py`), not necessarily ART.
 
 ## 3. Architecture — composed in libraries, standalone as a server
 
-- **Standalone server.** The analyst runs `multiart` on its own; it does not need
+- **Standalone server.** The analyst runs `sima` on its own; it does not need
   an ART server running. Uni-vs-multivariate stays cleanly separated (mirrors the
   C world: fue univariate, drtran/drvarma multivariate).
-- **Composed internally.** For the art-seeding step multiart *imports* `art`
+- **Composed internally.** For the art-seeding step sima *imports* `art`
   (art-tseries) as a library and calls its identification functions; drvarma owns
   the joint VARMA part. No cycle — ART does not depend on drvarma.
 - **Packaging.** Ships as an optional extra **`drvarma[mcp]`** with entry point
-  `multiart` (mirrors `art-tseries` ⇒ `art-mcp`). Bundled by `atsw`. `mcp` +
+  `sima` (mirrors `art-tseries` ⇒ `art-mcp`). Bundled by `atsw`. `mcp` +
   `art-tseries` + `fue` are pulled by the extra.
 
 ---
@@ -118,7 +150,7 @@ convention the factor is **100**, and drvarma already implements it correctly:
 - The SPS path `recursive_forecast(…, scale, …)` **carries the scale**, so it does not
   have ART's BUG-0007 (rebuild dropping the factor).
 
-**The risk is re-introducing these bugs at the MCP layer.** multiart MUST:
+**The risk is re-introducing these bugs at the MCP layer.** sima MUST:
 
 1. **Never hardcode 100.** Read `model.scale` wherever a scale is needed (single
    source of truth — the P1 rule from the ATSW rescaling audit).
@@ -149,14 +181,14 @@ accelerator.
   IRF/FEVD/forecast/diagnostics.
 - **v2** — cointegration / common-trends awareness: at least *detect and warn*, then
   a VECM path.
-- **v3** — transfer functions / VARMA networks (converge with the drtran Python port,
-  which already bridges fue↔drvarma in C).
+- ~~**v3** — transfer functions / VARMA networks~~ — **not this server's**: that is
+  `mtram` (the drtran port). See §0.
 
 ---
 
 ## 8. Open questions
 
-- Entry-point name: `multiart` vs `drvarma-mcp` (concept name is **multiart**).
+- ~~Entry-point name~~ — **settled: `sima`** (2026-08-02). See §0.
 - Order-identification default: how much to automate the (p,q) pick vs always ask
   the analyst to confirm from the CCM/IC evidence (lean: propose + confirm, like ART).
 - How aggressively to reuse ART's `.inp`/`.pre` artifacts vs an in-memory hand-off

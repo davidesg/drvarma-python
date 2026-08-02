@@ -1,4 +1,4 @@
-"""multiart — MCP server for multivariate VARMA analysis with drvarma.
+"""sima — MCP server for SIMULTANEOUS multivariate VARMA analysis with drvarma.
 
 The multivariate counterpart of ART's univariate Box-Jenkins MCP. See
 `docs/DESIGN_MCP.md`. v1: classic stationary VARMA, ART-seeded.
@@ -33,7 +33,7 @@ _SEED: dict[str, dict] = {}
 
 
 _INSTRUCTIONS = """
-Eres multiart — asistente de análisis MULTIVARIANTE (VARMA por ML exacta, motor
+Eres sima — asistente de análisis multivariante SIMULTÁNEO (VARMA por ML exacta, motor
 drvarma). Contraparte multivariante de ART (univariante).
 
 ══════════════════════════════════════════════════════
@@ -48,7 +48,7 @@ usuario que escribe en inglés.
 REGLA DE ORO — SERIES ORIGINALES
 ══════════════════════════════════════════════════════
 Carga SIEMPRE las series ORIGINALES sin transformar (nivel, desde Excel/CSV).
-multiart aplica la transformación (Box-Cox λ, diferenciación d, desestacionalización)
+sima aplica la transformación (Box-Cox λ, diferenciación d, desestacionalización)
 INTERNAMENTE, guiada por la caracterización univariante. **NUNCA pre-transformes ni
 prediferencies los datos** — si lo haces, la identificación será incorrecta.
 
@@ -85,7 +85,7 @@ COINTEGRACIÓN (v1 fuera): si las series parecen I(1) que se mueven juntas, AVIS
 que lo dejas de lado (es alcance de v2).
 """
 
-mcp = FastMCP("multiart — Multivariate VARMA Analysis (drvarma)",
+mcp = FastMCP("sima — Simultaneous Multivariate VARMA Analysis (drvarma)",
               instructions=_INSTRUCTIONS)
 
 
@@ -374,7 +374,7 @@ def _plot_path(name, kind, path):
     if path:
         return os.path.abspath(os.path.expanduser(path))
     import tempfile
-    return os.path.join(tempfile.gettempdir(), f"multiart_{name}_{kind}.png")
+    return os.path.join(tempfile.gettempdir(), f"sima_{name}_{kind}.png")
 
 
 def _grid_axes(m, per=2.4):
