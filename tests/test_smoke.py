@@ -63,3 +63,22 @@ def test_says_which_engine_it_is_using(capsys):
         print("drvarma smoke: COMPILED C engine")
     except ImportError:
         print("drvarma smoke: pure-Python fallback (no C extension in this wheel)")
+
+
+def test_a_binary_wheel_can_actually_load_its_engine():
+    """If this build carries a compiled extension, it must be usable.
+
+    0.1.2 shipped 24 binary wheels that could not load: a cffi API-mode
+    extension imports `_cffi_backend` at load time, `cffi` was not declared as a
+    runtime dependency, and `_engine.py` catches the resulting ImportError and
+    degrades to pure Python. The wheels were present, correct, and inert — the
+    exact failure the wheels existed to prevent, one layer down.
+
+    So: whenever the extension file is on disk, importing it must succeed. A
+    build with no extension (the pure wheel) is fine and skips.
+    """
+    import importlib.util
+    if importlib.util.find_spec("drvarma._drvarma_engine") is None:
+        import pytest
+        pytest.skip("pure-Python build: no extension to load")
+    import drvarma._drvarma_engine  # noqa: F401  — must not raise

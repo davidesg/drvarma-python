@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "drvarma"
-version = "0.1.2"
+version = "0.1.3"
 description = "Multivariate VARMA modelling — exact maximum-likelihood estimation, forecasting and diagnostics"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -31,6 +31,18 @@ classifiers = [
 dependencies = [
     "numpy>=1.24",
     "scipy>=1.10",
+    # cffi IS a runtime dependency, and leaving it out is what made the binary
+    # wheels useless. A cffi API-mode extension imports `_cffi_backend` when it
+    # loads; without the cffi package that import fails, `_engine.py` catches the
+    # ImportError, and the compiled engine silently degrades to the pure-Python
+    # fallback — on a wheel that exists precisely to avoid that.
+    # Verified on 0.1.2 in a clean venv: `pip install drvarma` fetched the right
+    # manylinux wheel and the engine still would not load ("No module named
+    # '_cffi_backend'"); installing cffi alone fixed it, changing nothing else.
+    # It is declared unconditionally: the pure wheel does not need it, but the
+    # cost is one small universal wheel, and the alternative is an extension
+    # that is present and unusable.
+    "cffi>=1.15",
 ]
 
 [project.urls]
