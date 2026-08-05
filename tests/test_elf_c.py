@@ -29,6 +29,12 @@ import pytest
 from drvarma import _as311
 from drvarma._engine import elf_c, estimate_w
 
+try:                                   # the refusal being tested is the C's
+    from drvarma._drvarma_engine import lib as _lib   # noqa: F401
+    _HAS_C_ENGINE = True
+except ImportError:
+    _HAS_C_ENGINE = False
+
 
 def _elf_py(m, n, p, q, mu, phi, theta, qq, w, sigma2=1.0, xitol=-1e-3):
     """The pure-Python `elf`, called with the same structure."""
@@ -104,6 +110,10 @@ def test_matches_the_pure_python_elf(p, q):
         _elf_py(m, n, p, q, np.zeros(m), phi, theta, np.eye(m), w)[0], abs=1e-8)
 
 
+@pytest.mark.skipif(not _HAS_C_ENGINE,
+                    reason="asserts the C entry point's refusal; without the "
+                           "engine `elf_c` falls back to the pure-Python "
+                           "implementation, which handles p=q=0 fine")
 def test_the_degenerate_p0_q0_is_refused_not_crashed():
     """A VARMA with neither AR nor MA is white noise, and the engine cannot take
     it: with g = max(p, q) = 0 it allocates a degenerate matrix and segfaults.

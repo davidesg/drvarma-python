@@ -9,8 +9,13 @@ import json
 import sys
 
 import numpy as np
+import pytest
 
-from drvarma import mcp_server as S
+# The MCP surface needs the `mcp` extra; without it this whole walkthrough is
+# not applicable rather than broken.
+pytest.importorskip("mcp", reason="needs the MCP extra: pip install 'drvarma[mcp]'")
+
+from drvarma import mcp_server as S  # noqa: E402
 
 OK, FAIL = [], []
 
