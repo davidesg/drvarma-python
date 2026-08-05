@@ -55,6 +55,18 @@ class Model:
         w, bc = transform.transform(levels, lam=self.lam, d=self.d, D=self.D,
                                     s=self.series.freq,
                                     scale=self.scale if scale is None else scale)
+        # Guard here, in the single source of truth, not in each caller. A
+        # Box-Cox with lam=0 on a series that touches zero or goes negative
+        # yields NaN, the engine then returns ifault=0 with a NaN Sigma, and
+        # every downstream number is NaN while the fit reports itself healthy.
+        # Silently propagating that is the worst outcome available.
+        if not np.all(np.isfinite(w)):
+            bad = [self.series.names[j] for j in range(w.shape[1])
+                   if not np.all(np.isfinite(w[:, j]))]
+            raise ValueError(
+                f"the transformed series is not finite for {bad} (lam={self.lam}): "
+                "lam=0 is a log and needs strictly positive data. Use lam=1, or "
+                "check the levels. (Refusing to return NaN silently.)")
         return w, bc, levels, dummies, deseason_info
 
     def fit(self):

@@ -68,6 +68,14 @@ def estimate_w(w, p, q, include_mean=False,
             "q": rq,
             "sigma2": res.sigma2,
             "logelf": res.logelf,
+            # Same keys as the pure-Python estimator, so the convergence
+            # diagnosis works identically whichever engine ran. The C used to
+            # omit them — `report()` announces the termcode to `outputv`, which
+            # the binding points at /dev/null and `quiet_mode` silences anyway —
+            # so `Model.termcode` was None on the DEFAULT path and every warning
+            # built on it was inert.
+            "termcode": res.termcode,
+            "nit": res.nit,
             "params": np.frombuffer(ffi.buffer(res.params, npar * 8), float).copy()
                       if npar else np.zeros(0),
             "std_errors": np.frombuffer(ffi.buffer(res.std_errors, npar * 8), float).copy()

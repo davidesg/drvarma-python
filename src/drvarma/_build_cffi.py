@@ -14,6 +14,45 @@ _THIS = os.path.dirname(os.path.abspath(__file__))
 _CSRC = os.path.relpath(os.path.join(_THIS, "..", "..", "csrc"))
 _INT = os.path.join(_CSRC, "internal")
 
+
+def _discover_gsl_dirs():
+    """Return (include_dirs, library_dirs) for GSL when it is outside the
+    compiler's default search paths.
+
+    Linux system installs put GSL in /usr/include (found automatically), but
+    Homebrew on macOS uses /opt/homebrew (Apple Silicon) or /usr/local (Intel),
+    which clang does not search by default — hence 'gsl/gsl_matrix.h not found'.
+    Query `gsl-config --prefix` (GSL always ships gsl-config), then fall back to
+    `brew --prefix gsl` and the common Homebrew prefixes. Only existing dirs are
+    returned, so this is a harmless no-op on Linux.
+
+    Lifted from fue's build script, which solved this first: the two engines
+    have the same GSL dependency and there is no reason for them to discover it
+    differently.
+    """
+    import subprocess
+    prefixes = []
+    for cmd in (["gsl-config", "--prefix"], ["brew", "--prefix", "gsl"]):
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+            if r.returncode == 0 and r.stdout.strip():
+                prefixes.append(r.stdout.strip())
+        except Exception:                                  # noqa: BLE001
+            pass
+    if sys.platform == "darwin":
+        prefixes += ["/opt/homebrew", "/usr/local"]
+    inc, lib = [], []
+    for pref in prefixes:
+        i, l = os.path.join(pref, "include"), os.path.join(pref, "lib")
+        if os.path.isdir(i) and i not in inc:
+            inc.append(i)
+        if os.path.isdir(l) and l not in lib:
+            lib.append(l)
+    return inc, lib
+
+
+_GSL_INC, _GSL_LIB = _discover_gsl_dirs()
+
 _CDEF = """
 typedef struct {
     int     m;
@@ -44,6 +83,8 @@ typedef struct {
     double *sigma;
     double  sigma2;
     double  logelf;
+    int     termcode;
+    int     nit;
 } DrvarmaResult;
 
 void           drvarma_defaults(DrvarmaModelSpec *spec);
@@ -80,7 +121,8 @@ ffi.set_source(
     "drvarma._drvarma_engine",
     r'#include "drvarma_api.h"',
     sources=_SOURCES,
-    include_dirs=[_CSRC, _INT],
+    include_dirs=[_CSRC, _INT] + _GSL_INC,
+    library_dirs=_GSL_LIB,
     libraries=_libs,
     extra_compile_args=_cargs,
 )

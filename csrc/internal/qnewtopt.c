@@ -23,6 +23,21 @@ extern real macheps;          /* Machine epsilon (global: declared in DRV.C) */
 extern FILE *outputv;         /* Output file (global: declared in DRV.C)     */
 extern int quiet_mode;   /* added */
 
+/* The optimizer's verdict, recorded for callers that cannot read `outputv`.
+
+   `report()` announces the termination code and the iteration count, but it
+   writes to `outputv`, and `quiet_mode` was introduced to silence the trace for
+   batch simulations. In the Python binding `outputv` is /dev/null, so the
+   announcement was produced and thrown away: the C engine returned no termcode
+   at all while the pure-Python estimator did, and every convergence diagnosis
+   downstream was inert on the DEFAULT engine.
+
+   These two globals only RECORD what raxopt already computed -- no criterion,
+   no announcement and no numerical behaviour changes. They exist so both
+   engines can say the same thing about the same fit. */
+int qn_last_termcode = 0;
+int qn_last_nit      = 0;
+
 /*****************************************************************************/
 /*****************************************************************************/
 
@@ -112,6 +127,8 @@ void raxopt( real (*func)(real *), real *fk, int n, real *xk, real **b,
       *fk = fkp1;
       }                                       /* Back for another iteration. */
 
+   qn_last_termcode = termcode;               /* Record before announcing:   */
+   qn_last_nit      = k;                      /* report() may be silenced.   */
    report( n, k, xk, gk, *fk, termcode );     /* Report on convergence.      */
    if (!quiet_mode) printf( "%4d F: %0.10f\n", k, *fk );
 

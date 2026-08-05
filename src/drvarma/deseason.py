@@ -103,6 +103,19 @@ def harmonics_to_dummies(coeffs, s):
     return dummies
 
 
+def _acf_at(x, k):
+    """Autocorrelation at lag k alone (same estimator as `diagnostics.acf`)."""
+    x = np.asarray(x, float).ravel()
+    n = x.shape[0]
+    if n <= k:
+        return 0.0
+    xc = x - x.mean()
+    var = float((xc ** 2).mean())
+    if var < 1e-300:
+        return 0.0
+    return float((xc[:n - k] * xc[k:]).sum()) / (n * var)
+
+
 def deseasonalize_raw(raw, s, start_sub=1, mode="auto", d=1, alpha=0.05):
     """Harmonic seasonal adjustment of raw levels (port of deseasonalize_raw).
 
@@ -130,7 +143,9 @@ def deseasonalize_raw(raw, s, start_sub=1, mode="auto", d=1, alpha=0.05):
     info = []
     for j in range(m):
         if n_diff <= num_harm + 1:
-            info.append({"f_stat": 0.0, "r2": 0.0, "seasonal": False, "adjusted": False})
+            info.append({"f_stat": 0.0, "r2": 0.0, "seasonal": False,
+                         "adjusted": False, "acf_s_before": 0.0,
+                         "acf_s_after": 0.0, "improved": True})
             continue
         diff = raw[1:, j] - raw[:-1, j]
         coeffs, f_stat, r2 = harmonic_regression_differenced(diff, d, s)
@@ -151,6 +166,53 @@ def deseasonalize_raw(raw, s, start_sub=1, mode="auto", d=1, alpha=0.05):
             dummies[j] = level
             periods = (np.arange(nobs) + start_sub - 1) % s
             adjusted[:, j] = raw[:, j] - level[periods]
+        # POST-CONDITION: did the adjustment actually remove seasonality?
+        #
+        # Nothing used to check. The adjustment was assumed to work because the
+        # F test said the series WAS seasonal — but detecting seasonality and
+        # removing it correctly are different claims, and the phase off-by-one
+        # fixed in `start_sub` ADDED seasonal variance for two years without a
+        # single warning. |ACF(s)| of the differenced series, before against
+        # after, is a one-line check that would have caught it on the first run.
+        #
+        # Reported, never enforced: on a short or weakly seasonal series the
+        # comparison is noisy, and the caller — not this function — decides what
+        # to do about it.
+        acf_before = _acf_at(diff, s)
+        acf_after = _acf_at(adjusted[1:, j] - adjusted[:-1, j], s) if do_des \
+            else acf_before
+        # "|ACF(s)| went down" is necessary but NOT sufficient, and the real bug
+        # proves it: with the phase off by one month the adjustment still took
+        # |ACF(12)| from 0.516 to 0.249 — an improvement, so a before/after test
+        # passes — while the correct phase reaches 0.012. A wrong phase is still
+        # subtracting a seasonal pattern, just the wrong one.
+        # So compare against the BEST of the s possible phases: the applied
+        # pattern should sit at (or very near) the minimum. Costs s extra
+        # autocorrelations, which is nothing, and it does catch the one-month
+        # shift that a before/after test lets through.
+        acf_best = acf_after
+        if do_des:
+            for ph in range(s):
+                cand = raw[:, j] - level[(np.arange(nobs) + ph) % s]
+                a = _acf_at(cand[1:] - cand[:-1], s)
+                if abs(a) < abs(acf_best):
+                    acf_best = a
         info.append({"f_stat": f_stat, "r2": r2,
-                     "seasonal": bool(is_seasonal), "adjusted": bool(do_des)})
+                     "seasonal": bool(is_seasonal), "adjusted": bool(do_des),
+                     "acf_s_before": acf_before, "acf_s_after": acf_after,
+                     "acf_s_best": acf_best,
+                     # None, not True, when nothing was adjusted: "nothing to
+                     # check" and "checked and fine" are different answers, and
+                     # collapsing them would hide a series that was left alone
+                     # when it should not have been.
+                     #
+                     # `improved` is the weak test (did it go down at all);
+                     # `phase_ok` is the one with teeth. The 0.02 slack is for
+                     # sampling noise: a neighbouring phase can beat the right
+                     # one by a hair on a short series without anything being
+                     # wrong.
+                     "improved": (abs(acf_after) < abs(acf_before)) if do_des
+                                 else None,
+                     "phase_ok": (abs(acf_after) <= abs(acf_best) + 0.02)
+                                 if do_des else None})
     return adjusted, dummies, info

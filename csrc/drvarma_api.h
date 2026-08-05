@@ -34,6 +34,8 @@ typedef struct {
     double *sigma;         /* m*m  (= sigma2 * Q)                             */
     double  sigma2;
     double  logelf;
+    int     termcode;      /* raxopt: 1 gradient, 2 step, 3-5 no convergence  */
+    int     nit;           /* raxopt iterations                               */
 } DrvarmaResult;
 
 void           drvarma_defaults(DrvarmaModelSpec *spec);

@@ -10,6 +10,8 @@
 #include <string.h>
 #include <math.h>
 
+extern int qn_last_termcode, qn_last_nit;   /* set by raxopt (qnewtopt.c) */
+
 real macheps;
 FILE *outputv;
 int  quiet_mode = 1;
@@ -1002,6 +1004,13 @@ DrvarmaResult *drvarma_estimate(const DrvarmaModelSpec *spec)
     r->ifault = est_fault; r->npar = npar; r->m = nser; r->nresiduals = nobs;
     r->p = global_p; r->q = global_q;
     r->sigma2 = varma1.sigma2; r->logelf = varma1.logelf;
+    /* The optimizer's verdict. Recorded by raxopt because report() writes to
+       outputv, which the binding points at /dev/null: without this the C engine
+       returned no termination code and every convergence diagnosis downstream
+       was silently inert, while the pure-Python estimator reported it. Both
+       engines must say the same thing about the same fit. */
+    r->termcode = qn_last_termcode;
+    r->nit      = qn_last_nit;
     r->params     = (double *) malloc((size_t)npar * sizeof(double));
     r->std_errors = (double *) malloc((size_t)npar * sizeof(double));
     r->cov_matrix = (double *) malloc((size_t)npar * npar * sizeof(double));

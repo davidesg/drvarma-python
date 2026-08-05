@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "drvarma"
-version = "0.1.1"
+version = "0.1.2"
 description = "Multivariate VARMA modelling — exact maximum-likelihood estimation, forecasting and diagnostics"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -57,3 +57,41 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+# ── Binary wheels ──────────────────────────────────────────────────────────
+# Until 0.1.1 this project published ONLY a py3-none-any wheel plus the sdist,
+# on the assumption that "the engine builds from the sdist". It does not: pip
+# prefers a matching wheel over building a source distribution, and
+# py3-none-any matches everywhere. So every PyPI install silently ran the
+# pure-Python fallback, even on machines with GSL and a compiler.
+#
+# The fix is the shape fue already uses: per-platform binary wheels WITH GSL
+# bundled, plus the pure wheel as the last resort for platforms not built.
+[tool.cibuildwheel]
+build = "cp310-* cp311-* cp312-* cp313-*"
+skip  = "*-win32 *-manylinux_i686 pp*"
+
+# Smoke-test every wheel: it must import, estimate, and report how the
+# optimiser terminated. NOT the golden battery — exact log-likelihoods are
+# platform/BLAS-sensitive, so pinning them across build targets would produce
+# failures that say nothing about the wheel.
+test-requires = ["pytest"]
+test-command  = "pytest {project}/tests/test_smoke.py -q"
+
+[tool.cibuildwheel.linux]
+# manylinux_2_28 = AlmaLinux 8. auditwheel then bundles libgsl/libgslcblas into
+# the wheel; they are not on the manylinux whitelist.
+manylinux-x86_64-image  = "quay.io/pypa/manylinux_2_28_x86_64"
+manylinux-aarch64-image = "quay.io/pypa/manylinux_2_28_aarch64"
+# Portable across manylinux (AlmaLinux -> dnf) and musllinux (Alpine -> apk):
+# without the branch, musllinux fails with `dnf: not found`.
+before-all = "if command -v dnf >/dev/null 2>&1; then dnf install -y gsl-devel; else apk add --no-cache gsl-dev; fi"
+
+[tool.cibuildwheel.macos]
+before-all = "brew install gsl"
+# Native arch only: cross-building would link the runner's single-arch Homebrew
+# GSL into the wrong architecture.
+archs = ["auto"]
+
+[tool.cibuildwheel.windows]
+archs = ["AMD64"]

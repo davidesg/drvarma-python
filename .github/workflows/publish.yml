@@ -1,49 +1,131 @@
 name: Publish to PyPI
 
-# Builds the sdist + pure-Python wheel and publishes to PyPI when a version tag
-# (v*) is pushed.
+# Builds cp310-cp313 BINARY wheels (Linux x86_64+aarch64, macOS arm64, Windows
+# AMD64) with GSL bundled, plus the pure-Python wheel and the sdist, and
+# publishes them all on a v* tag.
 #
-# Auth: PyPI Trusted Publishing (OIDC) — no API token in secrets. Configure it
-# once on PyPI: project → Settings → Publishing → add a GitHub publisher with
-# this repo, workflow `publish.yml`, and environment `pypi`.
+# WHY THE BINARY WHEELS. Up to 0.1.1 this workflow built only the pure wheel and
+# the sdist, on the assumption that the C engine "builds from the sdist". It does
+# not: pip prefers a matching wheel over building a source distribution, and
+# py3-none-any matches every platform. The result was that every PyPI install
+# quietly ran the pure-Python fallback — including on machines with GSL and a
+# compiler — while the C engine sat unused. The binary wheels are what make the
+# compiled engine actually reach a user.
+#
+# The filename must stay `publish.yml`: PyPI's Trusted Publisher for this project
+# is registered against this repo + this workflow name + the `pypi` environment.
+# Renaming it silently breaks the upload.
+#
+# Auth: PyPI Trusted Publishing (OIDC) — no API token in secrets.
 # (Alternative: drop the OIDC `permissions`/`environment` and pass
 # `password: ${{ secrets.PYPI_API_TOKEN }}` to the publish step.)
 
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:      # manual run, to validate the matrix without publishing
 
 jobs:
-  build:
-    name: Build sdist + wheel
+  # ── Binary wheels, one job per runner OS ──────────────────────────────────
+  build_wheels:
+    name: Wheels — ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # macOS is PINNED (not macos-latest): Homebrew's GSL bottle targets the
+        # runner's OS, and a bottle from a newer macOS cannot be bundled into a
+        # lower-target wheel (delocate rejects it). Pinning the runner and
+        # matching MACOSX_DEPLOYMENT_TARGET keeps the two aligned and immune to
+        # runner-OS bumps.
+        #
+        # Intel macOS (macos-13) is deliberately NOT built: those runners are
+        # chronically starved and every current Mac is arm64. Intel users get
+        # the sdist (which finds GSL via _discover_gsl_dirs) or the pure wheel.
+        include:
+          - os: ubuntu-latest      # Linux x86_64 (+ aarch64 under QEMU)
+          - os: macos-14           # macOS Apple Silicon arm64
+            macos_target: "14.0"
+          - os: windows-latest     # Windows AMD64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU (Linux only)
+        if: runner.os == 'Linux'
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: aarch64
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.22
+        env:
+          CIBW_ARCHS_LINUX: "x86_64 aarch64"
+          MACOSX_DEPLOYMENT_TARGET: ${{ matrix.macos_target }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: ./wheelhouse/*.whl
+
+  # ── Pure-Python wheel: the fallback for platforms not built above ─────────
+  build_pure_wheel:
+    name: Pure-Python wheel (no C)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - name: Build (pure-Python wheel + sdist)
+      - run: python -m pip install --upgrade build pytest
+      - name: Build pure-Python wheel
         env:
-          DRVARMA_NO_ENGINE: "1"        # py3-none-any wheel; engine builds from sdist
+          DRVARMA_NO_ENGINE: "1"
+        run: python -m build --wheel
+      - name: Smoke-test the pure wheel
         run: |
-          python -m pip install --upgrade build twine
-          python -m build
-          python -m twine check dist/*
+          python -m pip install dist/drvarma-*-py3-none-any.whl
+          pytest tests/test_smoke.py -q
       - uses: actions/upload-artifact@v4
         with:
-          name: dist
-          path: dist/
+          name: wheels-pure
+          path: dist/drvarma-*-py3-none-any.whl
 
+  # ── Source distribution ───────────────────────────────────────────────────
+  build_sdist:
+    name: Build sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade build
+      - run: python -m build --sdist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+
+  # ── Publish, only on a version tag ────────────────────────────────────────
   publish:
     name: Publish to PyPI
-    needs: build
+    needs: [build_wheels, build_pure_wheel, build_sdist]
     runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
     environment: pypi
     permissions:
       id-token: write                   # required for Trusted Publishing (OIDC)
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: dist
+          pattern: "wheels-*"           # every wheels-<os> job plus wheels-pure
+          merge-multiple: true
           path: dist/
+      - uses: actions/download-artifact@v4
+        with:
+          name: sdist
+          path: dist/
+      - name: What is about to be published
+        run: ls -la dist/
       - uses: pypa/gh-action-pypi-publish@release/v1

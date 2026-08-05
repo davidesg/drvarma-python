@@ -280,9 +280,19 @@ def characterize_series(name: str) -> str:
             d = int(_id.recommended_d(_id.unit_root_tests(ts, lam=lam, max_d=1)))
         except Exception:  # noqa: BLE001
             pass
-        is_seas = False
+        # Seasonality is NOT a yes/no. On the oil pass-through the seasonal
+        # component was 40-79 % of the variance of monthly inflation (ES R²=0.79,
+        # amplitude 2.05 pp) — a first-order feature of the data that the summary
+        # rendered as "sí". Keep the F, the p-value and the amplitude.
+        is_seas, f_seas, p_seas, amp_seas = False, None, None, None
         try:
-            is_seas = bool(_sd.detect_seasonality(ts, d=d, lam=lam).seasonal_detected)
+            sres = _sd.detect_seasonality(ts, d=d, lam=lam)
+            is_seas = bool(sres.seasonal_detected)
+            f_seas = float(getattr(sres, "f_stat", float("nan")))
+            p_seas = float(getattr(sres, "p_value", float("nan")))
+            dmy = getattr(sres, "dummies", None)
+            if dmy is not None and len(dmy):
+                amp_seas = float(np.max(dmy) - np.min(dmy))
         except Exception:  # noqa: BLE001
             pass
         p, q = 1, 0
@@ -292,28 +302,118 @@ def characterize_series(name: str) -> str:
                 p = int(getattr(specs[0], "p", 1)); q = int(getattr(specs[0], "q", 0))
         except Exception:  # noqa: BLE001
             pass
-        per.append(dict(name=lab, lam=lam, d=d, seasonal=is_seas, p=p, q=q))
+        per.append(dict(name=lab, lam=lam, d=d, seasonal=is_seas, p=p, q=q,
+                        f_seas=f_seas, p_seas=p_seas, amp_seas=amp_seas))
         lams.append(lam); ds.append(d); seas.append(is_seas); pcs.append(p); qcs.append(q)
 
     lam_c = 0.0 if all(abs(x) < 0.25 for x in lams) else float(np.median(lams))
     d_c = int(max(ds)) if ds else 1          # difference all to stationarity (v1, no cointegration)
     deseason_c = "auto" if any(seas) else None
-    p_ceil = int(min(3, max(pcs) if pcs else 1))
-    q_ceil = int(min(3, max(qcs) if qcs else 1))
+    # The ceiling BOUNDS the default order search, so it must never bound it
+    # below the standard candidates. Univariate ARMA orders are a poor lower
+    # bound for a multivariate one -- a VAR(1) system has ARMA(1,1)-looking
+    # marginals, and the converse fails too -- and on the pass-through datasets
+    # ART returned (0,1) for every series, which pinned the DEFAULT search to
+    # VMA(1) alone: it could not even reach the VAR(1)/VAR(2) of the published
+    # note. Floor it so (0..2, 0..1) is always reachable.
+    p_ceil = int(min(3, max(2, max(pcs) if pcs else 1)))
+    q_ceil = int(min(3, max(1, max(qcs) if qcs else 1)))
     _SEED[name] = dict(
         per_series=per,
         consensus=dict(lam=lam_c, d=d_c, D=0, deseason=deseason_c,
                        p_ceiling=p_ceil, q_ceiling=q_ceil),
     )
 
+    def _fmt(v, spec):
+        return "—" if v is None or v != v else format(v, spec)
+
     rows = "\n".join(
         f"| {r['name']} | {r['lam']:.2f} | {r['d']} | "
-        f"{'sí' if r['seasonal'] else 'no'} | ({r['p']},{r['q']}) |" for r in per)
+        f"{'sí' if r['seasonal'] else 'no'} | {_fmt(r['f_seas'], '.1f')} | "
+        f"{_fmt(r['p_seas'], '.4f')} | {_fmt(r['amp_seas'], '.3f')} | "
+        f"({r['p']},{r['q']}) |" for r in per)
+
+    # POST-CONDITION on the adjustment, not just on the detection. Detecting
+    # seasonality and REMOVING it correctly are different claims; the phase
+    # off-by-one that was fixed in `deseason` added seasonal variance for two
+    # years and nothing noticed, because nothing ever compared before with after.
+    check = ""
+    if deseason_c:
+        try:
+            from .deseason import deseasonalize_raw
+            _, _, dinfo = deseasonalize_raw(ms.data, s=ms.freq,
+                                            start_sub=ms.start[1],
+                                            mode=deseason_c)
+            crows, worse = [], []
+            for lab, di in zip(ms.names, dinfo):
+                if not di["adjusted"]:
+                    crows.append(f"| {lab} | (sin ajustar) | — | — |")
+                    continue
+                ok = bool(di["improved"]) and bool(di["phase_ok"])
+                verdict = ("✓" if ok else
+                           "✗ EMPEORA" if not di["improved"] else "✗ FASE")
+                crows.append(f"| {lab} | {di['acf_s_before']:+.3f} | "
+                             f"{di['acf_s_after']:+.3f} | "
+                             f"{di['acf_s_best']:+.3f} | {verdict} |")
+                if not ok:
+                    worse.append(lab)
+            check = ("\n**Comprobación de la desestacionalización** "
+                     f"(|ACF({ms.freq})| de la serie diferenciada: debe BAJAR, y "
+                     "quedar en el mínimo alcanzable entre las fases posibles):\n"
+                     "| serie | antes | después | mejor posible | |\n"
+                     "|---|---|---|---|---|\n"
+                     + "\n".join(crows) + "\n")
+            if worse:
+                check += ("\n🛑 **La desestacionalización NO está funcionando en "
+                          + ", ".join(worse) + "**. `✗ EMPEORA` = añade varianza "
+                          "estacional en vez de quitarla; `✗ FASE` = quita el "
+                          "patrón desfasado, que baja el ACF pero deja bastante "
+                          "más del que debería (es el modo en que este código ya "
+                          "falló una vez, y un test antes/después no lo ve). "
+                          "No sigas: revisa `start` — el subperiodo inicial — "
+                          "antes de estimar nada.\n")
+        except Exception as e:  # noqa: BLE001
+            check = f"\n(no se pudo comprobar la desestacionalización: {e})\n"
+
+    # COINTEGRATION — the instructions promise this warning and nothing ever
+    # computed the signal, so it never fired: loading four I(1) level pairs
+    # produced no notice at all. An instruction the server cannot act on is not
+    # a feature. Engle-Granger, deliberately the cheap version: if every series
+    # needs differencing but a static regression between them leaves a residual
+    # that does NOT, they move together and differencing each one separately
+    # throws away the long-run relation. v1 cannot model it — but it must say so.
+    coint = ""
+    if len(per) >= 2 and all(r["d"] >= 1 for r in per):
+        try:
+            lv = np.asarray(ms.data, float)
+            if np.all(lv > 0) and lam_c == 0.0:
+                lv = np.log(lv)
+            X = np.column_stack([np.ones(len(lv)), lv[:, 1:]])
+            beta, *_ = np.linalg.lstsq(X, lv[:, 0], rcond=None)
+            resid = lv[:, 0] - X @ beta
+            rts = fue.TimeSeries.from_array(resid.tolist(), freq=ms.freq,
+                                            start=ms.start, name="resid")
+            d_res = int(_id.recommended_d(_id.unit_root_tests(rts, lam=1.0, max_d=1)))
+            if d_res == 0:
+                coint = (
+                    "\n🔶 **Posible COINTEGRACIÓN.** Todas las series son I(1), pero "
+                    "el residuo de la regresión estática entre ellas sale I(0) "
+                    "(Engle-Granger): se mueven juntas a largo plazo.\n"
+                    "   sima v1 es VARMA ESTACIONARIO — diferencia cada serie por "
+                    "separado, y eso DESCARTA la relación de largo plazo. Las "
+                    "previsiones de corto plazo siguen siendo utilizables; las "
+                    "afirmaciones sobre el equilibrio a largo plazo, no. Un VECM "
+                    "es alcance de v2.\n")
+        except Exception:  # noqa: BLE001
+            pass
+
     return (f"# Caracterización univariante (ART) — {name}\n"
-            f"| serie | λ | d | estacional | ARMA≈ |\n|---|---|---|---|---|\n{rows}\n\n"
+            f"| serie | λ | d | estacional | F | p | amplitud | ARMA≈ |\n"
+            f"|---|---|---|---|---|---|---|---|\n{rows}\n\n"
             f"**Consenso para el VARMA (guardado):** λ={lam_c:.2f}, d={d_c}, "
             f"deseason={deseason_c or 'no'}, techo (p,q)≤({p_ceil},{q_ceil}).\n"
             f"{'⚠ Estacionalidad detectada → se usará desestacionalización armónica (deseason=auto).' if deseason_c else ''}\n"
+            f"{check}{coint}"
             f"Siguiente: cross_correlation_matrices({name!r}) y "
             f"partial_autoregression_matrices({name!r}) (usan este seed), luego "
             f"identify_varma_order({name!r}).\n"
@@ -891,34 +991,143 @@ def generate_forecast(name: str, horizon: int = 12) -> str:
     return "\n".join(out)
 
 
+def _bands(mod, horizon, ndraws):
+    """OIRF/FEVD Monte-Carlo bands for a fitted Model (see `irf.irf_fevd_bands`)."""
+    from .irf import irf_fevd_bands
+    return irf_fevd_bands(mod.result, horizon, ndraws=ndraws,
+                          include_mean=mod.include_mean, diag_ar=mod.diag_ar,
+                          diag_ma=mod.diag_ma, diag_cov=mod.diag_cov)
+
+
 @mcp.tool()
-def impulse_response(name: str, horizon: int = 12) -> str:
-    """Orthogonalised impulse responses (OIRF) of the fitted VARMA."""
+def export_fit(name: str, what: str = "all", max_rows: int = 0) -> str:
+    """Residuals and fitted parameters as JSON — the fit in machine-readable form.
+
+    `what`: "residuals", "params", "sigma" or "all". `max_rows` truncates the
+    residual block (0 = all); the head and tail are kept so the ends stay
+    visible.
+
+    This exists because every cross-check has to be possible FROM HERE. In the
+    oil pass-through exercise the residual ACF, the OLS arbitration and the
+    reproduction of the published table all had to bypass this server and drive
+    the library directly — which is exactly the situation in which a wrong
+    number survives, because checking it is more work than believing it.
+
+    The text tools state conclusions; this one hands over the evidence.
+    """
+    mod = _require_fit(name)
+    r = mod.result
+    ms = _require(name)
+    out: dict = {"name": name, "series": list(ms.names),
+                 "p": int(r["p"]), "q": int(r["q"]),
+                 "m": int(r["m"]), "nobs_used": int(np.asarray(r["residuals"]).shape[0]),
+                 "ifault": int(r["ifault"]), "termcode": int(r.get("termcode", -1)),
+                 "nit": int(r.get("nit", -1)), "logelf": float(r["logelf"]),
+                 "sigma2": float(r["sigma2"])}
+
+    if what in ("params", "all"):
+        par = np.asarray(r["params"], float).ravel()
+        se = r.get("std_errors")
+        se = np.asarray(se, float).ravel() if se is not None else None
+        out["params"] = {
+            "values": par.tolist(),
+            "std_errors": se.tolist() if se is not None else None,
+            "t_ratios": (par / np.where(se == 0, np.nan, se)).tolist()
+                        if se is not None else None,
+            # The structured view as well, so the caller does not have to know
+            # the packing order to use it.
+            "mu": np.asarray(r["mu"], float).tolist() if r.get("mu") is not None else None,
+            "phi": np.asarray(r["phi"], float).tolist(),
+            "theta": np.asarray(r["theta"], float).tolist(),
+        }
+    if what in ("sigma", "all"):
+        out["sigma"] = np.asarray(r["sigma"], float).tolist()
+    if what in ("residuals", "all"):
+        a = np.asarray(r["residuals"], float)
+        if max_rows and a.shape[0] > max_rows:
+            half = max_rows // 2
+            out["residuals_truncated"] = True
+            out["residuals"] = (a[:half].tolist(), a[-half:].tolist())
+        else:
+            out["residuals"] = a.tolist()
+    return json.dumps(out, ensure_ascii=False)
+
+
+@mcp.tool()
+def impulse_response(name: str, horizon: int = 12, bands: bool = True,
+                     ndraws: int = 600) -> str:
+    """Orthogonalised impulse responses (OIRF) with 95 % Monte-Carlo bands.
+
+    The band is the point of this tool. A response without one cannot say
+    whether it is signal, and the sizes at stake here (a 5 % pass-through
+    against a 26 % one) are decided by the interval, not the point.
+    `bands=False` skips the draws when only the shape is wanted.
+    """
     mod = _require_fit(name)
     irf = np.asarray(mod.irf(horizon, orthogonalized=True))
     nm = mod.series.names
     hs = sorted({h for h in (0, 1, 2, 4, 8, horizon) if 0 <= h <= horizon})
+    bd, note = None, ""
+    if bands:
+        try:
+            bd = _bands(mod, horizon, ndraws)
+        except Exception as e:  # noqa: BLE001
+            note = f"\n⚠ sin bandas: {e}\n"
     out = [f"# Respuestas al impulso ortogonalizadas (OIRF) — {name}"]
+    if bd:
+        out.append(f"Bandas 95 % Monte-Carlo sobre {bd['ndraws_used']} "
+                   f"extracciones admisibles"
+                   + (f" ({bd['ndraws_rejected']} descartadas por no "
+                      "estacionarias/invertibles)" if bd["ndraws_rejected"] else "")
+                   + ".")
     for i in range(mod.series.m):
         for k in range(mod.series.m):
-            out.append(f"- {nm[i]} ← shock {nm[k]}: " +
-                       ", ".join(f"h{h}={irf[h, i, k]:+.3f}" for h in hs))
-    return "\n".join(out)
+            if bd:
+                cells = ", ".join(
+                    f"h{h}={irf[h, i, k]:+.3f} [{bd['oirf_lo'][h, i, k]:+.3f},"
+                    f"{bd['oirf_hi'][h, i, k]:+.3f}]" for h in hs)
+            else:
+                cells = ", ".join(f"h{h}={irf[h, i, k]:+.3f}" for h in hs)
+            out.append(f"- {nm[i]} ← shock {nm[k]}: " + cells)
+    return "\n".join(out) + note
 
 
 @mcp.tool()
-def variance_decomposition(name: str, horizon: int = 12) -> str:
-    """Forecast-error variance decomposition (FEVD, %) at the given horizon."""
+def variance_decomposition(name: str, horizon: int = 12, bands: bool = True,
+                           ndraws: int = 600) -> str:
+    """Forecast-error variance decomposition (FEVD, %) with 95 % Monte-Carlo bands.
+
+    A share reported without an interval cannot be acted on: 5 % and 26 % are
+    different claims only if the bands do not overlap. `bands=False` skips the
+    draws.
+    """
     mod = _require_fit(name)
     dec = np.asarray(mod.fevd(horizon))[-1]
+    bd, note = None, ""
+    if bands:
+        try:
+            bd = _bands(mod, horizon, ndraws)
+        except Exception as e:  # noqa: BLE001
+            note = f"\n⚠ sin bandas: {e}\n"
     nm = mod.series.names
     out = [f"# FEVD — {name}, h={horizon} (fila = % de la varianza de esa serie por cada shock)",
            "| serie ↓ / shock → | " + " | ".join(nm) + " |",
            "|" + "---|" * (mod.series.m + 1)]
     for i in range(mod.series.m):
-        out.append(f"| {nm[i]} | " +
-                   " | ".join(f"{dec[i, k]:.1f}" for k in range(mod.series.m)) + " |")
-    return "\n".join(out)
+        if bd:
+            cells = " | ".join(
+                f"{dec[i, k]:.1f} [{bd['fevd_lo'][i, k]:.1f}, {bd['fevd_hi'][i, k]:.1f}]"
+                for k in range(mod.series.m))
+        else:
+            cells = " | ".join(f"{dec[i, k]:.1f}" for k in range(mod.series.m))
+        out.append(f"| {nm[i]} | " + cells + " |")
+    if bd:
+        out.append(f"\nBandas 95 % Monte-Carlo sobre {bd['ndraws_used']} "
+                   f"extracciones admisibles"
+                   + (f" ({bd['ndraws_rejected']} descartadas por no "
+                      "estacionarias/invertibles)" if bd["ndraws_rejected"] else "")
+                   + ". Dos cuotas sólo son distintas si sus bandas no se solapan.")
+    return "\n".join(out) + note
 
 
 def main():
