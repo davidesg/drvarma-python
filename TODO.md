@@ -150,16 +150,52 @@ pure-Python fallback with no compiled engine. Remaining: the graphics finish
       Impacto: bloquea el puerto del cast empotrado de drtran, que es el cast por
       DEFECTO del C, y cierra la puerta a la forma echelon. El cast por resta no
       está afectado (validado contra el C a 1e-7 en 4 combinaciones de b/r/s).
-- [ ] **BUG (C engine, HIGH) — `double free or corruption` on the deseason+VARMA
-      path.** Surfaced building the multiart MCP (2026-07-28). Repro: 2-variate
-      seasonal series → `Model(..., deseason="auto").fit()` via the compiled engine
-      crashes the process. The pure-Python estimator runs the same call fine.
-      **Workaround shipped:** `_engine.py` now honours a runtime `DRVARMA_NO_ENGINE`
-      env var (force pure-Python without rebuilding); the multiart MCP is registered
-      with it. Needs a proper fix in the C engine (likely a free of a
-      deseason/dummy buffer, or an ownership bug in the cast when levels were
-      deseasonalized upstream). Until fixed, the C engine must not be the default
-      for the deseason path.
+- [x] **FIXED (2026-07-31, closed 2026-08-05) — `double free or corruption` in the
+      C engine. IT WAS NEVER THE DESEASON PATH: the trigger is `q >= 2`.**
+      Filed 2026-07-28 while building the multiart MCP, with the guess "likely a free
+      of a deseason/dummy buffer, or an ownership bug in the cast when levels were
+      deseasonalized". **That attribution was wrong.** Deseason was a coincidence —
+      the MCP's order search happened to try q=2 specs.
+
+      **Real cause.** `elf` allocates `gamwa = tensor(-q+1, 0, 1, m, 1, m)`
+      (`elfvarma.c:109`), whose row lower bound is NEGATIVE as soon as `q >= 2`.
+      `tensor()` must return the OFFSET pointer (`t -= nrl`) so the `(i - nrl)`
+      indices land where the plane/data setup assumes; without it `t[-1]` writes
+      BEFORE the allocation and `free_tensor` finishes the job with `free(t)` instead
+      of `free(t + nrl)`. Backtrace: `free_tensor(nrl=-1)` ->
+      `_int_free_merge_chunk` -> `abort`. Minimal repro, through the public API and
+      with no deseason anywhere: `estimate_w(w, p=1, q=1)` -> ifault 0;
+      `estimate_w(w, p=1, q=2)` -> abort.
+
+      **Not Mauricio's.** drvarma v.01, v.03.9 and v.04 carry the correct `t -= nrl`
+      and run clean at q=2 and q=4. What broke was the EMBEDDED COPY in
+      `csrc/internal/` for the binding, where the offset was lost when the file was
+      rewritten during the Numerical-Recipes cleanup.
+
+      **Fixed by `fd64566`** (restores `t -= nrl` in `tensor`) and **`e067baf`**
+      (extends the offset to `vector`, `ivector`, `matrix`, `imatrix`, and aligns the
+      three copies byte for byte). Verified 2026-08-05: the offsets are in the code,
+      `estimate_w(p=1, q=1..4)` all return ifault 0, and a 40-cell sweep
+      (m in {2,3}, p,q in {0,1,2}, deseason none/auto/force) crashes nowhere.
+      The `DRVARMA_NO_ENGINE` escape hatch stays — it is useful on its own — but the
+      C engine is no longer disqualified from the deseason path.
+
+      **THE PATTERN WORTH REMEMBERING — a fix in one copy does not travel by itself.**
+      This exact defect was paid for TWICE. It was fixed in fue on 3 July 2026
+      (`fue-1.13.1`, commit `b3e7dfd`) with a comment naming this very case —
+      "gamwa's -q+1, q>0 -> heap corruption and a double free in free_tensor" — and
+      **never reached drvarma**. It resurfaced here 25 days later, was misattributed,
+      and cost a second full diagnosis.
+      `nlatools.c` is duplicated across the family. **When you touch one copy, check
+      the other live ones in the same session** — `drtran/src/`,
+      `drvarma/csrc/internal/`, `drvarma_v.04.1/src/` (identical byte for byte except
+      the identity header) and fue's, which is a SEPARATE cleanup whose matrix layout
+      is not interchangeable — and say in the commit message which ones you
+      propagated to and which you did not.
+      Audited 2026-08-05: every live copy carries the fix. The exposed ones
+      (`fue-1.13`, `fuf-1.08`, both from May) are superseded by their successors, so
+      there is no live exposure. The 40-odd remaining copies in the tree are historic.
+
 - [x] **FIXED in the order search (pure-Python numerics still open, HIGH) — `inf` log-likelihood for some
       MA-bearing specs with deseason, and it drives the order *recommendation*.**
       Raised from MEDIUM after the oil pass-through exercise (2026-07-28).
@@ -411,13 +447,14 @@ these is a reason a wrong result went unnoticed.
       landing page (Features + "Numerical methods" table + honest contribution
       note); `RELEASING.md` + `.github/workflows/publish.yml` (tag-triggered,
       Trusted Publishing). Annotated tag `v0.1.0` created locally.
-- [ ] **PENDING — git remote + push.** This repo has **no git remote** (and `gh`
-      CLI is absent here). Decide own-repo vs the C-engine repo, then
-      `git remote add origin <URL>` and `git push -u origin master --tags`.
-      Note: pushing the `v0.1.0` tag triggers `publish.yml`, which will re-attempt
-      the 0.1.0 upload and fail harmlessly (already on PyPI). For trusted
-      publishing on future tags, configure the GitHub publisher on PyPI
-      (project → Settings → Publishing; workflow `publish.yml`, environment `pypi`).
+- [x] **DONE — git remote + push.** Own repo: `github.com/davidesg/drvarma-python`,
+      pushing to `master`. (This entry sat open long after the fact; closed
+      2026-08-05.)
+      Still to do on the packaging side: pushing the `v0.1.0` tag triggers
+      `publish.yml`, which will re-attempt the 0.1.0 upload and fail harmlessly
+      (already on PyPI). For trusted publishing on future tags, configure the
+      GitHub publisher on PyPI (project → Settings → Publishing; workflow
+      `publish.yml`, environment `pypi`).
 - [x] CI workflow (done 2026-06-27): `.github/workflows/ci.yml` — a **pure-Python**
       job (matrix py3.10–3.12, no GSL → engine degrades away, asserts it is absent)
       and a **with-engine** job (libgsl-dev → builds the cffi extension, asserts it
@@ -529,8 +566,16 @@ the CFFI engine is an optional accelerator only. Ordered PP1 → PP5.
         `bench/benchmark.py:72` is NON-STATIONARY for p >= 2 (phi = [0.6I, 0.6I]
         gives a root at 0.884). The battery only uses it with (1,1) so it does not
         bite today, but a new cell with p=2 would silently get termcode 0.
-- [ ] Keep `csrc/internal/` in sync with `../drvarma_v.04.1/src` when the C
-      engine changes (they are copies).
+- [ ] **Keep `csrc/internal/` in sync with `../drvarma_v.04.1/src` and
+      `drtran/src/` when the C engine changes — they are COPIES, and a fix in one
+      does not travel by itself.** This has already cost two full diagnoses of the
+      same `nlatools.c` heap bug (fue fixed it 3 July, drvarma rediscovered it 28
+      July and misattributed it; see the closed entry under BUGS). The three files
+      are byte-identical except the identity header, so a `diff` is the check.
+      fue's copy is a SEPARATE cleanup — 33 functions vs 42, and its matrix layout
+      is not interchangeable — so it needs its own judgement, not a blind copy.
+      When you touch any of them, say in the commit message which copies you
+      propagated to and which you deliberately did not.
 - [ ] Single source of truth for forecasting/diagnostics: numpy (current) vs the C.
 
 ## Out of scope for this port — Shea (AS 242)
@@ -560,6 +605,6 @@ port faithfully (never a Kalman/state-space stand-in — that *is* Shea's route)
       `_newey_west_hac` here and offer it as the (default) test.
 
 ## Decisions / open questions
-- [ ] Publish the Python port to its own GitHub repo? (own remote, CI, PyPI.)
+- [x] Publish the Python port to its own GitHub repo — done, `drvarma-python`.
 - [ ] Single source of truth for forecasting/diagnostics: numpy (current) vs the
       C (via more API). Numpy keeps the port usable without the C engine (P3 goal).
