@@ -62,41 +62,10 @@ def cholsol(matl, n, rhsol):
 
 
 # --------------------------------------------------------------------------- #
-#  typical_size : Dennis & Schnabel's typx                                    #
-# --------------------------------------------------------------------------- #
-
-def typical_size(x, i, typx):
-    """The typical size of parameter `i` — Dennis & Schnabel's `typx`.
-
-    `qnewtopt.c` hardcodes it to 1 (the book's simplified A9.4.1; the full
-    algorithm takes it as an input). That is fine while the parameters are of
-    order 1, and wrong when they are not: with `typx = 1` the relative-gradient
-    test degenerates into an ABSOLUTE tolerance and the step test into an
-    absolute one too, so at small parameter scale the first becomes unsatisfiable
-    and the second trivially satisfiable. The optimiser still reaches the same
-    optimum; what it loses is the ability to certify it (drtran's `refactor=1`).
-
-    `typx=None` reproduces the C bit-for-bit. A float is a FLOOR: the typical
-    size becomes `max(|x_i|, floor)`, i.e. relative to the parameter itself but
-    never collapsing to zero when one passes through the origin.
-    """
-    if typx is None:
-        return None
-    return max(abs(x[i]), typx)
-
-
-# --------------------------------------------------------------------------- #
 #  cdgrad : central-difference gradient                                       #
 # --------------------------------------------------------------------------- #
 
 def cdgrad(func, n, x, eta, g):
-    # NOTE: the step stays ABSOLUTE (`eta^(1/3)*max(|x|,1)` ~ 6.06e-6) on purpose,
-    # and does NOT take `typx`. The objective here is a ratio of order 1, and for
-    # such an f that step is near-optimal; making it relative to a parameter of
-    # ~1e-4 would give h ~ 6e-9, whose cancellation error eps*|f|/h ~ 3e-7 EXCEEDS
-    # gradtol itself. Measured: scaling the step changes nothing (same optimum,
-    # same termcode, same iteration count) — the defect is in the stopping tests,
-    # not here. See drtran/TODO.md.
     third = pow(eta, 1.0 / 3.0)
     for i in range(1, n + 1):
         if x[i] == abs(x[i]):
@@ -262,31 +231,28 @@ def bfgsfac(n, xk, xkp1, gk, gkp1, eta, B):
 #  stopping criteria                                                          #
 # --------------------------------------------------------------------------- #
 
-def umstop0(n, x, f, g, gradtol, maxits, typx=None):
+def umstop0(n, x, f, g, gradtol, maxits):
     if maxits == 0:
         return 4, 0
     consecmax = 0
-    max1 = 0.0
-    for i in range(1, n + 1):
-        t = typical_size(x, i, typx)
-        sz = (abs(x[i]) + 1.0) if t is None else t
-        tmp = abs(g[i]) * sz / (abs(f) + 1.0)
+    max1 = abs(g[1]) * (abs(x[1]) + 1.0) / (abs(f) + 1.0)
+    for i in range(2, n + 1):
+        tmp = abs(g[i]) * (abs(x[i]) + 1.0) / (abs(f) + 1.0)
         if tmp > max1:
             max1 = tmp
     return (1 if max1 <= gradtol else 0), consecmax
 
 
 def umstop(n, xk, xkp1, fkp1, gkp1, retcode, gradtol, steptol, k, maxits,
-           maxcmax, maxtaken, consecmax, typx=None):
-    max1 = 0.0
-    max2 = 0.0
-    for i in range(1, n + 1):
-        t = typical_size(xkp1, i, typx)
-        sz = (abs(xkp1[i]) + 1.0) if t is None else t
-        tmp = abs(gkp1[i]) * sz / (abs(fkp1) + 1.0)
+           maxcmax, maxtaken, consecmax):
+    max1 = abs(gkp1[1]) * (abs(xkp1[1]) + 1.0) / (abs(fkp1) + 1.0)
+    for i in range(2, n + 1):
+        tmp = abs(gkp1[i]) * (abs(xkp1[i]) + 1.0) / (abs(fkp1) + 1.0)
         if tmp > max1:
             max1 = tmp
-        tmp = abs(xkp1[i] - xk[i]) / sz
+    max2 = abs(xkp1[1] - xk[1]) / (abs(xkp1[1]) + 1.0)
+    for i in range(2, n + 1):
+        tmp = abs(xkp1[i] - xk[i]) / (abs(xkp1[i]) + 1.0)
         if tmp > max2:
             max2 = tmp
 
@@ -390,18 +356,12 @@ def lnsrch(n, xk, fk, gk, dk, xkp1, maxstep, steptol, func):
 #  raxopt : the driver                                                        #
 # --------------------------------------------------------------------------- #
 
-def raxopt(func, n, xk, maxits, gradtol, steptol, typx=None):
+def raxopt(func, n, xk, maxits, gradtol, steptol):
     """Factored BFGS minimisation of `func` from `xk` (1-indexed, modified in place).
 
     Returns (fk, b, k, termcode): final objective, the factored Hessian b
     (1-indexed (n+1,n+1) lower-triangular Cholesky factor of the BFGS Hessian
     approximation), iteration count, and the termination code.
-
-    `typx` is the typical parameter size used by the STOPPING TESTS (not by the
-    finite-difference step, which stays absolute); see `typical_size`. `None`,
-    the default, reproduces `qnewtopt.c` bit-for-bit. A float is a floor for
-    `max(|x_i|, floor)`, which is what makes the tests scale-relative and is
-    needed when the parameters are orders of magnitude below 1.
     """
     xkp1 = np.zeros(n + 1)
     gk = np.zeros(n + 1)
@@ -426,7 +386,7 @@ def raxopt(func, n, xk, maxits, gradtol, steptol, typx=None):
             b[i][j] = 0.0
         b[i][i] = 1.0
 
-    termcode, consecmax = umstop0(n, xk, fk, gk, gradtol, maxits, typx)
+    termcode, consecmax = umstop0(n, xk, fk, gk, gradtol, maxits)
 
     while termcode == 0:
         for i in range(1, n + 1):
@@ -440,7 +400,7 @@ def raxopt(func, n, xk, maxits, gradtol, steptol, typx=None):
 
         termcode, consecmax = umstop(
             n, xk, xkp1, fkp1, gkp1, retcode, gradtol, steptol,
-            k + 1, maxits, maxcmax, maxtaken, consecmax, typx)
+            k + 1, maxits, maxcmax, maxtaken, consecmax)
 
         bfgsfac(n, xk, xkp1, gk, gkp1, eta, b)
 

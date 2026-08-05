@@ -494,44 +494,41 @@ the CFFI engine is an optional accelerator only. Ordered PP1 → PP5.
       binary's garbage estimate, not a formula bug).
 
 ## Engine / maintenance
-- [ ] **`_qnewt` hardcodes the typical parameter size to 1 — the stopping tests stop
-      measuring what they think they measure when the parameters are ≪ 1.** Diagnosed
-      from drtran (2026-08-04); the same four lines exist in the C (`qnewtopt.c:185,
-      208, 215, 401`). `umstop`'s `max1 = |g|·(|x|+1)/(|f|+1)` is an ABSOLUTE gradient
-      tolerance and `max2 = |Δx|/(|x|+1)` an ABSOLUTE step tolerance; `cdgrad`'s step is
-      `η^⅓·max(|x|,1)`, a fixed 6.06e-6. This is Dennis & Schnabel A9.4.1 in its
-      simplified form — the book's full algorithm takes `typx` as an input.
-      Consequence: at small parameter scale the optimiser **reaches the same optimum in
-      the same number of iterations** but cannot certify it, so it falls from termcode 1
-      to termcode 2 — and on a hard problem it iterates to `maxits` instead (drtran's
-      `refactor=1` hang). **Applied:** `raxopt(..., typx=None)` threads
-      `typx_i = max(|x_i|, floor)` into `umstop`/`umstop0`. `typx=None` reproduces the C
-      **bit-for-bit**, so drvarma's own default path is provably untouched —
-      `tests/test_qnewt_typx.py` pins that at scales 1, 1e-2 and 1e-4. `drtran.fit`
-      defaults to `typx=1e-3`.
-      **NOT applied to `cdgrad`, deliberately:** measured, scaling the step changes
-      nothing, and it would be harmful — for an objective of order 1 the absolute step
-      `eta^(1/3)*max(|x|,1)` ~ 6.06e-6 is near-optimal, while a step relative to a ~1e-4
-      parameter gives h ~ 6e-9 whose cancellation error `eps*|f|/h ~ 3e-7` EXCEEDS
-      gradtol. The same reasoning leaves `fdhess:134` alone (and its standard errors are
-      homologated 17/17 against the C at refactor=100).
-      **The C got the same fix** (2026-08-05, `drtran/src/qnewtopt.c` + the `qn_typx`
-      global, `DRTRAN_TYPX=0` to recover the historical optimiser). It turned up a
-      second, worse symptom that was not diagnosed: on a FLAT direction the historical
-      test never fires and the optimiser **runs to maxits** — drtran's near-collinear
-      `q[2,1]` case burns 500 iterations and lands on |t| = 2424 for an unidentified
-      parameter, where with typx it converges by gradient in 23 and correctly reports
-      t = 0 with a huge standard error. Worth checking whether sima's VARMA fits show
-      the same thing: `termcode 3/4` on a near-common-factor model would be this, not
-      the model.
-      **Verified against the TASTE oracle**: 7/7 still pass and on the two drtran-
-      estimated cases the fix moves the estimates by exactly 0.0e+00.
-      Batteries after the change: drvarma 216, drtran-python 193, drtran C 296/296.
-      Full write-up: `drtran/TODO.md`, last entry.
-      NOTE: this is a *different* problem from `var_disparity` (DEVELOPER_GUIDE §4.3) —
-      there the between-series scale genuinely ill-conditions the covariance; here the
-      rescaling is uniform and the model is literally identical (the logL difference is
-      exactly the Jacobian).
+- [ ] **`_qnewt` hardcodes the typical parameter size to 1 (Dennis & Schnabel's
+      `typx`). STUDIED IN DEPTH AND DELIBERATELY NOT CHANGED (2026-08-04/05).**
+      **Full study: `drtran/docs/OPTIMIZER_STOPPING_STUDY.md` — read it before
+      touching the stopping criteria.** What matters here:
+      * `umstop`'s `max1 = |g|*(|x|+1)/(|f|+1)` becomes an absolute gradient
+        tolerance once the parameters are far below 1, and `max2 = |dx|/(|x|+1)` an
+        absolute step tolerance. Same four lines in the C (`qnewtopt.c:185,208,215`).
+        The optimiser still reaches the optimum; it loses the ability to certify it.
+      * Making the tests relative was implemented three ways (adaptive floor,
+        norm-relative floor, and D&S's fixed vector) and **all three were rejected
+        on measurements**. It buys iterations (`var_disparity` 166 -> 110) but stops
+        EARLIER, and the extra depth the historical test forces is what makes two
+        rescalings of the same ill-conditioned problem agree:
+        `max|phi(scale=100) - phi(scale=25)|` on the WTI/IPC pass-through goes from
+        ~1e-5 to 3.5e-4 (ES) and 3.7e-3 (FR), against a 1e-4 tolerance. It broke
+        `test_passthrough_point_estimates_scale_invariant` plus four byte-exact
+        output comparisons. It also ended 2.55e-04 WORSE in log-likelihood on
+        `var_disparity` — the saved iterations are not free.
+      * **sima does NOT have the runaway** drtran had: nothing reaches maxits in any
+        bench regime, because its parameters are seeded from the data at O(0.1-1)
+        and its flat directions are common factors where the line search fails
+        cleanly (termcode 3). drtran's escape route was a covariance seeded at ZERO
+        on an unbounded ridge.
+      * Separate negative result: over-parameterised VARMA fits stop on termcode 2/3
+        with AND without the change (VARMA(2,1): 2->3; VARMA(3,2): 3 both ways, same
+        likelihood). So the "every VARMA(3,2) stops on termcode 3" observation above
+        is weak identification, not this defect, and the open question at
+        `estimate_py.py:329-331` is untouched by this study.
+      * The most promising UNTRIED variant is a **per-parameter-class typx**
+        (AR/MA/transfer/covariances -> 1; mu and the deterministic omegas -> their
+        own size, since only those scale with the data). See §8 of the study.
+      * Bench note found on the way: the `near_cancellation` regime in
+        `bench/benchmark.py:72` is NON-STATIONARY for p >= 2 (phi = [0.6I, 0.6I]
+        gives a root at 0.884). The battery only uses it with (1,1) so it does not
+        bite today, but a new cell with p=2 would silently get termcode 0.
 - [ ] Keep `csrc/internal/` in sync with `../drvarma_v.04.1/src` when the C
       engine changes (they are copies).
 - [ ] Single source of truth for forecasting/diagnostics: numpy (current) vs the C.
