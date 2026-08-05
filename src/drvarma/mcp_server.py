@@ -533,13 +533,31 @@ def cross_correlation_matrices(name: str, lam: float = -99.0, d: int = -1,
 
     Uses the saved characterization (λ/d/deseason) by default. Tiao-Box +/-/.
     (bound 2/√n). CCM that CUT OFF after lag q ⇒ pure MA(q); slow decay ⇒ AR terms.
+
+    The +/- symbols are NOT a significance test, and printing them without
+    saying so is how a reader turns them into one. Tiao & Box (1981, p. 806),
+    who introduced them, are explicit: the variances of the sample correlations
+    "can be considerably greater than n^(-1/2) when the series are highly
+    autocorrelated, so that these indicator symbols, if taken literally, can
+    lead to OVERPARAMETERIZATION. However, we do not interpret these indicator
+    symbols in the sense of a formal significance test, but as a rather crude
+    'signal-to-noise' guide."
+
+    Which is exactly the reading an assistant will not arrive at on its own from
+    a grid of + and -, so the tool now says it in its own output.
     """
     ms = _require(name)
     lam, d, D, ds = _resolve(name, lam, d, D, deseason)
     w = _prepared_w(ms, lam, d, D, ds)
     R, bound, n, m = _ccm_values(w)
     out = [f"# CCM — {name} (n={n}, m={m}; λ={lam}, d={d}, deseason={ds or 'no'})",
-           f"Símbolos: + (ρ>2/√n={bound:.3f}), - (<-2/√n), . (no signif.). Series: {ms.names}", ""]
+           f"Símbolos: + (ρ>2/√n={bound:.3f}), - (<-2/√n), . (por debajo). "
+           f"Series: {ms.names}",
+           "⚠ Los símbolos son una guía BURDA de señal-ruido, NO un contraste de "
+           "significación (Tiao & Box 1981, p. 806): con series muy "
+           "autocorrelacionadas la varianza de ρ̂ es bastante mayor que 1/√n, así "
+           "que tomarlos al pie de la letra lleva a SOBREPARAMETRIZAR. Léelos "
+           "como patrón, no cuentes las cruces.", ""]
     for k in range(1, n_lags + 1):
         Rk = R(k)
         out.append(f"lag {k}:")
@@ -590,6 +608,12 @@ def plot_cross_correlation_matrices(name: str, lam: float = -99.0, d: int = -1,
     code). Row i = series i, column j = series j; a bar at lag k in cell (i,j) means
     series j lagged k correlates with series i now. A cell that CUTS OFF after lag q
     points to MA(q); slow decay points to AR terms. Writes a PNG and returns its path.
+
+    The ±2/√n band is the same crude signal-to-noise guide as the CCM's +/-
+    symbols, not a significance test — see `cross_correlation_matrices`. With
+    strongly autocorrelated series the true variance of each correlation is
+    larger, so reading the band literally over-parameterises. Read the SHAPE
+    (cut-off vs decay, one side vs both), not the count of crossings.
     """
     ms = _require(name)
     lam, d, D, ds = _resolve(name, lam, d, D, deseason)
@@ -631,6 +655,12 @@ def plot_cross_correlation_functions(name: str, lam: float = -99.0, d: int = -1,
     (k>0) mean series j leads series i; bars on the LEFT (k<0) mean i leads j. A
     strictly one-sided pattern is the visual signature of an exogenous variable;
     bars on both sides mean feedback. Writes a PNG and returns its path.
+
+    The ±2/√n band is the same crude signal-to-noise guide as the CCM's +/-
+    symbols, not a significance test — see `cross_correlation_matrices`. With
+    strongly autocorrelated series the true variance of each correlation is
+    larger, so reading the band literally over-parameterises. Read the SHAPE
+    (cut-off vs decay, one side vs both), not the count of crossings.
     """
     ms = _require(name)
     lam, d, D, ds = _resolve(name, lam, d, D, deseason)
