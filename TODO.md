@@ -306,27 +306,37 @@ these is a reason a wrong result went unnoticed.
       2/√n. A single spike at the seasonal lag is diluted by 56 degrees of freedom.
       Report the residual ACF lag by lag (at least s and 2s), or add a seasonal-lag
       Ljung-Box, and never print "Modelo adecuado" on the aggregate test alone.
-- [ ] **Nothing verifies that deseasonalisation worked.** `characterize_series`
+- [x] **Nothing verifies that deseasonalisation worked — HECHO.** La post-condición
+      está en `mcp_server.py:361`: el |ACF(s)| de la serie diferenciada DEBE bajar, y
+      se avisa si baja poco (patrón desfasado). Original: `characterize_series`
       detects seasonality and sets `deseason=auto`, but no step checks the result. A
       one-line post-condition — ACF(s) of the prepared series must drop in absolute
       value versus not adjusting — would have caught the CRITICAL phase bug above
       immediately, on the first run.
-- [ ] **`characterize_series` reports seasonality as a yes/no.** No F statistic, no
+- [x] **`characterize_series` reports seasonality as a yes/no — HECHO.** Ahora lleva
+      la F, su p-valor y la amplitud (`mcp_server.py:284`). Original: No F statistic, no
       seasonal R², no amplitude. Here the seasonal component was 40–79 % of the
       variance of monthly inflation (ES R²=0.79, amplitude 2.05 pp) — a first-order
       feature of the data that the summary table renders as "sí".
-- [ ] **The seed's (p,q) ceiling is too tight to be useful.** The consensus saved for
+- [x] **The seed's (p,q) ceiling is too tight to be useful — HECHO.** El techo acota
+      pero ya no puede acotar por debajo de los candidatos estándar
+      (`mcp_server.py:312`). Original: The consensus saved for
       these datasets was `(p,q)≤(0,1)`, and `identify_varma_order` treats
       `p_max=0`/`q_max=0` as "use the seed", so the DEFAULT call searches VMA(1) only
       — it cannot even reach the VAR(1)/VAR(2) of the published note. Combined with
       the `inf` bug this makes "VARMA(0,1)" the default answer twice over.
-- [ ] **No access to residuals or fitted parameters through the MCP surface.** Every
+- [x] **No access to residuals or fitted parameters through the MCP surface — HECHO.**
+      Tool `export_fit`, entre los 15 registrados. Original: Every
       cross-check in this exercise (residual ACF, OLS arbitration, reproducing the
       published table) had to bypass multiart and drive `drvarma` directly. Expose
       residuals and the full parameter vector.
-- [ ] **IRF/FEVD come without confidence bands**, so there is no way to tell a
+- [x] **IRF/FEVD come without confidence bands — HECHO.** `impulse_response(bands=True)`
+      por defecto, bandas 95 % Monte-Carlo, y dice sobre cuántas extracciones.
+      Original:, so there is no way to tell a
       pass-through share of 5 % from one of 26 % in terms of significance.
-- [ ] **The cointegration warning promised in the server instructions never fired.**
+- [x] **The cointegration warning promised in the server instructions never fired —
+      HECHO.** Salta en `mcp_server.py:399` cuando todas las series son I(1).
+      Original:
       The instructions say to warn when series look I(1) and move together; loading
       four I(1) level pairs produced no such notice.
 
