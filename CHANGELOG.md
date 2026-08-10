@@ -4,6 +4,11 @@ Exact maximum-likelihood estimation, forecasting and diagnostics of multivariate
 VARMA models (Mauricio 1995 JASA / 1997 AS 311), pure-Python with an optional
 compiled C engine.
 
+## 0.1.6 — 2026-08-10
+
+Corrige el silenciado de 0.1.5: el aviso salta al CONSTRUIR FastMCP, no al
+importarlo. Filtro a nivel de módulo, comprobado con -W always.
+
 ## 0.1.5 — 2026-08-10
 
 Limpieza para una versión estable. Sin cambios en el motor ni en sima.

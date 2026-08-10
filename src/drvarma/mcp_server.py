@@ -20,17 +20,18 @@ import os
 
 import numpy as np
 # El aviso `IncompleteFieldDefinitionWarning` sobre el campo `lifespan` lo emite
-# `pydantic_settings` al construir el modelo de ajustes de FastMCP: es una
-# interacción entre versiones de dependencias, NO de este código, y no afecta al
-# protocolo --stdout sale limpio--. Pero un servidor MCP habla por stdio y
-# algunos clientes muestran lo que vaya a stderr como si fuera un error, así que
-# se silencia. ACOTADO A ESE AVISO y sólo alrededor del import que lo dispara:
-# un filtro general taparía los que sí importan.
+# `pydantic_settings` al CONSTRUIR FastMCP --no al importarlo, que es donde lo
+# puse primero y por eso seguía saliendo--. Es una interacción entre versiones de
+# dependencias, NO de este código, y no toca el protocolo: stdout sale limpio.
+# Pero un servidor de stdio que escribe en stderr al arrancar puede leerse como
+# un fallo. El filtro va a nivel de módulo, ACOTADO A ESE AVISO por mensaje y por
+# módulo de origen: un filtro general taparía los que sí importan.
 import warnings as _w
-with _w.catch_warnings():
-    _w.filterwarnings("ignore", message=r".*lifespan.*incomplete definition.*")
-    _w.filterwarnings("ignore", category=UserWarning, module=r"pydantic_settings.*")
-    from mcp.server.fastmcp import FastMCP
+_w.filterwarnings("ignore", message=r".*lifespan.*incomplete definition.*")
+_w.filterwarnings("ignore", module=r"pydantic_settings.*",
+                  message=r".*incomplete definition.*")
+
+from mcp.server.fastmcp import FastMCP
 
 from .series import MultiSeries
 from .model import Model
