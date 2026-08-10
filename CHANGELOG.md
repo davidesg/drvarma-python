@@ -4,6 +4,15 @@ Exact maximum-likelihood estimation, forecasting and diagnostics of multivariate
 VARMA models (Mauricio 1995 JASA / 1997 AS 311), pure-Python with an optional
 compiled C engine.
 
+## 0.1.5 — 2026-08-10
+
+Limpieza para una versión estable. Sin cambios en el motor ni en sima.
+
+- **`__version__` se lee de los metadatos** en vez de una constante escrita a
+  mano, que decía `0.1.1` con la 0.1.4 instalada.
+- **Silenciado el aviso de `pydantic_settings` al arrancar sima**, acotado a ese
+  aviso: no toca el protocolo, pero puede leerse como un fallo.
+
 ## 0.1.4 — 2026-08-10
 
 Documentación y metadatos. Sin cambios en el motor ni en sima.
