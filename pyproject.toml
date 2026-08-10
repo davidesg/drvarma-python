@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "drvarma"
 version = "0.1.6"
-description = "Multivariate VARMA modelling — exact maximum-likelihood estimation, forecasting and diagnostics"
+description = "Multivariate VARMA modelling — exact maximum-likelihood estimation, forecasting and diagnostics. Ships `sima`, an MCP server for LLM-driven VARMA analysis"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "GPL-2.0-or-later"
@@ -16,7 +16,7 @@ authors = [
 keywords = [
     "VARMA", "vector ARMA", "time series", "forecasting", "multivariate",
     "exact maximum likelihood", "econometrics", "impulse response",
-]
+, "MCP", "sima", "MCP server"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
