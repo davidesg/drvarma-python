@@ -49,6 +49,9 @@ dependencies = [
 Homepage = "https://github.com/davidesg/drvarma-python"
 Repository = "https://github.com/davidesg/drvarma-python"
 Issues = "https://github.com/davidesg/drvarma-python/issues"
+# Documentation es el campo que PyPI muestra más arriba y faltaba.
+Documentation = "https://github.com/davidesg/drvarma-python/tree/master/docs"
+Changelog = "https://github.com/davidesg/drvarma-python/blob/master/CHANGELOG.md"
 
 [project.scripts]
 drvarma = "drvarma.cli:main"
