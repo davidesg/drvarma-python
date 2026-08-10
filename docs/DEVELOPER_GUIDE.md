@@ -248,3 +248,19 @@ methods they benchmark against:
 - **Dennis, J. E. & Schnabel, R. B. (1983).** *Numerical Methods for Unconstrained
   Optimization and Nonlinear Equations.* — the factored-BFGS optimiser
   (`qnewtopt.c` / `_qnewt.py`).
+
+## Releasing: do NOT publish by hand
+
+This package compiles a C engine, so its wheels are platform-specific and are
+built **only** by `.github/workflows/publish.yml`, which runs `cibuildwheel`
+across macOS, manylinux, musllinux and Windows for cp310–cp313. Release 0.1.3
+shipped 26 files that way.
+
+`python -m build` on a developer machine produces a `linux_x86_64` wheel, and
+**PyPI rejects that tag** — only `manylinux`/`musllinux` are accepted. So a
+manual `twine upload` publishes the sdist alone, and a user without a compiler
+who installs that version gets a build failure where the previous version
+worked.
+
+The release is therefore: bump the version, commit, **push a `v*` tag**, and let
+the workflow do the rest.

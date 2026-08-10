@@ -129,3 +129,10 @@ jobs:
       - name: What is about to be published
         run: ls -la dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          # Sin esto, un fichero que ya esté en PyPI --p.ej. un sdist subido a
+          # mano-- tumba la subida ENTERA y la versión se queda sin wheels. Los
+          # wheels de este paquete SÓLO los produce esta matriz: `python -m build`
+          # en local da un linux_x86_64 que PyPI rechaza, así que publicar a mano
+          # deja a los usuarios sin compilador sin poder instalar.
+          skip-existing: true
