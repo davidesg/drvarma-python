@@ -6,6 +6,45 @@ per-series diagnostics, base plots) are done and validated against the C engine
 pure-Python fallback with no compiled engine. Remaining: the graphics finish
 (pyfug JT formats, deferred to last), P5 docs/CI, and the deferred Shea backup.
 
+## PRIORIDAD — Separar el asistente del motor (sima fuera de drvarma)
+
+**Plan maestro y justificación:** `art-python/TODO.md` §PRIORIDAD — Arquitectura
+asistente/motor, y `art-python/docs/ASSISTANT_LAYER_PROPOSAL.md` (inventario de
+símbolos medido). Contexto: `~/Dropbox/SRC/atws/atsw-suite/RESPUESTA_REVISION_2026-08-12.md`.
+
+La regla que decide qué va a cada lado: **todo lo que el modelo lee pertenece al
+asistente; el motor entrega números y no argumenta.** Corolario: el motor lleva
+sus reservas como DATO, no como prosa.
+
+Orden obligatorio, y el motivo: hacer (4) antes que (2) publicaría un paquete
+cuya dependencia son internos no declarados, y dejaría dos salidas — promoverlos
+igual, o clavar la versión del asistente a la del motor, que devuelve el
+acoplamiento por la puerta principal.
+
+- [ ] **(1)** `drvarma/assistant/` — subir la capa de criterio fuera de
+      `mcp_server.py` a su propio subpaquete. Sin cambio de empaquetado.
+      Ahí van `_draw_ccf_panel` y `_snap_cmax` — dibujar paneles es
+      presentación, y el guion bajo ya lo dice.
+- [ ] **(2)** Declarar la API: `deseasonalize_raw`, `ccf`, `qccf` e
+      `irf_fevd_bands` entran en `__all__` con el docstring que un símbolo
+      público debe. 6 de 10 símbolos son privados: proporcionalmente, el peor
+      reparto de los tres.
+- [ ] **(3)** Partir la batería: hoy el servidor viaja con el motor.
+- [ ] **(4)** Entonces `sima-tseries`, que a esas alturas es mecánico.
+
+**Empezar POR AQUÍ.** Nadie ha trabajado en `sima`, sus docstrings son los
+más delgados y medibles (412 caracteres de media frente a 963 de `art`,
+`diagnose` en 116), y construir el patrón aquí cuesta lo menos y enseña lo más
+antes de tocar `mtram`, que está en uso diario.
+
+Y hay un motivo de método, no solo de coste: el juicio multivariante (orden de
+Cholesky, desestacionalizar o no, `(p,q)` desde CCM/Tiao-Box) está MENOS guiado
+por la evidencia que el univariante, no más. Que `sima` tenga 53 líneas de
+instrucciones frente a las 258 de `art` es el reparto exactamente invertido al
+que el método pide.
+
+---
+
 ## BUGS
 
 - [x] **FIXED (deseason, was CRITICAL) — phase off-by-one in `start_sub`:
@@ -541,41 +580,6 @@ the CFFI engine is an optional accelerator only. Ordered PP1 → PP5.
       binary's garbage estimate, not a formula bug).
 
 ## Engine / maintenance
-- [ ] **`_qnewt` hardcodes the typical parameter size to 1 (Dennis & Schnabel's
-      `typx`). STUDIED IN DEPTH AND DELIBERATELY NOT CHANGED (2026-08-04/05).**
-      **Full study: `drtran/docs/OPTIMIZER_STOPPING_STUDY.md` — read it before
-      touching the stopping criteria.** What matters here:
-      * `umstop`'s `max1 = |g|*(|x|+1)/(|f|+1)` becomes an absolute gradient
-        tolerance once the parameters are far below 1, and `max2 = |dx|/(|x|+1)` an
-        absolute step tolerance. Same four lines in the C (`qnewtopt.c:185,208,215`).
-        The optimiser still reaches the optimum; it loses the ability to certify it.
-      * Making the tests relative was implemented three ways (adaptive floor,
-        norm-relative floor, and D&S's fixed vector) and **all three were rejected
-        on measurements**. It buys iterations (`var_disparity` 166 -> 110) but stops
-        EARLIER, and the extra depth the historical test forces is what makes two
-        rescalings of the same ill-conditioned problem agree:
-        `max|phi(scale=100) - phi(scale=25)|` on the WTI/IPC pass-through goes from
-        ~1e-5 to 3.5e-4 (ES) and 3.7e-3 (FR), against a 1e-4 tolerance. It broke
-        `test_passthrough_point_estimates_scale_invariant` plus four byte-exact
-        output comparisons. It also ended 2.55e-04 WORSE in log-likelihood on
-        `var_disparity` — the saved iterations are not free.
-      * **sima does NOT have the runaway** drtran had: nothing reaches maxits in any
-        bench regime, because its parameters are seeded from the data at O(0.1-1)
-        and its flat directions are common factors where the line search fails
-        cleanly (termcode 3). drtran's escape route was a covariance seeded at ZERO
-        on an unbounded ridge.
-      * Separate negative result: over-parameterised VARMA fits stop on termcode 2/3
-        with AND without the change (VARMA(2,1): 2->3; VARMA(3,2): 3 both ways, same
-        likelihood). So the "every VARMA(3,2) stops on termcode 3" observation above
-        is weak identification, not this defect, and the open question at
-        `estimate_py.py:329-331` is untouched by this study.
-      * The most promising UNTRIED variant is a **per-parameter-class typx**
-        (AR/MA/transfer/covariances -> 1; mu and the deterministic omegas -> their
-        own size, since only those scale with the data). See §8 of the study.
-      * Bench note found on the way: the `near_cancellation` regime in
-        `bench/benchmark.py:72` is NON-STATIONARY for p >= 2 (phi = [0.6I, 0.6I]
-        gives a root at 0.884). The battery only uses it with (1,1) so it does not
-        bite today, but a new cell with p=2 would silently get termcode 0.
 - [ ] **Keep `csrc/internal/` in sync with `../drvarma_v.04.1/src` and
       `drtran/src/` when the C engine changes — they are COPIES, and a fix in one
       does not travel by itself.** This has already cost two full diagnoses of the
@@ -586,7 +590,56 @@ the CFFI engine is an optional accelerator only. Ordered PP1 → PP5.
       is not interchangeable — so it needs its own judgement, not a blind copy.
       When you touch any of them, say in the commit message which copies you
       propagated to and which you deliberately did not.
+      **FICHADO como `bugs/BUG-0002`, y ya han derivado**: medido el 12-ago-2026,
+      `qnewtopt.c` difiere en 17 líneas — el registro de `termcode`/`nit` está
+      solo en la copia empotrada. Ahí va el arreglo y el test del `diff`.
 - [ ] Single source of truth for forecasting/diagnostics: numpy (current) vs the C.
+
+## ESTUDIO — El criterio de parada del optimizador (no es un bug)
+
+**Esto no va al registro de defectos, y la distinción es sustantiva.**
+`raxopt` / `qnewtopt` son el algoritmo publicado y arbitrado de Mauricio (JASA).
+Cambiar un criterio de parada no es arreglar un bug: es **modificar trabajo
+publicado**, y cambia qué modelos se declaran convergidos en todo lo que se haya
+estimado con esta herramienta. Ficharlo como defecto ya presupone la conclusión.
+
+Requiere mucho más trabajo que un arreglo, y el resultado esperable no es un
+parche sino un estudio con una afirmación que se pueda sostener ante el autor.
+
+**Leer antes de nada: `drtran/docs/OPTIMIZER_STOPPING_STUDY.md`.**
+
+### La observación de partida
+
+`_qnewt` fija a 1 el tamaño típico de parámetro (`typx` de Dennis & Schnabel), de
+modo que el `max1 = |g|·(|x|+1)/(|f|+1)` de `umstop` se convierte en un criterio
+de gradiente **absoluto** en vez de relativo cuando los parámetros son pequeños.
+Estudiado a fondo el 4 y 5 de agosto de 2026 y **deliberadamente no cambiado**.
+
+### Qué haría falta para sostener una afirmación
+
+- [ ] Un caso **medido** en el que el criterio absoluto declare convergencia en un
+      punto que no es un óptimo, con la verosimilitud evaluada alrededor para
+      demostrarlo — no una sospecha de que el criterio "podría" fallar.
+- [ ] La superficie caracterizada: en qué región del espacio de parámetros pasa,
+      y si esa región es alcanzable desde semillas razonables.
+- [ ] El coste de la alternativa medido en los casos donde HOY funciona: un
+      criterio relativo que declare no-convergencia en ajustes que están bien es
+      peor que el problema.
+- [ ] Comprobación cruzada contra el estimador de Python puro, que es referencia
+      independiente para la verosimilitud aunque comparta el optimizador.
+- [ ] Y el efecto sobre lo ya publicado: cuántos de los modelos estimados con
+      esta herramienta cambiarían de veredicto.
+
+### Y aun entonces
+
+El entregable es **el diagnóstico documentado**, no el parche. Es una pregunta
+para Mauricio, y esa pregunta necesita ir acompañada de las cinco cosas de
+arriba, no de una línea de código cambiada.
+
+Relacionado, y esto SÍ es un defecto ordinario: que la copia empotrada del C y la
+autónoma difieran en `qnewtopt.c` (BUG-0002 del registro nuevo). Ahí no hay
+cuestión de criterio — el arreglo solo REGISTRA lo que `raxopt` ya calculó —, solo
+deriva entre copias.
 
 ## Out of scope for this port — Shea (AS 242)
 
