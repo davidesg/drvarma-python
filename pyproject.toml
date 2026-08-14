@@ -16,7 +16,7 @@ authors = [
 keywords = [
     "VARMA", "vector ARMA", "time series", "forecasting", "multivariate",
     "exact maximum likelihood", "econometrics", "impulse response",
-, "MCP", "sima", "MCP server"]
+    "MCP", "sima", "MCP server"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
