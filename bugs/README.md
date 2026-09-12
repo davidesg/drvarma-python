@@ -7,13 +7,15 @@ registros de `art-tseries` y `fue`. Plantilla en `TEMPLATE.md`.
 suite sin registro de defectos: lo que había vivía mezclado con tareas en
 `TODO.md`, que es donde se encontraron estas entradas.
 
-**3 informes, 3 abiertos.**
+**5 informes, 5 abiertos.**
 
 | id | estado | sev | componente | título |
 |----|--------|-----|------------|--------|
 | [BUG-0001](BUG-0001-deseason-phase-still-unpatched-in-the-c-engine.md) | open | high | deseason | El desfase de fase estacional está arreglado en el port y sigue vivo en el motor C, que usa el ejecutable autónomo |
 | [BUG-0002](BUG-0002-c-sources-are-copies-and-have-already-drifted.md) | open | high | csrc | Las fuentes C son tres copias sin sincronizar, y ya han derivado |
 | [BUG-0003](BUG-0003-seasonal-adjustment-applied-in-levels-before-box-cox.md) | open | medium | deseason | El componente estacional se resta en NIVELES, antes del Box-Cox |
+| [BUG-0004](BUG-0004-el-docstring-dice-que-el-respaldo-en-python-solo-hace-q0.md) | open | low | engine | El docstring de `estimate_w` dice que el respaldo en Python sólo hace q=0, y hace VARMA completo desde junio |
+| [BUG-0005](BUG-0005-el-respaldo-en-python-puro-entra-sin-avisar.md) | open | medium | packaging | Donde no hay rueda binaria se instala la de Python puro y el motor C no se usa, sin ningún aviso |
 
 ## Qué NO va aquí
 
