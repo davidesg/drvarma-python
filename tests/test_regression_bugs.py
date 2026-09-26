@@ -13,10 +13,19 @@ three had the same cause: `_chol_lower` used a strict `np.linalg.cholesky` inste
 of the C's MODIFIED Cholesky (`nlatools.c:choldcp`). Porting it faithfully restored
 parity. The suite is now 195 passed / 0 failed.
 """
+import json
 import os
 
 import numpy as np
 import pytest
+
+
+def _json(rows):
+    """Las filas como JSON de verdad. `str([list(r) ...])` sobre un array de
+    numpy escribe `np.float64(102.5)` con numpy 2, que no es JSON: los diez
+    tests que lo usaban fallaban en toda instalación limpia (numpy 2.x) y
+    pasaban en un entorno con numpy 1.26. `tolist()` da floats de Python."""
+    return json.dumps(np.asarray(rows, dtype=float).tolist())
 
 os.environ.setdefault("DRVARMA_NO_ENGINE", "1")
 
@@ -129,7 +138,7 @@ def test_order_search_excludes_nonfinite_and_faulted_fits():
     from drvarma import mcp_server as M
 
     raw, _ = seasonal_series(2, n=180)
-    M.load_data(name="_t3", values_json=str([list(r) for r in raw]).replace("'", ""),
+    M.load_data(name="_t3", values_json=_json(raw),
                 freq=12, start_year=2002, start_period=2, series_names="a,b")
     M.characterize_series("_t3")
     out = M.identify_varma_order("_t3", p_max=2, q_max=2)
@@ -175,7 +184,7 @@ def _loaded(tmp_path, n=180, m=3):
     raw, _ = seasonal_series(1, n=n)
     third = raw[:, 0] * 0.5 + rng.normal(0, 0.4, n).cumsum() * 0.2 + 30
     data = np.column_stack([raw[:, 0], raw[:, 1], third])[:, :m]
-    M.load_data(name="_plt", values_json=str([list(r) for r in data]),
+    M.load_data(name="_plt", values_json=_json(data),
                 freq=12, start_year=2002, start_period=1,
                 series_names=",".join(f"s{i}" for i in range(m)))
     M.characterize_series("_plt")
@@ -401,7 +410,7 @@ def test_characterize_d_stable_to_one_extra_observation():
     raw, _ = seasonal_series(1, n=216)
     ds = []
     for cut, sub in ((0, 1), (1, 2)):
-        M.load_data(name="_dstab", values_json=str([list(r) for r in raw[cut:]]),
+        M.load_data(name="_dstab", values_json=_json(raw[cut:]),
                     freq=12, start_year=2002, start_period=sub, series_names="a,b")
         M.characterize_series("_dstab")
         ds.append(M._SEED["_dstab"]["consensus"]["d"])
