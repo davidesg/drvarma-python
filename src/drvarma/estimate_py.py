@@ -304,7 +304,10 @@ def estimate_w_py(w, p, q, include_mean=False, diag_ar=False, diag_ma=False,
         f1, f2, ifa = _elf_f1f2(w, mu, phi, theta, qq, xitol)
         if ifa or not np.isfinite(f1) or f1 <= 0.0 or f2 <= 0.0:
             return 1.0
-        return (f1 / f1_0) ** m * (f2 / f2_0)
+        f = (f1 / f1_0) ** m * (f2 / f2_0)
+        # BUG-0006: the product can still overflow to inf (or inf*0 = NaN)
+        # with finite f1, f2 -- an inadmissible point, like the C objcfunc.
+        return f if np.isfinite(f) else 1.0
 
     if npar and not if0:
         # raxopt works on a 1-indexed vector (leading unused slot).

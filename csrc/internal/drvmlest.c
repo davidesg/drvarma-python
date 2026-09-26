@@ -165,7 +165,14 @@ real objcfunc( real *x )
    if ( ifault > 0 )                            /* ifault = 1-2-3-4-5.       */
       return( 1.0 );
    else
-      return( pow( (pi1 / pi10x), varmax.m ) * (pi2 / pi20x) );
+      {
+      /* BUG-0006: a non-finite objective is an inadmissible point, exactly
+         like an elf ifault (drtran's guard, the same line).  pi1 overflowing
+         while pi2 underflows gives inf*0 = NaN.                             */
+      real f = pow( (pi1 / pi10x), varmax.m ) * (pi2 / pi20x);
+      if ( !isfinite( f ) ) return( 1.0 );
+      return( f );
+      }
 }
 
 /*****************************************************************************/

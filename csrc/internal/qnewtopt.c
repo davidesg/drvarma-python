@@ -477,7 +477,8 @@ real lnsrch( int n, real *xk, real fk, real *gk, real *dk, real *xkp1,
 {
    real alpha, newtlen, tmp, initslp, rellen, minlam, lambda, tlambda;
    real prelam, pfkp1, t1, t2, t3, a, b, disc;
-   int  i;
+   int  i, haveprev = 0;            /* A finite trial point to interpolate   */
+                                    /* with exists (BUG-0006).               */
 
    *maxtaken = 0;
    *retcode  = 2;
@@ -508,6 +509,29 @@ real lnsrch( int n, real *xk, real fk, real *gk, real *dk, real *xkp1,
       for ( i = 1; i <= n; i++ ) xkp1[i] = xk[i] + lambda * dk[i];
       *fkp1 = (*func)( xkp1 );
 
+      /* BUG-0006: a NaN or infinite objective is an INADMISSIBLE point, not a
+         value.  Every comparison below is false for a NaN, so the step was
+         neither accepted nor abandoned, tlambda and then lambda became NaN,
+         and the search never returned (drtran met it on real data and spun
+         for an hour and a half).  An infinity reaches the same loop one step
+         later, through inf/inf in the cubic fit.  Shrink the step without
+         interpolating -- there is nothing to interpolate with -- and give up
+         at minlam exactly as for a step that never decreases.  On a path of
+         finite values nothing changes: `haveprev` is false exactly when
+         `lambda == 1.0` was, the first time through.                        */
+      if ( !isfinite( *fkp1 ) )
+         {
+         if ( lambda < minlam )
+            {
+            *retcode = 1;
+            for ( i = 1; i <= n; i++ ) xkp1[i] = xk[i];
+            *fkp1 = fk;                /* The value at the point returned.   */
+            }
+         else
+            lambda = 0.1 * lambda;
+         continue;                     /* To the `while`: retcode decides.   */
+         }
+
       if ( *fkp1 <=  fk + alpha * lambda * initslp )
          {
       /* Sufficient function decrease:                                       */
@@ -523,8 +547,8 @@ real lnsrch( int n, real *xk, real fk, real *gk, real *dk, real *xkp1,
       else
          {
       /* Backtrack:                                                          */
-      /* First time:                                                         */
-         if ( lambda == 1.0 )
+      /* First time (no finite point to interpolate with yet):                */
+         if ( !haveprev )
             tlambda = -initslp / (2.0 * (*fkp1 - fk - initslp));
       /* Subsequent backtracks:                                              */
          else
@@ -550,6 +574,7 @@ real lnsrch( int n, real *xk, real fk, real *gk, real *dk, real *xkp1,
             }
          prelam = lambda;
          pfkp1  = *fkp1;
+         haveprev = 1;
          if ( tlambda <= 0.1 * lambda )
             lambda = 0.1 * lambda;
          else

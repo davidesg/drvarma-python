@@ -16,6 +16,7 @@ suite sin registro de defectos: lo que había vivía mezclado con tareas en
 | [BUG-0003](BUG-0003-seasonal-adjustment-applied-in-levels-before-box-cox.md) | open | medium | deseason | El componente estacional se resta en NIVELES, antes del Box-Cox |
 | [BUG-0004](BUG-0004-el-docstring-dice-que-el-respaldo-en-python-solo-hace-q0.md) | open | low | engine | El docstring de `estimate_w` dice que el respaldo en Python sólo hace q=0, y hace VARMA completo desde junio |
 | [BUG-0005](BUG-0005-el-respaldo-en-python-puro-entra-sin-avisar.md) | open | medium | packaging | Donde no hay rueda binaria se instala la de Python puro y el motor C no se usa, sin ningún aviso |
+| [BUG-0006](BUG-0006-la-busqueda-lineal-no-vuelve-con-un-objetivo-no-finito.md) | fixed | high | optimizer | La búsqueda lineal no vuelve nunca si el objetivo es NaN o infinito: el optimizador (C y Python) se queda girando |
 
 ## Qué NO va aquí
 

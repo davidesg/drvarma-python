@@ -302,16 +302,38 @@ def lnsrch(n, xk, fk, gk, dk, xkp1, maxstep, steptol, func):
         tmp = abs(dk[i]) / _rmax(abs(xk[i]), 1.0)
         if tmp > rellen:
             rellen = tmp
-    minlam = steptol / rellen
+    # C divides by zero into +inf (IEEE) and the search then gives up at once;
+    # Python raises. rellen is 0 when the direction is not finite (a gradient
+    # taken across an inadmissible region) -- the case of BUG-0006.
+    minlam = steptol / rellen if rellen > 0.0 else np.inf
     lam = 1.0
 
     fkp1 = fk
     prelam = 0.0
     pfkp1 = 0.0
+    haveprev = False        # a finite trial point to interpolate with (BUG-0006)
     while True:
         for i in range(1, n + 1):
             xkp1[i] = xk[i] + lam * dk[i]
         fkp1 = func(xkp1)
+
+        # BUG-0006: a NaN or infinite objective is an INADMISSIBLE point, not a
+        # value. Every comparison below is False for a NaN, so the step was
+        # neither accepted nor abandoned, tlambda and then lam became NaN, and
+        # the search never returned. An infinity reaches the same loop one step
+        # later, through inf/inf in the cubic fit. Shrink the step without
+        # interpolating, and give up at minlam like a step that never
+        # decreases. On a path of finite values nothing changes: `haveprev` is
+        # False exactly when `lam == 1.0` was, the first time through.
+        if not np.isfinite(fkp1):
+            if lam < minlam:
+                retcode = 1
+                for i in range(1, n + 1):
+                    xkp1[i] = xk[i]
+                fkp1 = fk               # the value at the point returned
+                break
+            lam = 0.1 * lam
+            continue
 
         if fkp1 <= fk + alpha * lam * initslp:
             retcode = 0
@@ -322,7 +344,7 @@ def lnsrch(n, xk, fk, gk, dk, xkp1, maxstep, steptol, func):
             for i in range(1, n + 1):
                 xkp1[i] = xk[i]
         else:
-            if lam == 1.0:
+            if not haveprev:
                 tlambda = -initslp / (2.0 * (fkp1 - fk - initslp))
             else:
                 t1 = fkp1 - fk - lam * initslp
@@ -342,6 +364,7 @@ def lnsrch(n, xk, fk, gk, dk, xkp1, maxstep, steptol, func):
                     tlambda = 0.5 * lam
             prelam = lam
             pfkp1 = fkp1
+            haveprev = True
             if tlambda <= 0.1 * lam:
                 lam = 0.1 * lam
             else:
