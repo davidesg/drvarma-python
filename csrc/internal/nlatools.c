@@ -837,10 +837,33 @@ real chisq(real x, int df) {
         real d = 0.3989423 * exp(-z * z / 2.0);
         real prob = d * t * (0.3193815 + t * (-0.3565638 + t * (1.7814779 + t * (-1.821256 + t * 1.330274))));
 
+        /*  BUG-13, arreglado el 2026-08-21 en las cuatro copias a la vez.
+         *
+         *  El polinomio de Abramowitz-Stegun evaluado en |z| da la cola
+         *  SUPERIOR de |z|.  Para z > 0 la CDF es 1 - Q(z), y por eso la linea
+         *  de abajo es correcta.  Para z < 0 la cola superior de |z| YA ES la
+         *  cola inferior de z, o sea la CDF, y no hay que voltear nada: aqui
+         *  habia un segundo `if (z < 0) prob = 1.0 - prob;` que la invertia.
+         *
+         *  Como z < 0 es el caso de un estadistico POR DEBAJO de su media --
+         *  es decir, aquel en que el modelo esta bien --, esta funcion
+         *  devolvia el complemento justo cuando no debia, y todo p-valor
+         *  escrito como `1.0 - chisq(...)` salia complementado.  El veredicto
+         *  de la diagnosis se invertia: residuos limpios declarados no
+         *  blancos.  Medido: Q = 23.4777 con 40 g.l. tiene p = 0.9825 y se
+         *  imprimia 0.0175 con "REJECT H0".  Solo se disparaba en los casos
+         *  BUENOS, que es lo que lo hacia dificil de ver.
+         *
+         *  Encontrado desde drvec el 2026-08-19; declarado BUG-13 en el
+         *  registro de defectos de la suite.  Comprobado contra
+         *  gsl_cdf_chisq_P: con el arreglo coincide a ~1e-4 en todo el rango,
+         *  que es el error de Wilson-Hilferty y no un defecto.  Ningun
+         *  llamante se habia adaptado al fallo -- los cuatro programas
+         *  escriben `1.0 - chisq(...)` --, asi que corregirlo no rompe nada.
+         *
+         *  ESTE FICHERO ES COMPARTIDO: si se toca aqui, hay que tocarlo en
+         *  drvarma, drtran, drvec y la copia del paquete de Python.          */
         if (z > 0) prob = 1.0 - prob;
-
-        /* Ajustar para cola izquierda */
-        if (z < 0) prob = 1.0 - prob;
 
         return prob;
     }

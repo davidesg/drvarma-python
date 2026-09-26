@@ -6,6 +6,57 @@ per-series diagnostics, base plots) are done and validated against the C engine
 pure-Python fallback with no compiled engine. Remaining: the graphics finish
 (pyfug JT formats, deferred to last), P5 docs/CI, and the deferred Shea backup.
 
+## ~~BUG (C, HEREDADO) — `chisq()` invierte la cola con `df >= 30`~~ — RESUELTO en esta copia 2026-09-26
+
+> Arreglado en `csrc/internal/nlatools.c` (quitado el segundo `if (z < 0)`), que
+> era la única de las cuatro copias vigentes que seguía sin él: `drtran/src`,
+> `drvarma_v.04.1/src` y `drvec/src` lo tenían desde el 21-ago. Verificado contra
+> scipy: con 40 g.l., Q = 23.48 / 30 / 35 daban p = 0.017 / 0.125 / 0.305 y ahora
+> 0.983 / 0.875 / 0.695 (scipy: 0.983 / 0.875 / 0.695); por encima de la media no
+> cambia. **Sin efecto para los usuarios del paquete Python:** ningún código de
+> `csrc/` llama a `chisq()`, y los p-valores de `diagnostics.py` salen de
+> `scipy.stats.chi2.sf`. Las versiones históricas `drvarma_v.01`…`v.04` (sin git)
+> lo conservan. Lo que sigue es el registro original.
+
+
+*Encontrado desde `drvec` el 2026-08-19; declarado con la medida completa como
+**BUG-13** en `drtran-python/docs/BUGS.md`. Está en los dos programas porque el
+fichero es el mismo linaje.*
+
+`csrc/internal/nlatools.c:chisq(x, df)` se documenta como CDF y no lo es de forma
+consistente. Con `df < 30` devuelve `gammap(df/2, x/2)`, que es correcta; con
+`df >= 30` usa Wilson–Hilferty y aplica **dos** correcciones de cola —
+
+```c
+    if (z > 0) prob = 1.0 - prob;   /* bien */
+    if (z < 0) prob = 1.0 - prob;   /* invierte un valor que ya era correcto */
+```
+
+— así que para `z < 0` devuelve el complemento. Y `z < 0` es exactamente el caso
+en que el estadístico **está por debajo de su media**, es decir, cuando el modelo
+está bien.
+
+Los llamantes escriben `pval = 1.0 - chisq(stat, df)`, con lo que la composición
+da `1 - p`. **El veredicto se invierte**: `diagnose.c` imprime «REJECT H0:
+residuals are not white noise» cuando `pQ < 0.05`, de modo que un modelo con
+residuos limpios sale declarado inadecuado. Medido contra GSL: `Q = 23.48` con
+40 g.l. se reportaba con `p = 0.0175` cuando su `p` verdadera es **0.9825**.
+
+Sitios: `drvarma_v.04/src/diagnose.c:873` (Hosking), `:932` (Jarque–Bera),
+`:1019` (Wald), y los mismos en las versiones anteriores.
+
+**Arreglo:** quitar el segundo `if (z < 0)` de `chisq` — una línea, y arregla a
+todos los llamantes a la vez. La alternativa es pedir la cola que se quiere
+(`gsl_cdf_chisq_Q`) y quitar el `1.0 - ...`, que es lo que hizo `drvec` porque
+allí `nlatools.c` es motor y no se toca.
+
+**Al probarlo, el caso importa:** con `df < 30` (rama `gammap`) o con `Q > df`
+(la rama correcta) el fallo no se manifiesta y un test escrito ahí pasa igual.
+Hace falta `df >= 30` **y** un estadístico por debajo de su media, o sea un
+modelo que ajuste bien sobre un sistema con `m^2·sqrt(n) >= 30`.
+
+---
+
 ## PRIORIDAD — Separar el asistente del motor (sima fuera de drvarma)
 
 **Plan maestro y justificación:** `art-python/TODO.md` §PRIORIDAD — Arquitectura
