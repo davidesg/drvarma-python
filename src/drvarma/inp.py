@@ -1,4 +1,10 @@
-"""Reader/writer for drvarma multivariate `.inp` files.
+"""Reader/writer for drvarma multivariate `.inp` files -- DEPRECATED since 5.0.
+
+One file with m columns, a single lambda, d and D: a second dialect called
+`.inp` next to fue's univariate one, which is what the rest of the ecosystem
+reads and writes. Convert it with `drvarma -split` (`drvarma.ladder.split`):
+one univariate `.inp` of fue per series, the input of the ladder. It is still
+read, for the deprecated path, until 6.0.
 
 Format (lines beginning with '*' or '**' are comments/labels and are skipped;
 the actual values are read in order from the remaining lines):

@@ -1,6 +1,8 @@
 """Command-line interface mirroring the drvarma C binary.
 
-    drvarma <file> <p> <q> [options]
+    drvarma F1.pre F2.pre [...] <p> <q> [options]      the ladder (5.0)
+    drvarma -split <file>[.inp] [options]              out of the old format
+    drvarma <file> <p> <q> [options]                   DEPRECATED multivariate .inp
 
 `<file>` is the base name: input is read from ``<file>.inp`` and results are
 written to ``<file>.out`` (always), plus ``<file>.forecast`` (with -forecast)
@@ -52,6 +54,18 @@ def build_parser():
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    # 5.0: the ladder (fue's univariate files, recognised by their CONTENT)
+    # and -split; the multivariate .inp below is deprecated.
+    from . import ladder
+    if argv and argv[0] == "-split":
+        return ladder.split_main(argv[1:])
+    if argv and ladder.is_fue_file(argv[0]):
+        return ladder.main(argv)
+    if argv and argv[0].endswith((".pre", ".inp")) and os.path.isfile(argv[0]):
+        return ladder.main(argv)            # it says what is wrong with the file
+    print("Note: the multivariate .inp is deprecated since drvarma 5.0; convert it "
+          "with: drvarma -split %s" % (argv[0] if argv else "FILE"), file=sys.stderr)
     args = build_parser().parse_args(argv)
 
     base = args.file[:-4] if args.file.endswith(".inp") else args.file

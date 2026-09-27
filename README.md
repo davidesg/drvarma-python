@@ -71,6 +71,22 @@ and a pure-Python vs hybrid vs C performance study.
 
 ## Command line
 
+### The ladder (0.2): fue's models as input
+
+```sh
+drvarma ES.pre FR.pre DE.pre 0 0 -diagcov -forecast 24 -estwin 216 -o diag  # the univariates
+drvarma ES.pre FR.pre DE.pre 1 0          -forecast 24 -estwin 216 -o var1  # + cross dynamics
+drvarma -split IPC3.inp -mean -ar 1 -dir specs/     # the old multivariate .inp -> fue .inp
+```
+
+Each series keeps its fue model (Box-Cox, deterministic terms, differencing,
+mean, ARMA factors) on the diagonal; `p q` are the cross orders. A diagonal
+gate checks that the joint model reproduces the univariate ones and stops the
+program if it does not. In Python: `drvarma.ladder.Ladder(files, p, q).fit()`.
+See [`docs/LADDER.md`](docs/LADDER.md).
+
+### The multivariate `.inp` (deprecated since 0.2 / C 5.0)
+
 ```sh
 drvarma IPC3 3 0 -mean -deseason auto -forecast 24        # writes IPC3.out, .forecast
 drvarma IPC3 3 0 -mean -forecast 24 -html                # + HTML report per series
@@ -84,6 +100,8 @@ drvarma IPC3 3 0 -mean -volexp 0.05 20 -volmov 20        # volatility (.volexp/.
 
 ## Documentation
 
+- [`docs/LADDER.md`](docs/LADDER.md) — the ladder: fue's models as input, the gate,
+  forecasting, one format, and the parity with the C.
 - [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — install, API, CLI, worked examples.
 - [`docs/INP_FORMAT.md`](docs/INP_FORMAT.md) — the `.inp` input format (a precise,
   assistant-friendly spec for preparing inputs).

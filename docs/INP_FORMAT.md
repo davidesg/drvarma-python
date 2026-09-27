@@ -1,5 +1,11 @@
 # The drvarma `.inp` input format
 
+> **Deprecated since drvarma 0.2 (C 5.0).** One format for the ecosystem:
+> fue's univariate `.inp`/`.pre`, one per series, which is what the ladder
+> reads (`docs/LADDER.md`). Convert a file with
+> `drvarma -split FILE.inp [-mean] [-harmonics] [-ar P] [-ma Q]`. This format
+> is still read, for the deprecated path, until 6.0.
+
 This is a precise, self-contained specification for generating a drvarma `.inp`
 file. It is written to be unambiguous for an automated assistant: follow the
 token order exactly and any `.inp` you produce will load with

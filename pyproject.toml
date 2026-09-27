@@ -31,6 +31,10 @@ classifiers = [
 dependencies = [
     "numpy>=1.24",
     "scipy>=1.10",
+    # The ladder (5.0) reads fue's univariate files with fue's own parser and
+    # casts each series with fue's own code (fue.cast_us): the reference, not a
+    # copy. fue ships binary wheels as drvarma does.
+    "fue>=0.1.16",
     # cffi IS a runtime dependency, and leaving it out is what made the binary
     # wheels useless. A cffi API-mode extension imports `_cffi_backend` when it
     # loads; without the cffi package that import fails, `_engine.py` catches the

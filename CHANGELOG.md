@@ -4,6 +4,47 @@ Exact maximum-likelihood estimation, forecasting and diagnostics of multivariate
 VARMA models (Mauricio 1995 JASA / 1997 AS 311), pure-Python with an optional
 compiled C engine.
 
+## 0.2.0 — unreleased
+
+**The ladder: fue's univariate models as the input of a VARMA.** The Python
+port of drvarma 5.0's ladder mode (C, in the atsw-gui monorepo), with the C as
+the oracle. `drvarma.ladder` and the CLI:
+
+    drvarma F1.pre F2.pre [...] p q [-diagcov] [-redet] [-fixarma] [-m M] [-o NAME]
+                                    [-forecast H [-estwin N]]
+    drvarma -split FILE[.inp] [-mean] [-harmonics] [-ar P] [-ma Q] [-scale F] [-dir D]
+
+- **What it is.** Each series brings its univariate model from a fue file, a
+  `.pre` (an optimum) or an `.inp` (a specification), recognised by its
+  content. The model sits on the diagonal of the VARMA; p and q are the orders
+  of the cross dynamics. Nothing about a univariate model is re-implemented:
+  - `fue.load` reads the file;
+  - `fue.cast_us.cast_us_py` gives each series its stationary series and
+    its ARMA polynomials;
+  - `fue.forecast`'s pieces take a forecast back to the level.
+- **The diagonal gate stops the program.** Each series is fitted alone, and
+  the diagonal system is evaluated at those optima: the two must agree
+  exactly (`GateError`). BUG-2: series with different frequency or last
+  date are refused.
+- **Forecasting.** `forecast(L)` and, with `estwin`, fixed-parameter
+  forecasts from every origin (`recursive(H)`), with an out-of-sample
+  evaluation. The univariate models are the yardstick a VARMA has to beat.
+- **One format.** `split` converts the multivariate `.inp`, now
+  **deprecated**, into one fue `.inp` per series. The old CLI path prints a
+  one-line note.
+- **Parity with the C** (`tests/test_ladder.py`, 17 tests, ~7 s with the
+  compiled engine):
+  - the gate (1e-13), and σ² and coefficients equal to fue's `.out`;
+  - the log-likelihood of the full-covariance, VAR(1), pass-through and
+    `-fixarma` models to 1e-6;
+  - fue's fixed-parameter forecasts, 3456 values within 2.3e-6;
+  - the C's bands and recursive evaluation;
+  - the ladder on `split` files equals the old path's VAR(1) with mean.
+- **Speed.** The system's likelihood is the compiled `elf` (`elf_c`, in the
+  binary wheels). The stationary series of each model is cached, and only
+  its polynomials are recomputed at each evaluation.
+- **New dependency: `fue>=0.1.16`,** the reference parser, with wheels.
+
 ## 0.1.7 — 2026-09-26
 
 **El optimizador se colgaba para siempre con un objetivo NaN o infinito**
