@@ -4,6 +4,12 @@
 - jarque_bera_mv : multivariate normality (sum of univariate Jarque-Bera).
 """
 
+
+# The public API: what an assistant (sima-tseries) may call. Identification
+# evidence (ccf, qccf) is the same class as drtran's public `identify`.
+__all__ = ["hosking_q", "series_stats", "acf", "pacf", "ljung_box",
+           "residual_diagnostics", "ccf", "qccf", "jarque_bera_mv"]
+
 import numpy as np
 
 try:

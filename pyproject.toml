@@ -59,7 +59,9 @@ Changelog = "https://github.com/davidesg/drvarma-python/blob/master/CHANGELOG.md
 
 [project.scripts]
 drvarma = "drvarma.cli:main"
-sima = "drvarma.mcp_server:main"       # simultaneous VARMA MCP (pip install "drvarma[mcp]")
+# The old sima, on raw series, deprecated: the assistant is now its own package,
+# sima-tseries, built on the ladder, and it owns the `sima` command.
+sima-legacy = "drvarma.mcp_server:main"
 
 [project.optional-dependencies]
 # Optional CFFI-compiled C engine (P1): pip install "drvarma[c-engine]"

@@ -20,9 +20,9 @@ from .inp import load, save, InpSpec
 from .model import Model
 from . import (transform, forecast, diagnostics, irf, deseason, datasets,
                report, report_forecast, elfvarma_py, estimate_py, plots,
-               volatility)
+               volatility, ladder)
 
 __all__ = ["MultiSeries", "load", "save", "InpSpec", "Model",
            "transform", "forecast", "diagnostics", "irf", "deseason",
            "datasets", "report", "report_forecast", "elfvarma_py",
-           "estimate_py", "plots", "volatility", "__version__"]
+           "estimate_py", "plots", "volatility", "ladder", "__version__"]

@@ -2,6 +2,12 @@
 decomposition (numpy ports of diagnose.c).
 """
 
+
+# The public API. `oirf`/`fevd` take (phi, theta, sigma) and so serve any
+# fitted VARMA, the ladder's included; `irf_fevd_bands` still needs the result
+# dict of the multivariate-.inp path.
+__all__ = ["psi_weights", "oirf", "fevd", "irf_fevd_bands"]
+
 import numpy as np
 
 

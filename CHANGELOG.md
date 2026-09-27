@@ -44,6 +44,13 @@ the oracle. `drvarma.ladder` and the CLI:
   binary wheels). The stationary series of each model is cached, and only
   its polynomials are recomputed at each evaluation.
 - **New dependency: `fue>=0.1.16`,** the reference parser, with wheels.
+- **The assistant leaves the engine.** The MCP assistant is now its own
+  package, **sima-tseries**, built on the ladder, and it owns the `sima`
+  command. The old server on raw series stays here, deprecated, as
+  `sima-legacy`. The engine API it calls is declared:
+  - `drvarma.ladder`;
+  - `diagnostics.ccf`, `qccf` and `hosking_q`;
+  - `irf.oirf` and `fevd`.
 
 ## 0.1.7 — 2026-09-26
 
