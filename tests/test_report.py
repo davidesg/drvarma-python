@@ -77,7 +77,8 @@ def test_out_parameter_estimates_match(tmp_path):
                     "-mean", "-deseason", "auto"], check=True, capture_output=True)
     c_text = open(tmp_path / "p.out", encoding="latin-1").read()
     py_text = report.out_report(_fit_ipc3("auto"))
-    pat = re.compile(r"^((?:mu|phi|theta|cov)\[[^\]]*\][^ ]*)\s+([-\d.]+)\s+[-\d.]",
+    # The SE column may read "(normalised)": fdhess holds qq[1,1] (stderr.py).
+    pat = re.compile(r"^((?:mu|phi|theta|cov)\[[^\]]*\][^ ]*)\s+([-\d.]+)\s+[-\d.(]",
                      re.M)
     cpar = {m.group(1): float(m.group(2)) for m in pat.finditer(c_text)}
     ppar = {m.group(1): float(m.group(2)) for m in pat.finditer(py_text)}

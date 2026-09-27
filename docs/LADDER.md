@@ -42,7 +42,10 @@ stationary series `w`:
     Phi_ij = -SUM_k c_ij,k B^k        Theta_ij = -SUM_k e_ij,k B^k   (i != j)
 
 Q is normalised with Q11 = 1 (the likelihood concentrates sigma2). Standard
-errors come from a finite-difference Hessian at the optimum.
+errors come from Mauricio's finite-difference Hessian (fdhess) at the optimum,
+with BFGS kept, and said, if that Hessian is not positive definite or the
+optimum is on the boundary (`-hessian bfgs` forces it; see
+[STUDY-standard-errors.md](STUDY-standard-errors.md)).
 
 **Nothing about a univariate model is re-implemented.** `fue.load` reads the
 file: it is the reference parser, and it decides what a file is by its content,

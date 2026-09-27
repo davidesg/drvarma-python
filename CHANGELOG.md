@@ -44,6 +44,20 @@ the oracle. `drvarma.ladder` and the CLI:
   binary wheels). The stationary series of each model is cached, and only
   its polynomials are recomputed at each evaluation.
 - **New dependency: `fue>=0.1.16`,** the reference parser, with wheels.
+- **Standard errors from fdhess by default** (`drvarma.stderr`). This is
+  Mauricio's finite-difference Hessian at the optimum, from the published code,
+  where it had been left commented out. It replaces the BFGS Hessian the search
+  accumulated, in both paths. `hessian="bfgs"` / `-hessian bfgs` keeps the old
+  behaviour.
+  - Decided by `docs/STUDY-standard-errors.md`: fdhess matches the exact GLS
+    within 0.35 % and OLS within 1 %, including series of very different
+    scales. BFGS was off by up to 1483 % and depended on the start (t = −99 in
+    the review's IPC/WTI case, instead of about −1.1).
+  - The method in use is written in every report and in `export_fit`. If the
+    optimum is on the boundary or the Hessian is not positive definite, BFGS
+    is kept and the report says why.
+  - In the `.inp` path, `qq[1,1]` (the flat direction Q → cQ) is held fixed
+    and is reported as `(normalised)`, with no standard error.
 - **The assistant leaves the engine.** The MCP assistant is now its own
   package, **sima-tseries**, built on the ladder, and it owns the `sima`
   command. The old server on raw series stays here, deprecated, as

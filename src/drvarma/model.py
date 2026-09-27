@@ -22,7 +22,7 @@ class Model:
     def __init__(self, series, lam=0.0, d=1, D=0, scale=transform.DEFAULT_SCALE,
                  p=0, q=0, include_mean=False,
                  diag_ar=False, diag_ma=False, diag_cov=False,
-                 method=1, twostep=False, deseason=None):
+                 method=1, twostep=False, deseason=None, hessian="fd"):
         self.series = series
         self.lam, self.d, self.D, self.scale = lam, d, D, scale
         self.p, self.q = p, q
@@ -30,6 +30,14 @@ class Model:
         self.diag_ar, self.diag_ma, self.diag_cov = diag_ar, diag_ma, diag_cov
         self.method, self.twostep = method, twostep
         self.deseason = deseason            # None | "auto" | "force"
+        # Standard errors: "fd" (Mauricio's fdhess AT the optimum, drvarma.stderr)
+        # or "bfgs" (the Hessian raxopt accumulated, the C's default until 5.0).
+        # fd is the default because the study (docs/STUDY-standard-errors.md)
+        # says so: it matches the exact GLS and OLS; BFGS did not.
+        if hessian not in ("bfgs", "fd"):
+            raise ValueError("hessian must be 'bfgs' or 'fd'")
+        self.hessian = hessian
+        self.se_method = None
         self.result = None
         self._dummies = None
         self._deseason_info = None
@@ -82,6 +90,15 @@ class Model:
             diag_ar=self.diag_ar, diag_ma=self.diag_ma, diag_cov=self.diag_cov,
             method=self.method, twostep=self.twostep,
         )
+        self.se_method = "bfgs"
+        if self.hessian == "fd" and self.result.get("npar"):
+            from .stderr import legacy_fd_std_errors
+            cov, std, how, info = legacy_fd_std_errors(
+                self.result, w, self.p, self.q, self.include_mean, self.diag_ar,
+                self.diag_ma, self.diag_cov, self.method)
+            self.result["cov"], self.result["std_errors"] = cov, std
+            self.result["se_info"] = info
+            self.se_method = how
         return self
 
     def forecast(self, L, b=0, bands=False):

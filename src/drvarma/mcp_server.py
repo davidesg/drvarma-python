@@ -1041,6 +1041,10 @@ def _bands(mod, horizon, ndraws):
                           diag_ma=mod.diag_ma, diag_cov=mod.diag_cov)
 
 
+def _nan_none(a):
+    return [None if not np.isfinite(v) else float(v) for v in np.asarray(a, float).ravel()]
+
+
 @mcp.tool()
 def export_fit(name: str, what: str = "all", max_rows: int = 0) -> str:
     """Residuals and fitted parameters as JSON — the fit in machine-readable form.
@@ -1073,9 +1077,11 @@ def export_fit(name: str, what: str = "all", max_rows: int = 0) -> str:
         se = np.asarray(se, float).ravel() if se is not None else None
         out["params"] = {
             "values": par.tolist(),
-            "std_errors": se.tolist() if se is not None else None,
-            "t_ratios": (par / np.where(se == 0, np.nan, se)).tolist()
+            # NaN (the normalised qq[1,1] under fdhess) goes out as null.
+            "std_errors": _nan_none(se) if se is not None else None,
+            "t_ratios": _nan_none(par / np.where(se == 0, np.nan, se))
                         if se is not None else None,
+            "std_error_method": getattr(mod, "se_method", None),
             # The structured view as well, so the caller does not have to know
             # the packing order to use it.
             "mu": np.asarray(r["mu"], float).tolist() if r.get("mu") is not None else None,

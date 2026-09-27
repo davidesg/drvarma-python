@@ -68,6 +68,17 @@ likelihood, which with near-non-invertible MA converges differently for one
 series than for six. To check: the gap with `xitol` smaller, and with `-m 2`.
 Pinned in `tests/test_ladder.py::test_m6_reports_the_invertible_ma_as_the_c_does`.
 
+## Standard errors: fdhess is the default (2026-09-27) — follow-ups
+
+Decided by `docs/STUDY-standard-errors.md`. Open:
+
+- drtran-python says "no fdhess" with NaN and `ifault = 2`; the C and this
+  package fall back to BFGS and say why. One behaviour for the family
+  (drtran BUG-56).
+- fue: `_fdhess` step (BUG-0015), and fue C's commented-out call. Same study,
+  same guards.
+- The one S3 seed at scale ratio 300 with fd/OLS = 1.88.
+
 ## PRIORIDAD — Separar el asistente del motor (sima fuera de drvarma)
 
 **Plan maestro y justificación:** `art-python/TODO.md` §PRIORIDAD — Arquitectura

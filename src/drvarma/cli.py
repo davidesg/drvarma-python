@@ -30,6 +30,9 @@ def build_parser():
     p.add_argument("-diagcov", action="store_true", help="diagonal covariance")
     p.add_argument("-m", type=int, default=1, dest="method",
                    help="estimation method: 1=exact (default), 2=approximate")
+    p.add_argument("-hessian", choices=("fd", "bfgs"), default="fd",
+                   help="standard errors: fdhess at the optimum (default) or the "
+                        "BFGS Hessian of the search (docs/STUDY-standard-errors.md)")
     p.add_argument("-twostep", action="store_true",
                    help="two-step (Hannan-Rissanen) initialisation (q>0)")
     p.add_argument("-deseason", nargs="?", const="auto", choices=["auto", "force"],
@@ -77,7 +80,8 @@ def main(argv=None):
     model = Model(series, lam=spec.lam, d=spec.d, D=spec.D, scale=args.scale,
                   p=args.p, q=args.q, include_mean=args.mean,
                   diag_ar=args.diagar, diag_ma=args.diagma, diag_cov=args.diagcov,
-                  method=args.method, twostep=args.twostep, deseason=args.deseason)
+                  method=args.method, twostep=args.twostep, deseason=args.deseason,
+                  hessian=args.hessian)
     model.fit()
 
     if model.ifault != 0:

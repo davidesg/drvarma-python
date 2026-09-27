@@ -92,7 +92,9 @@ def irf_fevd_bands(result, horizon, ndraws=800, alpha=0.05, seed=0,
     cov = result.get("cov")
     if cov is None:
         raise ValueError("the fit carries no parameter covariance; cannot band")
-    cov = np.asarray(cov, float)
+    # fdhess holds qq[1,1] (the flat direction Q -> cQ, drvarma.stderr): its row
+    # and column are NaN. The draws are conditional on it, like every SE.
+    cov = np.nan_to_num(np.asarray(cov, float), nan=0.0)
     m, p, q = int(result["m"]), int(result["p"]), int(result["q"])
     phi_mask = _lag_mask(m, p, diag_ar)
     theta_mask = _lag_mask(m, q, diag_ma)

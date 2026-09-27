@@ -214,14 +214,25 @@ class LadderSeries:
         m = self.model
         s = self.name
         out = []
+
+        def label(itv):
+            """The deterministic term as the .pre writes it: a harmonic by its
+            frequency, an intervention by its date."""
+            if itv.type in ("cos", "sin"):
+                return f"{itv.type} {getattr(itv, 'harmonic', 0):g}"
+            if itv.type in ("alter", "easter", "trend"):
+                return itv.type
+            y, p = self.date_of(int(itv.at) + 1)
+            return f"{itv.type} {p}/{y}" if self.freq > 1 else f"{itv.type} {y}"
+
         for itv in m.interventions:
             for j, f in enumerate(itv.omega_free):
                 if f:
-                    out.append(f"w{j}_{s}[{itv.type} {itv.at}]")
+                    out.append(f"w{j}_{s}[{label(itv)}]")
         for itv in m.interventions:
             for j, f in enumerate(itv.delta_free):
                 if f:
-                    out.append(f"d{j + 1}_{s}[{itv.type} {itv.at}]")
+                    out.append(f"d{j + 1}_{s}[{label(itv)}]")
 
         def fac(factors, frees, lo, lag):
             for k, factor in enumerate(factors):
@@ -317,6 +328,7 @@ class Fit:
     qq: np.ndarray = None
     w: np.ndarray = None
     residuals: np.ndarray = None
+    se_method: str = None      # "fdhess", "bfgs", or the fallback, said
 
     @property
     def npar(self):
@@ -344,7 +356,7 @@ class Ladder:
     """
 
     def __init__(self, series, p=0, q=0, diagcov=False, redet=False,
-                 fixarma=False, method=1, estwin=None):
+                 fixarma=False, method=1, estwin=None, hessian="fd"):
         _warn_if_no_engine()
         if series and not isinstance(series[0], LadderSeries):
             series = load(series)
@@ -354,6 +366,9 @@ class Ladder:
         self.diagcov = bool(diagcov)
         self.redet, self.fixarma = bool(redet), bool(fixarma)
         self.xitol = -1e-3 if method == 2 else 1e-3
+        if hessian not in ("fd", "bfgs"):
+            raise ValueError("hessian must be 'fd' or 'bfgs'")
+        self.hessian = hessian
         m = len(self.series)
         # the cross part and Q, indexed by SERIES: they survive a change of
         # the active set, and the diagonal system seeds the full one as is.
@@ -525,11 +540,11 @@ class Ladder:
             f = (f1 / f10) ** m * (f2 / f20)
             return f if np.isfinite(f) else 1.0
 
-        nit, termcode, se = 0, 0, np.zeros(npar)
+        nit, termcode, se, se_method = 0, 0, np.zeros(npar), None
         xhat = x0
         if optimize and npar:
             xk = np.zeros(npar + 1); xk[1:] = x0
-            fk, _b, nit, termcode = _qnewt.raxopt(
+            fk, bfac, nit, termcode = _qnewt.raxopt(
                 lambda z: objective(z[1:npar + 1]), npar, xk, maxits, grtol, sptol)
             xhat = xk[1:npar + 1].copy()
             # the invertible form, where the model actually is (BUG-0007)
@@ -537,7 +552,7 @@ class Ladder:
             if any(self.series[i].canonicalize() for i in self._act):
                 xhat = self.pack()
                 fk = objective(xhat)
-            se = self._std_errors(objective, xhat, fk, w.shape[0])
+            se, se_method = self._std_errors(objective, xhat, fk, w.shape[0], bfac)
         mu, phi, theta, qq, w, ifault = self.cast(xhat)
         _ll, f1, f2, a, ifa = self._elf(mu, phi, theta, qq, w, atf=True)
         n, m = w.shape
@@ -545,25 +560,26 @@ class Ladder:
                 - 0.5 * n * (m * np.log(f1) + np.log(f2)))
         return Fit(names, xhat, se, float(logL), float(f1 / (n * m)), int(ifa),
                    int(nit), int(termcode), mu, phi, theta, qq, w,
-                   np.asarray(a)[1:, 1:].copy())      # elf_c: 1-based out
+                   np.asarray(a)[1:, 1:].copy(),      # elf_c: 1-based out
+                   se_method)
 
-    @staticmethod
-    def _std_errors(objective, xhat, fk, n):
-        """From the Hessian by finite differences AT the optimum, as the C's
-        est() does with est_fdhess (not the BFGS accumulation)."""
-        k = xhat.size
-        H = np.zeros((k + 1, k + 1))
-        x1 = np.zeros(k + 1); x1[1:] = xhat
-        _qnewt.fdhess(lambda z: objective(z[1:k + 1]), k, x1, fk,
-                      np.finfo(float).eps, H)
-        H = H[1:, 1:]
-        H = np.triu(H) + np.triu(H, 1).T
-        try:
-            cov = 2.0 * fk * np.linalg.inv(H) / n
-            d = np.diag(cov)
-            return np.where(d > 0, np.sqrt(np.abs(d)), 0.0)
-        except np.linalg.LinAlgError:
-            return np.zeros(k)
+    def _std_errors(self, objective, xhat, fk, n, bfac):
+        """Mauricio's fdhess at the optimum (drvarma.stderr), or the BFGS
+        Hessian: ``hessian`` chooses, and a Hessian that is not positive
+        definite falls back to BFGS SAYING so. Q is normalised (Q11 = 1), so
+        there is no flat direction to hold."""
+        from .estimate_py import _covariance
+        from .stderr import fd_covariance
+        if self.hessian == "fd":
+            cov, std, info = fd_covariance(objective, xhat, n)
+            if cov is not None:
+                return std, "fdhess"
+            why = ("the optimum is on the boundary of the admissible region"
+                   if info.get("boundary") else "the Hessian is not positive definite")
+            _c, std = _covariance(bfac, fk, n, xhat.size)
+            return std, f"bfgs (fdhess: {why})"
+        _c, std = _covariance(bfac, fk, n, xhat.size)
+        return std, "bfgs"
 
     # -- the gate and the estimation -------------------------------------- #
     def run_gate(self):
@@ -838,6 +854,7 @@ def write_report(L, path, forecasts=None, recursive=None):
            f"Innovation cov.  : {'diagonal' if L.diagcov else 'full'}",
            f"Deterministics   : {'re-estimated' if L.redet else 'fixed at the file'}",
            f"Univariate ARMA  : {'fixed at the file' if L.fixarma else 're-estimated jointly'}",
+           f"Standard errors  : {r.se_method or L.hessian}",
            ""]
     out.append("Univariate models:")
     for i, s in enumerate(S, 1):
@@ -943,6 +960,9 @@ def main(argv):
     ap.add_argument("-o", default=None, dest="name")
     ap.add_argument("-forecast", type=int, default=None)
     ap.add_argument("-estwin", type=int, default=None)
+    ap.add_argument("-hessian", choices=("fd", "bfgs"), default="fd",
+                    help="standard errors: fdhess at the optimum (default) or the "
+                         "BFGS Hessian of the search (docs/STUDY-standard-errors.md)")
     a = ap.parse_args(argv)
     if len(a.items) < 3:
         ap.error("give the fue files, then p and q")
@@ -952,7 +972,7 @@ def main(argv):
     name = a.name or "_".join(os.path.splitext(os.path.basename(f))[0] for f in files)
     try:
         L = Ladder(files, p, q, diagcov=a.diagcov, redet=a.redet, fixarma=a.fixarma,
-                   method=a.method, estwin=a.estwin)
+                   method=a.method, estwin=a.estwin, hessian=a.hessian)
         L.fit()
     except GateError as e:
         print(f"ERROR: {e}"); return 5

@@ -292,13 +292,23 @@ def _parameters_block(model):
             continue
         est = x[idx]
         se = dev[idx]
+        if not np.isfinite(se):
+            # fdhess holds qq[1,1] (the flat direction Q -> cQ): alone it is
+            # not identified, so it has no standard error (drvarma.stderr).
+            out.append("%s%s%12.6f %12s\n" % (label, pad, est, "(normalised)"))
+            idx += 1
+            continue
         t = est / se
         p = 2.0 * (1.0 - _normal_cdf(abs(t)))
         out.append("%s%s%12.6f %12.6f %8.3f %6.4f %s\n"
                    % (label, pad, est, se, t, p, _sig_code(p)))
         idx += 1
     out.append(DASH + "\n")
-    out.append("Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n\n")
+    out.append("Signif. codes:  0 '***' 0.001 '**' 0.01 '*' 0.05 '.' 0.1 ' ' 1\n")
+    how = getattr(model, "se_method", None)
+    if how:
+        out.append("Standard errors: %s\n" % how)
+    out.append("\n")
     return "".join(out)
 
 
