@@ -127,3 +127,19 @@ def test_review_case_against_ols():
     se = np.asarray(mod.std_errors)[2:6]
     assert se[2] == pytest.approx(2.40, rel=0.02)
     np.testing.assert_allclose(se / _ols_se(mod._w), 0.989, atol=0.01)
+
+
+def test_no_iteration_means_no_bfgs_to_fall_back_on():
+    """raxopt starts its factor at the identity: a search that stopped at step
+    0 (a .pre that already is the optimum) built no BFGS Hessian. If fdhess
+    fails there too, there are no standard errors, and that is said -- not
+    sqrt(2F/n) for every parameter."""
+    L = Ladder([GLS_PRE], 0, 0, diagcov=True)
+    saddle = lambda x: 1.0 + x[0] ** 2 - x[1] ** 2
+    std, how = L._std_errors(saddle, np.zeros(2), 1.0, 10, np.eye(3), nit=0)
+    assert np.isnan(std).all()
+    assert how == ("none (fdhess: the Hessian is not positive definite; "
+                   "the search did not move, so it built no BFGS Hessian)")
+    std, how = L._std_errors(saddle, np.zeros(2), 1.0, 10, np.eye(3), nit=5)
+    assert how == "bfgs (fdhess: the Hessian is not positive definite)"
+    assert np.isfinite(std).all()

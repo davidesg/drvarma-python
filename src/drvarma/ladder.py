@@ -552,7 +552,7 @@ class Ladder:
             if any(self.series[i].canonicalize() for i in self._act):
                 xhat = self.pack()
                 fk = objective(xhat)
-            se, se_method = self._std_errors(objective, xhat, fk, w.shape[0], bfac)
+            se, se_method = self._std_errors(objective, xhat, fk, w.shape[0], bfac, nit)
         mu, phi, theta, qq, w, ifault = self.cast(xhat)
         _ll, f1, f2, a, ifa = self._elf(mu, phi, theta, qq, w, atf=True)
         n, m = w.shape
@@ -563,7 +563,7 @@ class Ladder:
                    np.asarray(a)[1:, 1:].copy(),      # elf_c: 1-based out
                    se_method)
 
-    def _std_errors(self, objective, xhat, fk, n, bfac):
+    def _std_errors(self, objective, xhat, fk, n, bfac, nit=1):
         """Mauricio's fdhess at the optimum (drvarma.stderr), or the BFGS
         Hessian: ``hessian`` chooses, and a Hessian that is not positive
         definite falls back to BFGS SAYING so. Q is normalised (Q11 = 1), so
@@ -576,6 +576,10 @@ class Ladder:
                 return std, "fdhess"
             why = ("the optimum is on the boundary of the admissible region"
                    if info.get("boundary") else "the Hessian is not positive definite")
+            if not nit:
+                # raxopt starts b at the identity: no iteration, no BFGS Hessian.
+                return (np.full(xhat.size, np.nan),
+                        f"none (fdhess: {why}; the search did not move, so it built no BFGS Hessian)")
             _c, std = _covariance(bfac, fk, n, xhat.size)
             return std, f"bfgs (fdhess: {why})"
         _c, std = _covariance(bfac, fk, n, xhat.size)
@@ -877,6 +881,9 @@ def write_report(L, path, forecasts=None, recursive=None):
     out += ["=" * 61, "  ESTIMATED MODEL", "=" * 61, f"Number of parameters: {r.npar}",
             f"  {'Parameter':<34} {'Estimate':>12} {'Std.Error':>12} {'t-stat':>9}"]
     for n, v, se in zip(r.names, r.x, r.std_errors):
+        if not np.isfinite(se):           # no standard errors: se_method says why
+            out.append(f"  {n:<34} {v:12.6f}")
+            continue
         t = v / se if se > 0 else 0.0
         out.append(f"  {n:<34} {v:12.6f} {se:12.6f} {t:9.3f}")
     out += ["", f"Exact log-likelihood: {r.logL:.6f}"]

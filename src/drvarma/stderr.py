@@ -162,5 +162,10 @@ def legacy_fd_std_errors(result, w, p, q, include_mean=False, diag_ar=False,
     if cov is None:
         why = ("the optimum is on the boundary of the admissible region"
                if info.get("boundary") else "the Hessian is not positive definite")
+        if not result.get("nit", 1):
+            # raxopt starts b at the identity: no iteration, no BFGS Hessian.
+            k = x_hat.size
+            return (np.full((k, k), np.nan), np.full(k, np.nan),
+                    f"none (fdhess: {why}; the search did not move, so it built no BFGS Hessian)", info)
         return (result.get("cov"), result.get("std_errors"), f"bfgs (fdhess: {why})", info)
     return cov, std, "fdhess", info

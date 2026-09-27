@@ -99,11 +99,36 @@ factorisation was lost.
   |t| > 100, and the battery pinned that artefact as the pathology. It now
   says the Hessian is not positive definite (drtran BUG-56).
 
+## When there is no BFGS Hessian either
+
+`raxopt` starts its factor at the identity. A search that stops at step 0 has
+built nothing, and the fallback would report sqrt(2F/n) for every parameter.
+That is the normal case when a `.pre` already is the optimum. So the fallback
+applies only if the search iterated. Otherwise there are no standard errors
+(NaN) and the method reads `none (fdhess: <why>; the search did not move, so
+it built no BFGS Hessian)`. The rule is the same in drvarma C, drtran C,
+drtran-python (aligned the same day: the boundary check and the fallback, BUG-56)
+and here.
+
+## Why BFGS was the default
+
+Every legacy copy of `drvmlest.c`, from drvus 1.0 to the m6 (DAG) programs of
+2003, carries the same line: "This is an alternative way of computing the
+second derivative matrix", followed by the commented-out `fdhess` and `choldcp`
+calls. The sources give no reason, and neither do the readme, ChangeLog or
+todo files. Two reasons are plausible, and neither is documented:
+
+* **Cost.** `fdhess` takes (k² + 3k)/2 likelihood evaluations. For m6's 55
+  parameters that is 1595 evaluations, each an exact VARMA likelihood.
+  BFGS costs nothing extra. Today that is 0–0.4 s on the real cases (S5).
+* **It always answers.** The BFGS factor is positive definite by
+  construction. `fdhess` followed by a modified Cholesky may not be positive
+  definite, and it can fail at a boundary. Without the guards above, that
+  gives numbers that look fine and mean nothing.
+
 ## Still open
 
-* **drtran-python.** It returns NaN with `ifault = 2` when the Hessian is not
-  positive definite, where the C and this package fall back to BFGS and say
-  so. It also has no boundary check (drtran BUG-56, "Still open").
+
 * **fue.** fue has its own `_fdhess` step bug (BUG-0015), and fue C has the
   same commented-out call.
 * **S3 at ratio 300.** One seed gave fd/OLS = 1.88 at a scale ratio beyond

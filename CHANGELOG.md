@@ -58,6 +58,9 @@ the oracle. `drvarma.ladder` and the CLI:
     is kept and the report says why.
   - In the `.inp` path, `qq[1,1]` (the flat direction Q → cQ) is held fixed
     and is reported as `(normalised)`, with no standard error.
+  - The BFGS fallback applies only if the search iterated. raxopt starts at
+    the identity, so a search that did not move has no BFGS Hessian. Then
+    there are no standard errors, and the method reads `none (…)`.
 - **The assistant leaves the engine.** The MCP assistant is now its own
   package, **sima-tseries**, built on the ladder, and it owns the `sima`
   command. The old server on raw series stays here, deprecated, as
