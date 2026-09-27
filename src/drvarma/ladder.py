@@ -163,6 +163,44 @@ class LadderSeries:
         k = (p0 - 1) + (obs - 1)
         return y0 + k // f, k % f + 1
 
+    def canonicalize(self):
+        """Put ``x`` in the INVERTIBLE form, with fue's own rule (BUG-0007).
+
+        ``cast_us_py`` flips a regular MA(1) factor with |theta| > 1 to
+        1/theta, and a fixed-frequency MA with c2 < -1 to 1/c2, before it
+        builds the polynomial. The likelihood is therefore the same at theta
+        and at 1/theta, and the optimiser may stop on either side. The model is
+        the flipped one, so that is the value to report. Returns True if an
+        entry changed.
+        """
+        m = self.model
+        k = sum(int(bool(f)) for itv in m.interventions for f in itv.omega_free) \
+            + sum(int(bool(f)) for itv in m.interventions for f in itv.delta_free)
+
+        def nfree(factors, frees):
+            n = 0
+            for i, factor in enumerate(factors):
+                free = frees[i] if frees is not None else None
+                n += sum(1 for j in range(len(factor)) if free is None or free[j])
+            return n
+        k += nfree(m.ar, m.ar_free) + nfree(m.ar_s, m.ar_s_free)
+        changed = False
+        for i, factor in enumerate(m.ma):                 # regular MA factors
+            free = m.ma_free[i] if m.ma_free is not None else None
+            for j in range(len(factor)):
+                if free is None or free[j]:
+                    if len(factor) == 1 and abs(self.x[k]) > 1.0:
+                        self.x[k] = 1.0 / self.x[k]; changed = True
+                    k += 1
+        k += nfree(m.ma_s, m.ma_s_free)
+        k += sum(1 for ff in m.ar_f if ff.free)
+        for ff in m.ma_f:                                 # fixed-frequency MA
+            if ff.free:
+                if self.x[k] < -1.0:
+                    self.x[k] = 1.0 / self.x[k]; changed = True
+                k += 1
+        return changed
+
     def free_mask(self, redet, fixarma):
         mask = np.zeros(self.x.size, bool)
         mask[:self.n_det] = bool(redet)
@@ -494,6 +532,11 @@ class Ladder:
             fk, _b, nit, termcode = _qnewt.raxopt(
                 lambda z: objective(z[1:npar + 1]), npar, xk, maxits, grtol, sptol)
             xhat = xk[1:npar + 1].copy()
+            # the invertible form, where the model actually is (BUG-0007)
+            self.unpack(xhat)
+            if any(self.series[i].canonicalize() for i in self._act):
+                xhat = self.pack()
+                fk = objective(xhat)
             se = self._std_errors(objective, xhat, fk, w.shape[0])
         mu, phi, theta, qq, w, ifault = self.cast(xhat)
         _ll, f1, f2, a, ifa = self._elf(mu, phi, theta, qq, w, atf=True)

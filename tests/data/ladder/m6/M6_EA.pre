@@ -1,0 +1,127 @@
+************************************************
+*        Input file for program DRVUS          *
+*   m6 (Relloso 1997, Tabla 4) -- baseline     *
+************************************************
+
+** Frequency of time series: either 1(A), 4(Q) or 12(M):
+ 4
+** Number of observations and starting date of time series:
+ 69  3 1976 EA
+** Number of deterministic variables (including seasonal components):
+5
+**
+step 1 1985
+step 2 1987
+step 1 1989
+step 4 1989
+step 1 1992
+**
+0 0 0 0 0 
+**
+86.500000  1
+**
+63.300000  1
+**
+-84.000000  1
+**
+-70.900000  1
+**
+42.400000  1
+**
+0 0 0 0 0 
+**Number and orders of regular AR operators:
+0
+** Number and orders of annual AR operators:
+0
+** Number and orders of regular MA operators:
+2 1 1
+**
+0.4300 1
+**
+-0.7200 1
+** Number and orders of anual MA operators:
+0
+** Number and frequencies of regular AR(2) operators with fixed frequency:
+0
+** Number and frequencies of regular MA(2) operators with fixed frequency:
+1 1.000000
+**
+-0.6800 1
+** Mean parameter (mu):
+0
+** Box-Cox lambda, regular differences and complete annual differences:
+1.00 2 0
+** Individual factors of the annual difference (from freq 0.0): 
+ 0 1 1
+** ACF/PACF bands (0 Automatic) and reescaling factor: 
+ 0.00 1.00
+** Time series (stochastic and non-standard deterministic variables): 
+2786.7800000000 
+2701.2400000000 
+2679.0600000000 
+2554.9300000000 
+2570.2700000000 
+2562.8200000000 
+2572.8000000000 
+2493.0700000000 
+2486.0200000000 
+2436.6700000000 
+2452.4500000000 
+2346.9400000000 
+2343.3400000000 
+2325.8100000000 
+2279.4500000000 
+2193.9900000000 
+2190.6500000000 
+2196.8400000000 
+2152.4500000000 
+2072.7600000000 
+2080.8500000000 
+2075.2900000000 
+2050.9800000000 
+2006.1600000000 
+2054.7000000000 
+2083.5100000000 
+2096.4600000000 
+2017.0600000000 
+2060.6700000000 
+2048.3900000000 
+2015.8100000000 
+1954.2200000000 
+1983.3900000000 
+1995.9900000000 
+2052.0000000000 
+1941.5000000000 
+1916.2200000000 
+1888.3900000000 
+1831.7200000000 
+1752.9500000000 
+1722.4200000000 
+1722.9900000000 
+1728.8900000000 
+1723.0100000000 
+1712.4400000000 
+1724.9600000000 
+1758.1100000000 
+1671.2600000000 
+1674.9400000000 
+1673.0900000000 
+1624.9500000000 
+1604.7800000000 
+1615.6600000000 
+1546.1900000000 
+1574.5900000000 
+1498.4600000000 
+1448.2800000000 
+1420.4700000000 
+1420.6400000000 
+1375.6900000000 
+1309.3700000000 
+1274.5800000000 
+1303.5400000000 
+1256.8900000000 
+1220.1900000000 
+1230.2500000000 
+1220.2400000000 
+1211.6000000000 
+1177.9000000000 

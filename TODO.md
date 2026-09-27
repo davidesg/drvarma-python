@@ -57,6 +57,17 @@ modelo que ajuste bien sobre un sistema con `m^2·sqrt(n) >= 30`.
 
 ---
 
+## The ladder's gate is not exact on m6 (2026-09-27) — to study
+
+On the CPI trio the gate's identity holds to 1e-13; on drtran's m6 (six
+quarterly series, ∇² and MA factors near 1) the joint diagonal evaluation
+differs from the sum of the univariate log-likelihoods by −0.000428, in the C
+and in Python alike (so it is the engine, not the port). It passes the gate's
+relative tolerance (2.4e-7). Suspect: `elf`'s `xitol` truncation of the exact
+likelihood, which with near-non-invertible MA converges differently for one
+series than for six. To check: the gap with `xitol` smaller, and with `-m 2`.
+Pinned in `tests/test_ladder.py::test_m6_reports_the_invertible_ma_as_the_c_does`.
+
 ## PRIORIDAD — Separar el asistente del motor (sima fuera de drvarma)
 
 **Plan maestro y justificación:** `art-python/TODO.md` §PRIORIDAD — Arquitectura

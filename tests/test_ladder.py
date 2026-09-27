@@ -188,3 +188,23 @@ def test_a_fue_inp_specification_is_taken(tmp_path):
     L = Ladder(files[:2], 0, 0, diagcov=True)
     L.fit()
     assert L.gate["passed"]
+
+
+# -- BUG-0007: the MA coefficient in its invertible form ------------------- #
+
+def test_m6_reports_the_invertible_ma_as_the_c_does():
+    """fue's cast flips a regular MA(1) with |theta| > 1 to 1/theta, so the
+    likelihood is the same on both sides and the optimiser may stop on the
+    non-invertible one. On m6 it stopped on theta_EU = 1.0722: the model was
+    right (1/1.0722 = 0.9327) and the report was not. The C: 0.932651."""
+    M6 = [os.path.join(D, "m6", f"M6_{n}.pre") for n in ("EP", "EI", "EU", "EC", "EA", "P")]
+    L = Ladder(M6, 0, 0, diagcov=True)
+    L.fit()
+    got = dict(zip(L.result.names, zip(L.result.x, L.result.std_errors)))
+    assert got["theta_EU[B^1]"][0] == pytest.approx(0.932651, abs=2e-6)
+    assert got["theta_EU[B^1]"][1] == pytest.approx(0.041682, abs=5e-6)
+    moves = {r["series"]: r["move"] for r in L.gate["rows"]}
+    assert moves["EU"] == pytest.approx(0.0527, abs=1e-4)       # the C's gate
+    # The gate's difference on m6 is -0.000428 in the C too: not exact, as it
+    # is on the CPI trio (1e-13). It passes the relative tolerance; see TODO.md.
+    assert L.gate["difference"] == pytest.approx(-0.000428, abs=2e-6)
