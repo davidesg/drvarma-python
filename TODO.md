@@ -75,8 +75,8 @@ Decided by `docs/STUDY-standard-errors.md`. Open:
 - drtran-python says "no fdhess" with NaN and `ifault = 2`; the C and this
   package fall back to BFGS and say why. One behaviour for the family
   (drtran BUG-56).
-- fue: `_fdhess` step (BUG-0015), and fue C's commented-out call. Same study,
-  same guards.
+- ~~fue: `_fdhess` step (BUG-0015), and fue C's commented-out call.~~ Done
+  2026-09-27 (fue c8860e5, atsw-gui 18404d6).
 - The one S3 seed at scale ratio 300 with fd/OLS = 1.88.
 
 ## PRIORIDAD — Separar el asistente del motor (sima fuera de drvarma)

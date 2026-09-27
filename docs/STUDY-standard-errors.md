@@ -129,7 +129,10 @@ todo files. Two reasons are plausible, and neither is documented:
 ## Still open
 
 
-* **fue.** fue has its own `_fdhess` step bug (BUG-0015), and fue C has the
-  same commented-out call.
+* ~~**fue.**~~ Done on 2026-09-27 (fue BUG-0015, 0.1.17 unreleased). fue's C
+  (the wheel and the CLI) and its Python path take fdhess at the optimum,
+  with these guards. `_fdhess` is now the C's, with step eps^(1/3). On the
+  exact-GLS case, fue gives SE(μ) = 0.028502. On RIPC.1 the BFGS SEs had
+  been 0.097 where fdhess gives 0.165.
 * **S3 at ratio 300.** One seed gave fd/OLS = 1.88 at a scale ratio beyond
   any real case. It was not investigated.
