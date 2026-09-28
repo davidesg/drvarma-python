@@ -57,7 +57,13 @@ modelo que ajuste bien sobre un sistema con `m^2·sqrt(n) >= 30`.
 
 ---
 
-## The ladder's gate is not exact on m6 (2026-09-27) — to study
+## ~~The ladder's gate is not exact on m6~~ — explained 2026-09-28
+
+It is `elf`'s ξ truncation. drvarma C with `-m 2` (no truncation) closes the
+m6 gate to 0, and to 4.6e-13 with Shea's likelihood (`-lik shea`, atsw-gui
+5fe771e). The C's `-m` labels were swapped: `-m 1`, the default, is the
+truncated one. The note below is the original.
+
 
 On the CPI trio the gate's identity holds to 1e-13; on drtran's m6 (six
 quarterly series, ∇² and MA factors near 1) the joint diagonal evaluation
@@ -713,6 +719,13 @@ Relacionado, y esto SÍ es un defecto ordinario: que la copia empotrada del C y 
 autónoma difieran en `qnewtopt.c` (BUG-0002 del registro nuevo). Ahí no hay
 cuestión de criterio — el arreglo solo REGISTRA lo que `raxopt` ya calculó —, solo
 deriva entre copias.
+
+## Shea (AS 242): the C oracle exists now (2026-09-28)
+
+drvarma C 5.0 wires `marma` as `-lik shea|both` (atsw-gui 5fe771e).
+Measured with `-m 2`, elf and Shea agree to 1e-9 … 1e-13 at every point the
+optimiser visits. A faithful port can now be validated against it. That is
+still deferred, but the precondition below is met.
 
 ## Out of scope for this port — Shea (AS 242)
 
