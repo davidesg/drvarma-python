@@ -389,6 +389,7 @@ class Fit:
     fk: float = None           # the optimiser's objective at the stop
     ma_boundary: int = 0       # MA inverse roots at modulus >= 1 at the stop
     ma_nroots: int = 0         # (the C's est(): a stop on the invertibility wall)
+    cov: np.ndarray = None     # covariance of the estimates (se_method's Hessian)
 
     @property
     def npar(self):
@@ -640,7 +641,7 @@ class Ladder:
             f = (f1 / f10) ** m * (f2 / f20)
             return f if np.isfinite(f) else 1.0
 
-        nit, termcode, se, se_method, fk = 0, 0, np.zeros(npar), None, None
+        nit, termcode, se, se_method, fk, cov = 0, 0, np.zeros(npar), None, None, None
         xhat = x0
         if optimize and npar:
             xk = np.zeros(npar + 1); xk[1:] = x0
@@ -652,7 +653,7 @@ class Ladder:
             if any(self.series[i].canonicalize() for i in self._act):
                 xhat = self.pack()
                 fk = objective(xhat)
-            se, se_method = self._std_errors(objective, xhat, fk, w.shape[0], bfac, nit)
+            se, se_method, cov = self._std_errors(objective, xhat, fk, w.shape[0], bfac, nit)
         mu, phi, theta, qq, w, ifault = self.cast(xhat)
         nb, nr = _ma_boundary(theta)
         _ll, f1, f2, a, ifa = self._elf(mu, phi, theta, qq, w, atf=True)
@@ -662,7 +663,7 @@ class Ladder:
         return Fit(names, xhat, se, float(logL), float(f1 / (n * m)), int(ifa),
                    int(nit), int(termcode), mu, phi, theta, qq, w,
                    np.asarray(a)[1:, 1:].copy(),      # elf_c: 1-based out
-                   se_method, None if fk is None else float(fk), nb, nr)
+                   se_method, None if fk is None else float(fk), nb, nr, cov)
 
     def _std_errors(self, objective, xhat, fk, n, bfac, nit=1):
         """Mauricio's fdhess at the optimum (drvarma.stderr), or the BFGS
@@ -674,17 +675,18 @@ class Ladder:
         if self.hessian == "fd":
             cov, std, info = fd_covariance(objective, xhat, n)
             if cov is not None:
-                return std, "fdhess"
+                return std, "fdhess", cov
             why = ("the optimum is on the boundary of the admissible region"
                    if info.get("boundary") else "the Hessian is not positive definite")
             if not nit:
                 # raxopt starts b at the identity: no iteration, no BFGS Hessian.
                 return (np.full(xhat.size, np.nan),
-                        f"none (fdhess: {why}; the search did not move, so it built no BFGS Hessian)")
-            _c, std = _covariance(bfac, fk, n, xhat.size)
-            return std, f"bfgs (fdhess: {why})"
-        _c, std = _covariance(bfac, fk, n, xhat.size)
-        return std, "bfgs"
+                        f"none (fdhess: {why}; the search did not move, so it built no BFGS Hessian)",
+                        None)
+            c, std = _covariance(bfac, fk, n, xhat.size)
+            return std, f"bfgs (fdhess: {why})", c
+        c, std = _covariance(bfac, fk, n, xhat.size)
+        return std, "bfgs", c
 
     # -- the gate and the estimation -------------------------------------- #
     def run_gate(self):
@@ -749,6 +751,59 @@ class Ladder:
             self.x_start = self.pack()    # where the requested fit starts
             self.result = self._fit()
         return self.result
+
+    def irf_fevd_bands(self, horizon, ndraws=800, alpha=0.05, seed=0):
+        """Monte-Carlo bands for the orthogonalised IRF and the FEVD of the fit.
+
+        As `drvarma.irf.irf_fevd_bands` for the `.inp` path: draw the parameters
+        from N(x_hat, cov), rebuild the model through the ladder's cast (the
+        univariate factors and the cross terms together), recompute, and take
+        percentiles. Draws that leave the stationary / invertible region, or
+        give a Sigma that is not positive definite, are DISCARDED, not clipped,
+        and counted: a large rejected share says the fit sits near a boundary.
+        sigma2 is held at its estimate (it is concentrated out). The responses
+        are those of the stationary series, as the point IRF.
+        """
+        from .irf import oirf, fevd, _stable, _bands_from_draws
+        r = self.result
+        if r is None or r.cov is None or not np.all(np.isfinite(r.cov)):
+            raise ValueError("the fit carries no usable covariance of the "
+                             "estimates (se_method: %s); no bands" % (r.se_method if r else None))
+        cov = 0.5 * (r.cov + r.cov.T)
+        ev, V = np.linalg.eigh(cov)
+        Lc = V @ np.diag(np.sqrt(np.clip(ev, 0.0, None)))
+        rng = np.random.default_rng(seed)
+        od, fd, rejected = [], [], 0
+        try:
+            for _ in range(int(ndraws)):
+                vec = r.x + Lc @ rng.standard_normal(r.x.size)
+                try:
+                    _mu, phi, theta, qq, _w, ifa = self.cast(vec)
+                    if ifa:
+                        rejected += 1; continue
+                    sig = r.sigma2 * np.asarray(qq, float)
+                    np.linalg.cholesky(sig)
+                    if phi.shape[0] and not _stable(phi):
+                        rejected += 1; continue
+                    if theta.shape[0] and not _stable(-np.asarray(theta, float)):
+                        rejected += 1; continue
+                    o = oirf(phi, theta, sig, horizon)
+                    f = fevd(phi, theta, sig, horizon)
+                except Exception:                     # noqa: BLE001
+                    rejected += 1; continue
+                if not (np.all(np.isfinite(o)) and np.all(np.isfinite(f))):
+                    rejected += 1; continue
+                od.append(o); fd.append(f[-1])
+        finally:
+            self.cast(r.x)                            # the state back at x_hat
+        if len(od) < 20:
+            raise ValueError(f"only {len(od)} of {ndraws} draws were admissible; "
+                             "the fit is too close to the stationarity/invertibility "
+                             "boundary for a meaningful band")
+        o_lo, o_hi = _bands_from_draws(np.stack(od), alpha)
+        f_lo, f_hi = _bands_from_draws(np.stack(fd), alpha)
+        return {"oirf_lo": o_lo, "oirf_hi": o_hi, "fevd_lo": f_lo, "fevd_hi": f_hi,
+                "ndraws_used": len(od), "ndraws_rejected": rejected, "alpha": alpha}
 
     def refit(self, x=None):
         """Optimise the requested model again, from ``x`` (a packed vector,

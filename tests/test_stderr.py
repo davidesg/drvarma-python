@@ -136,10 +136,12 @@ def test_no_iteration_means_no_bfgs_to_fall_back_on():
     sqrt(2F/n) for every parameter."""
     L = Ladder([GLS_PRE], 0, 0, diagcov=True)
     saddle = lambda x: 1.0 + x[0] ** 2 - x[1] ** 2
-    std, how = L._std_errors(saddle, np.zeros(2), 1.0, 10, np.eye(3), nit=0)
+    std, how, cov = L._std_errors(saddle, np.zeros(2), 1.0, 10, np.eye(3), nit=0)
+    assert cov is None
     assert np.isnan(std).all()
     assert how == ("none (fdhess: the Hessian is not positive definite; "
                    "the search did not move, so it built no BFGS Hessian)")
-    std, how = L._std_errors(saddle, np.zeros(2), 1.0, 10, np.eye(3), nit=5)
+    std, how, cov = L._std_errors(saddle, np.zeros(2), 1.0, 10, np.eye(3), nit=5)
+    assert cov.shape == (2, 2)
     assert how == "bfgs (fdhess: the Hessian is not positive definite)"
     assert np.isfinite(std).all()

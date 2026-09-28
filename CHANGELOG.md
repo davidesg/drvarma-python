@@ -76,6 +76,13 @@ the oracle. `drvarma.ladder` and the CLI:
   `method` says, as the C does since atsw-gui 2026-09-28. Pairs of m6 failed
   it by up to 0.0018 because of elf's ξ truncation; they now close to 1e-13.
   The m6 pin moves from −0.000428 to exact.
+- **IRF/FEVD bands for the ladder model: `Ladder.irf_fevd_bands(H)`.**
+  - Monte Carlo from N(estimate, covariance): each draw is rebuilt through
+    the ladder's cast, univariate factors and cross terms together.
+  - Draws that are non-stationary, non-invertible or have a Sigma that is
+    not positive definite are discarded and counted.
+  - The covariance of the estimates is kept as `Fit.cov`, from the same
+    Hessian as the SEs.
 - **`Ladder.refit(x)`** re-optimises the requested model from a given point,
   without the gate. With it a study can restart from where a fit stopped,
   e.g. with the MA roots pulled inside the wall.

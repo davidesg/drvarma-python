@@ -120,3 +120,26 @@ def test_refit_restarts_from_a_given_point():
     assert back.logL >= r.logL - 1e-6
     with pytest.raises(ValueError):
         L.refit(r.x[:-1])
+
+
+# ── IRF/FEVD bands for the ladder model ─────────────────────────────────────
+
+def test_ladder_irf_bands_contain_the_point_and_restore_the_state():
+    from drvarma.irf import oirf
+    L = Ladder([PAIR[0], os.path.join(D, "WTI_ar1.pre")], 1, 0)
+    r = L.fit()
+    assert r.cov is not None and r.cov.shape == (r.npar, r.npar)
+    b = L.irf_fevd_bands(12, ndraws=300)
+    pt = oirf(r.phi, r.theta, r.sigma, 12)
+    assert np.all((pt >= b["oirf_lo"] - 1e-12) & (pt <= b["oirf_hi"] + 1e-12))
+    assert b["ndraws_used"] + b["ndraws_rejected"] == 300
+    _mu, phi, _t, _q, _w, _i = L.cast(r.x)
+    np.testing.assert_allclose(phi, r.phi)
+
+
+def test_no_covariance_no_bands():
+    L = Ladder(PAIR, 1, 0)
+    r = L.fit()
+    r.cov = None
+    with pytest.raises(ValueError, match="no usable covariance"):
+        L.irf_fevd_bands(6, ndraws=50)
