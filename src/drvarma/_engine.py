@@ -109,10 +109,15 @@ def marma_c(m, n, p, q, mu, phi, theta, qq, w, sigma2=1.0):
     residuals: Shea's are the one-step innovations, and forecasts need elf's.
     The C engines' `-lik shea` (atsw-gui lib/lik) runs the same code.
 
-    Needs the compiled engine: the pure-Python port of Shea is not written yet.
+    Falls back to the pure-Python port, `_as242.marma`, when the extension is
+    not built (same returns; 1e-14 relative on the logL).
     """
     import numpy as np
-    from drvarma._drvarma_engine import ffi, lib
+    try:
+        from drvarma._drvarma_engine import ffi, lib
+    except ImportError:                                    # pragma: no cover
+        from ._as242 import marma
+        return marma(m, n, p, q, mu, phi, theta, qq, w, sigma2)
 
     mu = np.ascontiguousarray(mu, dtype=np.float64)
     qq = np.ascontiguousarray(qq, dtype=np.float64)

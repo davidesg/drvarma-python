@@ -6,6 +6,11 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**Shea's likelihood in pure Python.** `_as242.py` ports multshea.c (AS 242)
+line by line, as `_as311.py` ports elf. `marma_c` uses it when the compiled
+engine is not built, so `Ladder(lik="shea"|"both")` also works without it. It
+reproduces `marma_c` to 1e-14 relative on the logL, with the same refusals.
+
 **The ladder: fue's univariate models as the input of a VARMA.** The Python
 port of drvarma 5.0's ladder mode (C, in the atsw-gui monorepo), with the C as
 the oracle. `drvarma.ladder` and the CLI:

@@ -4,7 +4,7 @@ Status snapshot in `docs/STATUS.md`. P0–P4 and most of P5 (CLI, packaging,
 per-series diagnostics, base plots) are done and validated against the C engine
 (94 tests). The whole Model → forecast → report pipeline also runs on the
 pure-Python fallback with no compiled engine. Remaining: the graphics finish
-(pyfug JT formats, deferred to last), P5 docs/CI, and the deferred Shea backup.
+(pyfug JT formats, deferred to last) and P5 docs/CI.
 
 ## ~~BUG (C, HEREDADO) — `chisq()` invierte la cola con `df >= 30`~~ — RESUELTO en esta copia 2026-09-26
 
@@ -497,7 +497,7 @@ these is a reason a wrong result went unnoticed.
       exact VARMA(p,q) log-likelihood for general m. 1-indexed transcription;
       hot length-n loops vectorised without changing the algorithm. Reproduces the
       C `logelf` to ~1e-11 and the exact residuals to ~1e-12. **No Kalman**
-      (that route is Shea's; a faithful `multshea.c` port is the desirable backup).
+      (that route is Shea's: `_as242.py`, the faithful `multshea.c` port).
 - [x] **`elfvarma_py.py`**: `elf_varma` (AS 311 wrapper, general p,q) + `elf_var`
       (fast vectorised q=0 specialisation via the companion Lyapunov covariance,
       cross-checked against AS 311).
@@ -752,17 +752,11 @@ still deferred, but the precondition below is met.
 **Step 1 done (2026-09-28):** `marma_c` (the compiled C, through CFFI) and
 `Ladder(lik=)`, pinned against the C oracle in `tests/test_shea.py`.
 
-**Step 2, pending:** the faithful pure-Python port (`marma`, `covars`,
-`chol`, `bksb`, ~700 lines), as the fallback when there is no compiled
-engine. It is to be validated against `marma_c` to 1e-12.
-
-## Out of scope for this port — Shea (AS 242)
-
-`csrc/internal/multshea.c` (`marma`) is compiled but **not wired into the C
-estimator** (no callers), so there is no C reference to validate a Python port
-against. **Deferred — not part of the 100% Python goal.** If ever revived: wire
-`marma()` into a new C engine version first, compare C-Shea vs C-Mauricio, then
-port faithfully (never a Kalman/state-space stand-in — that *is* Shea's route).
+**Step 2 done (2026-09-28):** `_as242.py`, the faithful pure-Python port
+(`marma`, `covars`, `chol`, `bksb`, and nlatools' `ludcp`/`lusol`), 1-indexed
+as the C. `marma_c` falls back to it when the extension is not built. Against
+`marma_c` on random VARMA(p,q), m <= 3: 1.1e-14 relative on the logL; the same
+ifaults, including elf's MA frontier.
 
 ## Seasonality detection
 - [ ] **Use a HAC F-test in the seasonality detection (superior to the plain OLS

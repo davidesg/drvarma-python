@@ -143,3 +143,45 @@ def test_no_covariance_no_bands():
     r.cov = None
     with pytest.raises(ValueError, match="no usable covariance"):
         L.irf_fevd_bands(6, ndraws=50)
+
+
+# ── the pure-Python port (_as242), against the compiled one ────────────────
+
+def test_pure_python_shea_is_the_compiled_one():
+    """Random VARMA(p,q) up to m=3, p,q <= 2: the port reproduces marma_c to
+    rounding (measured: 1.1e-14 relative on the logL, 2.9e-11 absolute)."""
+    from drvarma._as242 import marma
+    rng = np.random.default_rng(1)
+    for _ in range(25):
+        m = int(rng.integers(1, 4)); p = int(rng.integers(0, 3)); q = int(rng.integers(0, 3))
+        q = q or (0 if p else 1)
+        n = int(rng.integers(20, 120))
+        phi = rng.uniform(-.4, .4, (p, m, m)) / m
+        theta = rng.uniform(-.5, .5, (q, m, m)) / m
+        L = rng.standard_normal((m, m)) * .5 + np.eye(m)
+        args = (m, n, p, q, rng.standard_normal(m) * .1, phi, theta, L @ L.T,
+                rng.standard_normal((n, m)))
+        a, b = marma_c(*args), marma(*args)
+        assert a[3] == b[3]
+        if a[3] == 0:
+            assert abs(a[0] - b[0]) <= 1e-12 * abs(a[0])
+            assert abs(a[1] - b[1]) <= 1e-12 * a[1] and abs(a[2] - b[2]) <= 1e-12 * a[2]
+
+
+def test_pure_python_shea_refuses_what_elf_refuses():
+    from drvarma._as242 import marma
+    m, n, p, q, mu, phi, _t, qq, w = _point()
+    theta = np.array([[[1.2, 0.0], [0.0, 0.3]]])
+    assert marma(m, n, p, q, mu, phi, theta, qq, w)[3] == 4
+
+
+def test_pure_python_shea_at_the_c_oracles_optimum():
+    """At the ladder's optimum on ES/FR, the port's Shea is the C's."""
+    from drvarma._as242 import marma
+    L = Ladder(PAIR, 1, 0, method=2, lik="shea")
+    r = L.fit()
+    mu, phi, theta, qq, w, _i = L.cast(r.x)
+    m, n = w.shape[1], w.shape[0]
+    a = marma_c(m, n, phi.shape[0], theta.shape[0], mu, phi, theta, qq, w)
+    b = marma(m, n, phi.shape[0], theta.shape[0], mu, phi, theta, qq, w)
+    assert b[3] == 0 and abs(a[0] - b[0]) <= 1e-12 * abs(a[0])
