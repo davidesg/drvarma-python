@@ -205,6 +205,7 @@ def test_m6_reports_the_invertible_ma_as_the_c_does():
     assert got["theta_EU[B^1]"][1] == pytest.approx(0.041682, abs=5e-6)
     moves = {r["series"]: r["move"] for r in L.gate["rows"]}
     assert moves["EU"] == pytest.approx(0.0527, abs=1e-4)       # the C's gate
-    # The gate's difference on m6 is -0.000428 in the C too: not exact, as it
-    # is on the CPI trio (1e-13). It passes the relative tolerance; see TODO.md.
-    assert L.gate["difference"] == pytest.approx(-0.000428, abs=2e-6)
+    # The gate's difference on m6 was -0.000428, in the C too: elf's xi
+    # truncation (method 1), not the cast. Since 2026-09-28 the gate is
+    # evaluated untruncated on both sides, and it closes to rounding.
+    assert abs(L.gate["difference"]) < 1e-9

@@ -692,6 +692,17 @@ class Ladder:
 
         Returns a dict and raises ``GateError`` if the identity fails.
         """
+        # The gate is an IDENTITY: evaluated with the UNTRUNCATED likelihood
+        # whatever `method` says (as the C, 2026-09-28). elf's xi truncation is
+        # not the same for one series as for m, and m6's pairs failed by up to
+        # 0.0018 with the cast blamed. The estimation keeps `method`.
+        xitol_asked, self.xitol = self.xitol, -1e-3
+        try:
+            return self._run_gate()
+        finally:
+            self.xitol = xitol_asked
+
+    def _run_gate(self):
         m = len(self.series)
         n_all = [len(s.stationary()) for s in self.series]
         n_common = min(n_all)

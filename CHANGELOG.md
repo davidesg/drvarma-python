@@ -72,6 +72,10 @@ the oracle. `drvarma.ladder` and the CLI:
     `MA boundary: k of n inverse roots at modulus >= 1`.
   - **The data.** `Fit.ma_boundary`, `Fit.ma_nroots` and `Fit.fk`. It
     states facts and gives no verdict: studying the situation is sima's job.
+- **The gate is evaluated with the untruncated likelihood,** whatever
+  `method` says, as the C does since atsw-gui 2026-09-28. Pairs of m6 failed
+  it by up to 0.0018 because of elf's ξ truncation; they now close to 1e-13.
+  The m6 pin moves from −0.000428 to exact.
 - **`Ladder.refit(x)`** re-optimises the requested model from a given point,
   without the gate. With it a study can restart from where a fit stopped,
   e.g. with the MA roots pulled inside the wall.
