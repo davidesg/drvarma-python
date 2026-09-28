@@ -6,6 +6,15 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**termcode 3, one reading, and the MA wall in `Model`** (BUG-0010). The package
+read termcode 3 two ways: "AT the optimum" in `estimate_py`, "not a maximum"
+in the report. The report now states the fact and how to tell an optimum from
+a stall (re-estimate from the values). `Model.ma_boundary`/`ma_nroots` report
+MA inverse roots within 5e-5 of the unit circle, as the ladder and the C;
+`Model.converged` is False there, and the report writes the C's "OPTIMIZER
+STOPPED at the MA invertibility boundary". BUG-0009, and the old server's half
+of BUG-0008, are not patched: that server is `sima-legacy` from 0.2.0.
+
 **The MA wall: one tolerance for both sides.** A stop with an MA inverse root
 within 5e-5 of the unit circle is reported as on the wall, as in the C
 (atsw-gui lib/lik MA_WALL_TOL). chekma already accepted up to 1 + 5e-5, so a

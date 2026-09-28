@@ -256,7 +256,32 @@ class Model:
         not convergence either.
         """
         tc = self.termcode
-        return None if tc is None else tc in (1, 2)
+        if tc is None:
+            return None
+        # A stop with MA inverse roots on the invertibility wall is not a
+        # convergence, whatever the termcode (BUG-0010; as the ladder and the C).
+        return tc in (1, 2) and not self.ma_boundary
+
+    @property
+    def ma_boundary(self):
+        """MA inverse roots within 5e-5 of the unit circle at the estimate (the
+        engine refuses beyond 1 + 5e-5, so these are on the invertibility
+        wall). A fact about the fit, as the C and the ladder report it; what
+        it means for the model is the analyst's (or sima's) to study."""
+        return self._ma_wall()[0]
+
+    @property
+    def ma_nroots(self):
+        """How many MA inverse roots the model has (m·q)."""
+        return self._ma_wall()[1]
+
+    def _ma_wall(self):
+        from .ladder import _ma_boundary
+        try:
+            th = self.theta
+        except Exception:                                  # pragma: no cover
+            return 0, 0
+        return _ma_boundary(th) if th is not None else (0, 0)
 
     @property
     def nit(self):

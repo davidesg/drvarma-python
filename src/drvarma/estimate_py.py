@@ -329,10 +329,12 @@ def estimate_w_py(w, p, q, include_mean=False, diag_ar=False, diag_ma=False,
     f1, f2, lf = _elf_f1f2(w, mu, phi, theta, qq, xitol)
     # ifault reports MODEL adequacy (as the C `est`/`elf`): 0 OK, 1 Q not PD,
     # 2 AR unit root, 3 non-stationary, 4 MA non-invertible, 5 numerical.  The
-    # optimiser's termination is reported separately (`termcode`/`nit`); a line
-    # search that cannot find a lower point (termcode 3) means it is AT the
-    # optimum, so it is not a fault — matching the C, which never sets ifault
-    # from the optimiser.
+    # optimiser's termination is reported separately (`termcode`/`nit`), and
+    # never folded into ifault, as in the C. termcode 3 (the last line search
+    # found no lower point) is NOT read here either way (BUG-0010): it happens
+    # at an optimum reached to rounding and when the search stalls on an
+    # ill-conditioned surface. `Model.converged` counts only 1 and 2, and the
+    # report states the fact and how to tell the two apart.
     ifault = if0 or lf
 
     # Concentrated log-likelihood and variance (drvmlest.c:est, [4]).

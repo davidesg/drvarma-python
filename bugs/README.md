@@ -4,7 +4,7 @@ In-repo bug tracker for **drvarma**.  One Markdown file per bug (`BUG-NNNN-slug.
 
 New report: `art-bug new` (or copy `TEMPLATE.md`).  Validate: `art-bug check`.  A fix commit references the id, e.g. `fix(pipeline): BUG-0001 …`.
 
-**14 report(s), 12 open.**
+**14 report(s), 9 open.**
 
 | id | status | sev | component | title | fixed in |
 |----|--------|-----|-----------|-------|----------|
@@ -13,13 +13,13 @@ New report: `art-bug new` (or copy `TEMPLATE.md`).  Validate: `art-bug check`.  
 | [BUG-0003](BUG-0003-seasonal-adjustment-applied-in-levels-before-box-cox.md) | open | medium | deseason | The seasonal component is estimated and subtracted in LEVELS, before the Box-Cox log, so a multiplicative pattern on a trending index is adjusted at the wrong scale | — |
 | [BUG-0004](BUG-0004-el-docstring-dice-que-el-respaldo-en-python-solo-hace-q0.md) | open | low | engine | El docstring de `estimate_w` dice que el respaldo en Python sólo hace q=0, y hace VARMA completo desde junio | — |
 | [BUG-0005](BUG-0005-el-respaldo-en-python-puro-entra-sin-avisar.md) | open | medium | packaging | Donde no hay rueda binaria se instala la de Python puro y el motor C no se usa, sin ningún aviso | — |
-| [BUG-0008](BUG-0008-el-informe-de-parametros-no-dice-que-es-cada-uno.md) | open | medium | mcp | confirm_and_estimate labels every parameter theta[i] and gives t-ratios to the covariance parameters | — |
-| [BUG-0009](BUG-0009-load-data-toma-la-columna-de-fecha-como-serie.md) | open | medium | mcp | load_data takes a date column as a series, and the sample start is not read from it | — |
-| [BUG-0010](BUG-0010-el-significado-de-termcode-3-se-contradice.md) | open | medium | optimizer | The meaning of termcode 3 contradicts itself inside the package | — |
 | [BUG-0011](BUG-0011-el-consenso-impone-un-lambda-y-el-d-maximo.md) | open | low | mcp | The consensus imposes one lambda and d = max(d_i), which over-differences an I(0) series | — |
 | [BUG-0012](BUG-0012-los-coeficientes-armonicos-no-cuentan.md) | open | low | deseason | The harmonic seasonal coefficients are not counted in degrees of freedom, k or forecast uncertainty | — |
 | [BUG-0013](BUG-0013-el-aviso-de-cointegracion-usa-valores-criticos-adf.md) | open | low | mcp | The cointegration warning uses ADF critical values on a residual, and always normalises on the first series | — |
 | [BUG-0014](BUG-0014-help-arranca-el-servidor.md) | open | low | mcp | sima --help starts the stdio server instead of printing help | — |
 | [BUG-0006](BUG-0006-la-busqueda-lineal-no-vuelve-con-un-objetivo-no-finito.md) | fixed | high | optimizer | La búsqueda lineal no vuelve nunca si el objetivo es NaN o infinito — el optimizador (C y Python) se queda girando, sin error ni salida | 0.1.7 |
 | [BUG-0007](BUG-0007-el-ma-se-informa-en-su-forma-no-invertible.md) | fixed | medium | ladder | The ladder reports an MA(1) coefficient in its non-invertible form (1.0722 instead of 0.9327) — the model is right, the report and the gate's "move" are not | 0.2.0 |
+| [BUG-0008](BUG-0008-el-informe-de-parametros-no-dice-que-es-cada-uno.md) | fixed | medium | mcp | confirm_and_estimate labels every parameter theta[i] and gives t-ratios to the covariance parameters | sima-tseries 0.1.0 |
+| [BUG-0010](BUG-0010-el-significado-de-termcode-3-se-contradice.md) | fixed | medium | optimizer | The meaning of termcode 3 contradicts itself inside the package | 0.2.0 |
+| [BUG-0009](BUG-0009-load-data-toma-la-columna-de-fecha-como-serie.md) | wontfix | medium | mcp | load_data takes a date column as a series, and the sample start is not read from it | — |
 

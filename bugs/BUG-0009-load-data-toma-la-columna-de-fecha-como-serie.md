@@ -1,11 +1,11 @@
 ---
 id: BUG-0009
 title: load_data takes a date column as a series, and the sample start is not read from it
-status: open
+status: wontfix
 severity: medium
 component: mcp
 found_in: 0.1.7
-fixed_in:
+fixed_in: 
 reported: 2026-09-27
 reporter: External review of atsw 1.6.1 (2026-09-27), filed 2026-09-28
 tags: [load_data, dates, calendar]
@@ -47,3 +47,12 @@ column that ends up entirely NaN.
 ## Validation
 
 Tests with `date,IPC,WTI`: two series, start (2002, 1), freq 12.
+
+## Resolution (2026-09-28): not fixed, by decision
+
+Only the old server has `load_data` from CSV. sima-tseries starts from the
+ladder's `.pre` files, which carry their dates, so the defect does not exist
+there. The old sima (`drvarma.mcp_server`) is what atsw 1.6.1 installs today, as
+the `sima` command of drvarma 0.1.7. From drvarma 0.2.0 that command belongs
+to sima-tseries, built on the ladder, and the old server stays only as
+`sima-legacy`, deprecated. Decided on 2026-09-28 not to patch it.

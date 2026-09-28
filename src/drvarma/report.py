@@ -221,12 +221,21 @@ def _convergence_block(model):
         lines.append("  ⚠ the reported values are the STARTING values, not "
                      "maximum-likelihood estimates.")
     else:
-        status = "CONVERGED" if tc in (1, 2) else "STOPPED"
-        lines.append("  OPTIMIZER %s%s"
-                     % (status, "" if nit is None else " after %d iterations" % nit))
+        nb, nr = getattr(model, "ma_boundary", 0), getattr(model, "ma_nroots", 0)
+        after = "" if nit is None else " after %d iterations" % nit
+        if nb:
+            # As the C (report_stop) and the ladder: a stop on the wall is not
+            # a convergence, whatever the termcode (BUG-0010).
+            lines.append("  OPTIMIZER STOPPED at the MA invertibility boundary%s" % after)
+        else:
+            status = "CONVERGED" if tc in (1, 2) else "STOPPED"
+            lines.append("  OPTIMIZER %s%s" % (status, after))
     lines.append("  Log-likelihood = %.6f" % r["logelf"])
     if tc is not None and tc in _TERMCODE_CRIT:
         lines.append("  Convergence criterion: %s" % _TERMCODE_CRIT[tc])
+    if tc and getattr(model, "ma_boundary", 0):
+        lines.append("  MA boundary: %d of %d inverse roots within 5e-5 of the unit circle"
+                     % (model.ma_boundary, model.ma_nroots))
     # WHY it stopped matters as much as WHETHER it stopped. Only termcode 1 is
     # convergence on the gradient. termcode 2 means the step became too small
     # while the gradient may still be appreciable — the usual signature of an
@@ -239,7 +248,17 @@ def _convergence_block(model):
                      "non-identification / common factors). Treat the standard "
                      "errors with caution and re-estimate from other starting "
                      "values or with a smaller order.")
-    elif tc in (3, 4, 5):
+    elif tc == 3:
+        # BUG-0010: the package read termcode 3 two ways ("AT the optimum" in
+        # estimate_py, "not a maximum" here). It is neither by itself: say
+        # what happened and how to tell the two cases apart.
+        lines.append("  ⚠ not reported as converged: the last line search found "
+                     "no lower point.")
+        lines.append("    That happens at an optimum reached to rounding and when "
+                     "the search stalls on an ill-conditioned surface. To tell "
+                     "them apart, re-estimate from these values: an optimum "
+                     "stays put.")
+    elif tc in (4, 5):
         lines.append("  ⚠ NOT a convergence: the optimiser gave up (%s). The "
                      "estimates are not a maximum; every criterion derived from "
                      "this fit is unreliable." % _TERMCODE_CRIT.get(tc, "?"))
