@@ -451,6 +451,7 @@ class Ladder:
         self.gate = None
         self.logL_diag = None
         self.result = None
+        self.x_start = None      # the start of the requested fit (refit, sima)
         self.estwin = None
         if estwin:
             full = self.series[0].nobs_full
@@ -734,6 +735,7 @@ class Ladder:
         else:
             self._cAR[:] = 0.0; self._cMA[:] = 0.0; self._qcov[:] = 0.0
             self._set_structure(list(range(m)), self.p, self.q, self.diagcov)
+            self.x_start = self.pack()    # where the requested fit starts
             self.result = self._fit()
         return self.result
 
