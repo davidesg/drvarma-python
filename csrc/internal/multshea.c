@@ -1,5 +1,6 @@
 /*****************************************************************************/
-/*  multshea.c -- part of drvarma (multivariate VARMA modelling).
+/*  multshea.c -- part of drvarma. COPY of atsw-gui lib/lik/multshea.c
+ *  (the source of truth since 2026-09-28; sync from there, never edit here) (multivariate VARMA modelling).
  *
  *  Copyright (C) 1995-2026 A.B. Treadway, J.A. Mauricio & D.E. Guerrero.
  *
@@ -478,9 +479,13 @@ r4:    for ( i = 1; i <= k; i++ )
 
    *r1    = ssq;
 
-   *r2    = expl( detp ) * powl( tsig, n - j7 );
-   *r2    = logl( *r2 ) / n;
-   *r2    = expl( *r2 );
+/* In LOGARITHMS (drvarma 5.0, 2026-09-28). The product exp(detp)*tsig^(n-j7)  */
+/* underflows: with a Q of small scale detp is about -1500 for n = 216, and   */
+/* exp(-1500) is 0 as a double. r2 was then 0, the objective collapsed to 0   */
+/* and the estimates were garbage. The n-th root taken in log space is the    */
+/* same number without leaving the range. marma had never been called before */
+/* -lik shea, so this never showed.                                          */
+   *r2    = expl( ( detp + ( n - j7 ) * logl( tsig ) ) / n );
 
    *rlogl = -0.5 * (n * k * (LOG2PI + logl( sigma2 )) + (n - j7) * logl( tsig ) +
             detp + ssq / sigma2 );

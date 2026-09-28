@@ -44,6 +44,37 @@ the oracle. `drvarma.ladder` and the CLI:
   binary wheels). The stationary series of each model is cached, and only
   its polynomials are recomputed at each evaluation.
 - **New dependency: `fue>=0.1.16`,** the reference parser, with wheels.
+- **Shea's exact likelihood beside elf: `Ladder(lik="elf"|"shea"|"both")`**
+  (CLI `-lik`), and `drvarma._engine.marma_c`.
+  - **What it is.** Shea's AS 242 (1989) had been in `csrc` since 1996,
+    compiled and never called. It is the independent benchmark in
+    Mauricio's papers.
+  - **The same rules as the C engines' `-lik`** (atsw-gui `lib/lik`; the
+    `csrc` copy of `multshea.c` is synced from there, with its underflow
+    fix):
+    - Shea is always exact;
+    - the MA frontier is elf's;
+    - the residuals stay elf's, because Shea's are innovations and the
+      forecasts need exact residuals.
+  - **`both`** optimises with elf and evaluates Shea at every point, and
+    reports the largest |ΔlogL| in `Ladder.lik_check` and in the report.
+  - **Measured.** Python and the C oracle give the same ℓ (92.566119 on the
+    ES/FR pair; −1752.522249 on m6). With Shea the m6 gate closes to 0.
+    With `method=2`, elf and Shea agree to 7e-13 at every point.
+  - **Needs the compiled engine.** The pure-Python port of Shea is still to
+    be written, and will be validated against `marma_c`.
+  - Pinned in `tests/test_shea.py`.
+- **The optimiser's stop, as the C writes it.**
+  - **The report block.** The ladder report now has the C's
+    `OPTIMIZER … after N iterations` block, line for line.
+  - **A stop on the MA wall.** With MA inverse roots at modulus >= 1, it
+    says `OPTIMIZER STOPPED at the MA invertibility boundary` and
+    `MA boundary: k of n inverse roots at modulus >= 1`.
+  - **The data.** `Fit.ma_boundary`, `Fit.ma_nroots` and `Fit.fk`. It
+    states facts and gives no verdict: studying the situation is sima's job.
+- **`Ladder.refit(x)`** re-optimises the requested model from a given point,
+  without the gate. With it a study can restart from where a fit stopped,
+  e.g. with the MA roots pulled inside the wall.
 - **Standard errors from fdhess by default** (`drvarma.stderr`). This is
   Mauricio's finite-difference Hessian at the optimum, from the published code,
   where it had been left commented out. It replaces the BFGS Hessian the search

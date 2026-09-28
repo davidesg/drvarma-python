@@ -97,6 +97,10 @@ int drvarma_elf(int m, int n, int p, int q,
                 const double *qq, const double *w,
                 double sigma2, double delta, int atf,
                 double *a_out, double *f1, double *f2, double *logelf);
+int drvarma_marma(int m, int n, int p, int q,
+                  const double *mu, const double *phi, const double *theta,
+                  const double *qq, const double *w, double sigma2,
+                  double *f1, double *f2, double *logelf);
 """
 
 _SOURCES = [

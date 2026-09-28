@@ -98,6 +98,39 @@ def estimate_w(w, p, q, include_mean=False,
     return out
 
 
+# -- marma: Shea's exact likelihood at a GIVEN structure ------------------- #
+
+def marma_c(m, n, p, q, mu, phi, theta, qq, w, sigma2=1.0):
+    """Compiled Shea (1989, AS 242): the independent benchmark beside `elf`.
+
+    Same 0-based arrays as `elf_c`. Returns `(logelf, f1, f2, ifault)`, with
+    f1, f2 on elf's scale (the concentrated objective is (f1)^m * f2). Always
+    exact; the MA frontier is elf's (ifault 4 where elf would refuse). No
+    residuals: Shea's are the one-step innovations, and forecasts need elf's.
+    The C engines' `-lik shea` (atsw-gui lib/lik) runs the same code.
+
+    Needs the compiled engine: the pure-Python port of Shea is not written yet.
+    """
+    import numpy as np
+    from drvarma._drvarma_engine import ffi, lib
+
+    mu = np.ascontiguousarray(mu, dtype=np.float64)
+    qq = np.ascontiguousarray(qq, dtype=np.float64)
+    w = np.ascontiguousarray(w, dtype=np.float64)
+    phi = np.ascontiguousarray(phi, dtype=np.float64) if p else np.zeros((0, m, m))
+    theta = np.ascontiguousarray(theta, dtype=np.float64) if q else np.zeros((0, m, m))
+    f1 = ffi.new("double *"); f2 = ffi.new("double *"); lg = ffi.new("double *")
+    ifault = lib.drvarma_marma(
+        m, n, p, q,
+        ffi.from_buffer("double[]", mu.ravel()),
+        ffi.from_buffer("double[]", phi.ravel()) if p else ffi.NULL,
+        ffi.from_buffer("double[]", theta.ravel()) if q else ffi.NULL,
+        ffi.from_buffer("double[]", qq.ravel()),
+        ffi.from_buffer("double[]", w.ravel()),
+        float(sigma2), f1, f2, lg)
+    return float(lg[0]), float(f1[0]), float(f2[0]), int(ifault)
+
+
 # -- elf: the exact likelihood at a GIVEN structure ------------------------- #
 
 def elf_c(m, n, p, q, mu, phi, theta, qq, w, sigma2=1.0, xitol=-1e-3, atf=False):

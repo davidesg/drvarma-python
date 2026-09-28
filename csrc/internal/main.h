@@ -86,6 +86,9 @@ void est( void (*cast)( real *, struct Tvarma *, int *, int, int ),
           real grtol, real sptol, real xitol, real **a, real *sigma2,
           real *logelf, int *ifault );
 
+void marma( int k, int n, int p, int q, real *mu, real ***phi, real ***theta,
+            real **qq, real **w, real sigma2, real xtol, int chkma, int atf,
+            real **v, real *r1, real *r2, real *rlogl, int *ifault );
 void elf( int m, int n, int p, int q, real *mu, real ***phi, real ***theta,
           real **qq, real **w, real sigma2, real delta, int atf, real **a,
           real *f1, real *f2, real *logelf, int *ifault );

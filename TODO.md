@@ -74,6 +74,22 @@ likelihood, which with near-non-invertible MA converges differently for one
 series than for six. To check: the gap with `xitol` smaller, and with `-m 2`.
 Pinned in `tests/test_ladder.py::test_m6_reports_the_invertible_ma_as_the_c_does`.
 
+## Parity: m6 with cross dynamics, the C stops on the MA wall (2026-09-28)
+
+`m6/*.pre 1 0 -diagcov` is the same model with the same 43 parameters on both
+sides, but the two optimisers end in different places:
+
+- the C (atsw-gui) stops on the MA invertibility wall: ℓ = −1733.966294,
+  60 iterations, 2 of 24 MA roots at modulus >= 1;
+- this port converges to an interior maximum: ℓ = −1733.681798,
+  39 iterations, termcode 1.
+
+The paths differ. The suspect is the starting point of the joint fit, which
+comes from the gate's univariate fits on each side. It is the same
+phenomenon as the C's bench case c2 (a path that reaches the wall first). To
+study: compare the joint x0 of both, and restart the C from the port's
+optimum.
+
 ## Standard errors: fdhess is the default (2026-09-27) — follow-ups
 
 Decided by `docs/STUDY-standard-errors.md`. Open:
@@ -726,6 +742,13 @@ drvarma C 5.0 wires `marma` as `-lik shea|both` (atsw-gui 5fe771e).
 Measured with `-m 2`, elf and Shea agree to 1e-9 … 1e-13 at every point the
 optimiser visits. A faithful port can now be validated against it. That is
 still deferred, but the precondition below is met.
+
+**Step 1 done (2026-09-28):** `marma_c` (the compiled C, through CFFI) and
+`Ladder(lik=)`, pinned against the C oracle in `tests/test_shea.py`.
+
+**Step 2, pending:** the faithful pure-Python port (`marma`, `covars`,
+`chol`, `bksb`, ~700 lines), as the fallback when there is no compiled
+engine. It is to be validated against `marma_c` to 1e-12.
 
 ## Out of scope for this port — Shea (AS 242)
 

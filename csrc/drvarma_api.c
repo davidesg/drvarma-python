@@ -1143,3 +1143,74 @@ int drvarma_elf(int m, int n, int p, int q,
 
     return ifault;
 }
+
+/* ========================================================================= */
+/* drvarma_marma -- Shea's likelihood at a GIVEN structure (2026-09-28).     */
+/*                                                                           */
+/* The same marshalling as drvarma_elf, and the same rules as atsw-gui's     */
+/* lib/lik (the C engines' -lik shea): Shea is run exact (xtol < 0), and the */
+/* MA frontier is elf's, tested first with chekma, so both likelihoods       */
+/* refuse the same points. marma takes the series as w[series][time].        */
+/* ========================================================================= */
+
+int drvarma_marma(int m, int n, int p, int q,
+                  const double *mu, const double *phi, const double *theta,
+                  const double *qq, const double *w, double sigma2,
+                  double *f1, double *f2, double *logelf)
+{
+    real  *Mu, **Qq, **Wt, **V;
+    real ***Phi, ***Theta;
+    real   r1 = 0.0, r2 = 0.0, rl = 0.0;
+    int    i, j, k, t, ifault = 0;
+
+    if (m < 1 || n < 1 || mu == NULL || qq == NULL || w == NULL) return 5;
+    if (p == 0 && q == 0) return 6;          /* as drvarma_elf: no g = 0 */
+
+    macheps = cmacheps();
+    Mu    = vector(1, m);
+    Qq    = matrix(1, m, 1, m);
+    Wt    = matrix(1, m, 1, n);
+    V     = matrix(1, m, 1, n);
+    Phi   = tensor(0, p, 1, m, 1, m);
+    Theta = tensor(0, q, 1, m, 1, m);
+
+    for (i = 1; i <= m; i++) Mu[i] = mu[i - 1];
+    for (i = 1; i <= m; i++)
+        for (j = 1; j <= m; j++) Qq[i][j] = qq[(i - 1) * m + (j - 1)];
+    for (t = 1; t <= n; t++)
+        for (i = 1; i <= m; i++) Wt[i][t] = w[(t - 1) * m + (i - 1)];
+    for (k = 0; k <= p; k++)
+        for (i = 1; i <= m; i++)
+            for (j = 1; j <= m; j++)
+                Phi[k][i][j] = (k == 0) ? (i == j ? 1.0 : 0.0)
+                             : (phi != NULL
+                                ? phi[((k - 1) * m + (i - 1)) * m + (j - 1)] : 0.0);
+    for (k = 0; k <= q; k++)
+        for (i = 1; i <= m; i++)
+            for (j = 1; j <= m; j++)
+                Theta[k][i][j] = (k == 0) ? (i == j ? 1.0 : 0.0)
+                               : (theta != NULL
+                                  ? theta[((k - 1) * m + (i - 1)) * m + (j - 1)] : 0.0);
+
+    if (q > 0) {                              /* elf's MA frontier */
+        real *wr = vector(1, m * q), *wi = vector(1, m * q), *wmod = vector(1, m * q);
+        chekma(m, q, Theta, wr, wi, wmod, &ifault);
+        free_vector(wmod, 1, m * q); free_vector(wi, 1, m * q); free_vector(wr, 1, m * q);
+        if (ifault > 0) ifault = 4;
+    }
+    if (ifault == 0)
+        marma(m, n, p, q, Mu, Phi, Theta, Qq, Wt, sigma2, -1.0, 1, 0, V,
+              &r1, &r2, &rl, &ifault);
+
+    if (f1)     *f1     = r1;
+    if (f2)     *f2     = r2;
+    if (logelf) *logelf = rl;
+
+    free_tensor(Theta, 0, q, 1, m, 1, m);
+    free_tensor(Phi,   0, p, 1, m, 1, m);
+    free_matrix(V,  1, m, 1, n);
+    free_matrix(Wt, 1, m, 1, n);
+    free_matrix(Qq, 1, m, 1, m);
+    free_vector(Mu, 1, m);
+    return ifault;
+}

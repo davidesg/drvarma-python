@@ -72,4 +72,14 @@ int drvarma_elf(int m, int n, int p, int q,
                 double sigma2, double delta, int atf,
                 double *a_out, double *f1, double *f2, double *logelf);
 
+/* drvarma_marma -- Shea's exact likelihood (AS 242) at a GIVEN structure,    */
+/* the independent benchmark beside elf. Same arrays as drvarma_elf. Always  */
+/* EXACT (no steady-state shortcut); the MA frontier is elf's (chekma: a      */
+/* point elf would refuse returns ifault 4). No residuals: marma's are the   */
+/* one-step innovations, and the forecasts need elf's exact residuals.       */
+int drvarma_marma(int m, int n, int p, int q,
+                  const double *mu, const double *phi, const double *theta,
+                  const double *qq, const double *w, double sigma2,
+                  double *f1, double *f2, double *logelf);
+
 #endif

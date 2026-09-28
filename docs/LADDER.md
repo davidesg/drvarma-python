@@ -99,3 +99,24 @@ copy of the model without deterministic terms. On the CPI trio a diagonal fit
 takes ~1 s, a VARMA(1,1) ~4 s, and 48 origins of recursive forecasts ~3 s.
 `redet` is the slow one (~6 s), because the stationary series is rebuilt at
 every evaluation.
+
+## Which exact likelihood (`lik`), 2026-09-28
+
+- **`elf`** (default) is Mauricio's AS 311, the one fue, drtran and drvarma
+  estimate with.
+- **`shea`** is Shea's AS 242: the objective and the reported ℓ.
+- **`both`** optimises with elf and evaluates Shea at every point the
+  optimiser visits. `lik_check` gives the number of points, the largest
+  |ΔlogL| and the value at the optimum.
+
+The two are independent algorithms for the same likelihood. With
+`method=2` (elf untruncated) they agree to rounding. With `method=1`, the
+default ξ truncation of elf, `both` measures the truncation error.
+
+Uses:
+- a second optimisation path when a fit stops on the MA invertibility wall
+  (drvarma C BUGS.md, bench case c2);
+- a check of any result that matters.
+
+Shea's residuals are one-step innovations, so the residuals, the forecasts
+and the diagnosis always use elf's.

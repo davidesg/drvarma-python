@@ -33,9 +33,66 @@ from dataclasses import dataclass, field
 import numpy as np
 
 from . import _qnewt
-from ._engine import elf_c
+from ._engine import elf_c, marma_c
 
 _LOG2PI = 1.837877066                       # the constant of the C's est()
+
+
+def _lik_label(lik):
+    return {"shea": "exact, Shea (1989), AS 242",
+            "both": "exact, Mauricio (1997), AS 311; checked against Shea (1989), AS 242"
+            }.get(lik, "exact, Mauricio (1997), AS 311")
+
+
+def _ma_boundary(theta):
+    """How many MA inverse roots sit at modulus >= 1, and of how many.
+
+    The eigenvalues of the MA companion matrix, as the C's chekma computes them
+    (it refuses beyond 1.00005, so an accepted point at >= 1 is on the wall).
+    theta is (q, m, m), Theta(B) = I - sum theta_k B^k.
+    """
+    theta = np.asarray(theta, float)
+    if theta.ndim != 3 or theta.shape[0] == 0 or not np.any(theta):
+        return 0, 0
+    q, m, _ = theta.shape
+    A = np.zeros((m * q, m * q))
+    for k in range(q):
+        A[:m, k * m:(k + 1) * m] = theta[k]
+    for k in range(q - 1):
+        A[(k + 1) * m:(k + 2) * m, k * m:(k + 1) * m] = np.eye(m)
+    mod = np.abs(np.linalg.eigvals(A))
+    return int(np.sum(mod >= 1.0)), m * q
+
+
+_CRITERION = {1: "norm of scaled gradient <= gradtol",
+              2: "scaled distance between last two steps <= steptol",
+              3: "last global step failed to locate a lower point",
+              4: "iteration limit reached",
+              5: "five consecutive steps of maximum length taken"}
+
+
+def _stop_block(r):
+    """The C's report_stop, line for line: a stop on the MA wall says so."""
+    if r.ma_boundary:
+        head = f"  OPTIMIZER STOPPED at the MA invertibility boundary after {r.nit} iterations"
+    else:
+        head = (f"  OPTIMIZER {'CONVERGED' if r.termcode in (1, 2) else 'STOPPED'} "
+                f"after {r.nit} iterations")
+    out = ["=" * 61, head]
+    if r.fk is not None:
+        out.append(f"  Objective function = {r.fk:.12f}")
+    if r.termcode in _CRITERION:
+        out.append(f"  Convergence criterion: {_CRITERION[r.termcode]}")
+    if r.ma_boundary:
+        out.append(f"  MA boundary: {r.ma_boundary} of {r.ma_nroots} inverse roots at modulus >= 1")
+    out.append("=" * 61)
+    return out
+
+
+def _concentrated(m, n, f1, f2):
+    """The concentrated log-likelihood from (f1, f2), as the C's est() writes it."""
+    return (-0.5 * m * n * (_LOG2PI - math.log(m) - math.log(n) + 1.0)
+            - 0.5 * n * (m * math.log(f1) + math.log(f2)))
 GATE_TOL = 1e-6                             # |logL_diag - SUM logL_i|, relative
 PRE_MOVE = 1e-3                             # a .pre that moves more is no optimum
 
@@ -329,6 +386,9 @@ class Fit:
     w: np.ndarray = None
     residuals: np.ndarray = None
     se_method: str = None      # "fdhess", "bfgs", or the fallback, said
+    fk: float = None           # the optimiser's objective at the stop
+    ma_boundary: int = 0       # MA inverse roots at modulus >= 1 at the stop
+    ma_nroots: int = 0         # (the C's est(): a stop on the invertibility wall)
 
     @property
     def npar(self):
@@ -349,14 +409,20 @@ class Ladder:
     diagcov : diagonal innovation covariance
     redet : re-estimate the deterministic terms (default: fixed at the file)
     fixarma : keep the univariate ARMA factors fixed at the file
-    method : 1 exact likelihood, 2 approximate
+    method : 1 exact likelihood, xi truncated at 1e-3 (the C's default);
+        2 exact, untruncated
+    lik : "elf" (Mauricio, AS 311; default), "shea" (Shea, AS 242, the
+        independent benchmark: the objective and the reported likelihood;
+        residuals stay elf's), or "both" (elf is the objective; Shea is
+        evaluated at every point and ``lik_check`` reports the largest
+        |dlogL|). Needs the compiled engine. As the C's -lik.
     estwin : estimate on the first ``estwin`` observations of the FIRST series
         (the others are cut at the same date); ``recursive`` then forecasts
         from every later origin with the parameters fixed
     """
 
     def __init__(self, series, p=0, q=0, diagcov=False, redet=False,
-                 fixarma=False, method=1, estwin=None, hessian="fd"):
+                 fixarma=False, method=1, estwin=None, hessian="fd", lik="elf"):
         _warn_if_no_engine()
         if series and not isinstance(series[0], LadderSeries):
             series = load(series)
@@ -369,6 +435,11 @@ class Ladder:
         if hessian not in ("fd", "bfgs"):
             raise ValueError("hessian must be 'fd' or 'bfgs'")
         self.hessian = hessian
+        if lik not in ("elf", "shea", "both"):
+            raise ValueError("lik must be 'elf', 'shea' or 'both'")
+        self.lik = lik
+        self.lik_check = {"points": 0, "max": 0.0, "at_optimum": 0.0,
+                          "one_only": 0}
         m = len(self.series)
         # the cross part and Q, indexed by SERIES: they survive a change of
         # the active set, and the diagonal system seeds the full one as is.
@@ -513,11 +584,39 @@ class Ladder:
         return MU, PHI, THETA, QQ, W, 0
 
     def _elf(self, mu, phi, theta, qq, w, atf=False):
-        n, m = w.shape
-        return elf_c(m, n, phi.shape[0], theta.shape[0], mu, phi, theta, qq, w,
-                     1.0, self.xitol, atf)
+        """The likelihood ``lik`` asks for, with elf's (logL, f1, f2, a, ifault).
 
-    # -- one fit ----------------------------------------------------------- #
+        Shea gives f1, f2 (the objective and the reported likelihood); the
+        residuals `a` are always elf's (Shea's are innovations, and the
+        forecasts need exact residuals: drtran BUG-55)."""
+        n, m = w.shape
+        p, q = phi.shape[0], theta.shape[0]
+        if self.lik == "elf":
+            return elf_c(m, n, p, q, mu, phi, theta, qq, w, 1.0, self.xitol, atf)
+        if self.lik == "shea":
+            a = np.zeros((n + 1, m + 1))
+            if atf:
+                _l, _f1, _f2, a, ifa = elf_c(m, n, p, q, mu, phi, theta, qq, w,
+                                             1.0, self.xitol, True)
+                if ifa:
+                    return _l, _f1, _f2, a, ifa
+            lg, f1, f2, ifa = marma_c(m, n, p, q, mu, phi, theta, qq, w)
+            return lg, f1, f2, a, ifa
+        # both: elf is the objective, Shea is checked at the same point
+        out = elf_c(m, n, p, q, mu, phi, theta, qq, w, 1.0, self.xitol, atf)
+        _lg, g1, g2, gfa = marma_c(m, n, p, q, mu, phi, theta, qq, w)
+        c = self.lik_check
+        if bool(out[4]) != bool(gfa):
+            c["one_only"] += 1
+        elif not out[4] and out[1] > 0 and out[2] > 0 and g1 > 0 and g2 > 0:
+            d = abs(_concentrated(m, n, out[1], out[2]) - _concentrated(m, n, g1, g2))
+            c["points"] += 1
+            c["max"] = max(c["max"], d)
+            if atf:
+                c["at_optimum"] = d
+        return out
+
+        # -- one fit ----------------------------------------------------------- #
     def _fit(self, optimize=True, maxits=500, grtol=1e-7, sptol=1e-7):
         x0 = self.pack()
         npar = x0.size
@@ -540,7 +639,7 @@ class Ladder:
             f = (f1 / f10) ** m * (f2 / f20)
             return f if np.isfinite(f) else 1.0
 
-        nit, termcode, se, se_method = 0, 0, np.zeros(npar), None
+        nit, termcode, se, se_method, fk = 0, 0, np.zeros(npar), None, None
         xhat = x0
         if optimize and npar:
             xk = np.zeros(npar + 1); xk[1:] = x0
@@ -554,6 +653,7 @@ class Ladder:
                 fk = objective(xhat)
             se, se_method = self._std_errors(objective, xhat, fk, w.shape[0], bfac, nit)
         mu, phi, theta, qq, w, ifault = self.cast(xhat)
+        nb, nr = _ma_boundary(theta)
         _ll, f1, f2, a, ifa = self._elf(mu, phi, theta, qq, w, atf=True)
         n, m = w.shape
         logL = (-0.5 * m * n * (_LOG2PI - np.log(m) - np.log(n) + 1.0)
@@ -561,7 +661,7 @@ class Ladder:
         return Fit(names, xhat, se, float(logL), float(f1 / (n * m)), int(ifa),
                    int(nit), int(termcode), mu, phi, theta, qq, w,
                    np.asarray(a)[1:, 1:].copy(),      # elf_c: 1-based out
-                   se_method)
+                   se_method, None if fk is None else float(fk), nb, nr)
 
     def _std_errors(self, objective, xhat, fk, n, bfac, nit=1):
         """Mauricio's fdhess at the optimum (drvarma.stderr), or the BFGS
@@ -635,6 +735,25 @@ class Ladder:
             self._cAR[:] = 0.0; self._cMA[:] = 0.0; self._qcov[:] = 0.0
             self._set_structure(list(range(m)), self.p, self.q, self.diagcov)
             self.result = self._fit()
+        return self.result
+
+    def refit(self, x=None):
+        """Optimise the requested model again, from ``x`` (a packed vector,
+        ``result.x`` shaped) or from the current state; no gate, no diagonal.
+
+        What a study of an ill-defined estimation needs: restart from where a
+        fit stopped -- e.g. with the MA roots pulled inside the invertibility
+        wall -- and see whether the likelihood keeps rising (drvarma C BUGS.md,
+        bench case c2: 66.21 -> 71.22 along the wall). Needs a previous fit().
+        """
+        if self.result is None:
+            raise LadderError("refit needs a previous fit()")
+        if x is not None:
+            x = np.asarray(x, float)
+            if x.size != self.result.x.size:
+                raise ValueError(f"x has {x.size} parameters, the model {self.result.x.size}")
+            self.unpack(x)
+        self.result = self._fit()
         return self.result
 
     def lr_test(self):
@@ -858,6 +977,7 @@ def write_report(L, path, forecasts=None, recursive=None):
            f"Innovation cov.  : {'diagonal' if L.diagcov else 'full'}",
            f"Deterministics   : {'re-estimated' if L.redet else 'fixed at the file'}",
            f"Univariate ARMA  : {'fixed at the file' if L.fixarma else 're-estimated jointly'}",
+           f"Likelihood       : {_lik_label(L.lik)}",
            f"Standard errors  : {r.se_method or L.hessian}",
            ""]
     out.append("Univariate models:")
@@ -878,6 +998,8 @@ def write_report(L, path, forecasts=None, recursive=None):
     out += [f"  {'SUM':<14} {g['sum']:16.6f}", f"  {'joint diagonal':<14} {g['joint']:16.6f}",
             f"  {'difference':<14} {g['difference']:16.3g}",
             f"  GATE: {'PASSED' if g['passed'] else 'FAILED'}", ""]
+    if r.termcode:                       # the optimiser ran: how it stopped
+        out += [""] + _stop_block(r) + [""]
     out += ["=" * 61, "  ESTIMATED MODEL", "=" * 61, f"Number of parameters: {r.npar}",
             f"  {'Parameter':<34} {'Estimate':>12} {'Std.Error':>12} {'t-stat':>9}"]
     for n, v, se in zip(r.names, r.x, r.std_errors):
@@ -887,6 +1009,12 @@ def write_report(L, path, forecasts=None, recursive=None):
         t = v / se if se > 0 else 0.0
         out.append(f"  {n:<34} {v:12.6f} {se:12.6f} {t:9.3f}")
     out += ["", f"Exact log-likelihood: {r.logL:.6f}"]
+    if L.lik == "both":
+        c = L.lik_check
+        out += [f"Shea check       : {c['points']} points; max |dlogL| = "
+                f"{c['max']:.3e}, at the optimum {c['at_optimum']:.3e}"
+                + (f"; {c['one_only']} points admissible for one algorithm only"
+                   if c['one_only'] else "")]
     if not (L.p == 0 and L.q == 0 and L.diagcov):
         lr, df, pv = L.lr_test()
         out += ["", "Cross dynamics against the diagonal system (the univariates):",
@@ -967,6 +1095,9 @@ def main(argv):
     ap.add_argument("-o", default=None, dest="name")
     ap.add_argument("-forecast", type=int, default=None)
     ap.add_argument("-estwin", type=int, default=None)
+    ap.add_argument("-lik", choices=("elf", "shea", "both"), default="elf",
+                    help="exact likelihood: elf (AS 311, default), shea (AS 242), "
+                         "or both (elf checked against Shea at every point)")
     ap.add_argument("-hessian", choices=("fd", "bfgs"), default="fd",
                     help="standard errors: fdhess at the optimum (default) or the "
                          "BFGS Hessian of the search (docs/STUDY-standard-errors.md)")
@@ -979,7 +1110,8 @@ def main(argv):
     name = a.name or "_".join(os.path.splitext(os.path.basename(f))[0] for f in files)
     try:
         L = Ladder(files, p, q, diagcov=a.diagcov, redet=a.redet, fixarma=a.fixarma,
-                   method=a.method, estwin=a.estwin, hessian=a.hessian)
+                   method=a.method, estwin=a.estwin, hessian=a.hessian,
+                   lik=a.lik)
         L.fit()
     except GateError as e:
         print(f"ERROR: {e}"); return 5
