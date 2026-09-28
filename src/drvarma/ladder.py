@@ -44,11 +44,19 @@ def _lik_label(lik):
             }.get(lik, "exact, Mauricio (1997), AS 311")
 
 
+# The MA invertibility wall, one tolerance for both sides (the C's MA_WALL_TOL,
+# atsw-gui lib/lik/lik.h): chekma refuses a root at modulus >= 1 + 5e-5, and a
+# stop with a root at modulus >= 1 - 5e-5 is on the wall. Before, only >= 1
+# counted, so a fit that reached the wall from inside said "converged".
+MA_WALL_TOL = 5e-5
+
+
 def _ma_boundary(theta):
-    """How many MA inverse roots sit at modulus >= 1, and of how many.
+    """How many MA inverse roots sit on the wall, and of how many.
 
     The eigenvalues of the MA companion matrix, as the C's chekma computes them
-    (it refuses beyond 1.00005, so an accepted point at >= 1 is on the wall).
+    (it refuses beyond 1 + MA_WALL_TOL; a root within MA_WALL_TOL of the unit
+    circle is on the wall).
     theta is (q, m, m), Theta(B) = I - sum theta_k B^k.
     """
     theta = np.asarray(theta, float)
@@ -61,7 +69,7 @@ def _ma_boundary(theta):
     for k in range(q - 1):
         A[(k + 1) * m:(k + 2) * m, k * m:(k + 1) * m] = np.eye(m)
     mod = np.abs(np.linalg.eigvals(A))
-    return int(np.sum(mod >= 1.0)), m * q
+    return int(np.sum(mod >= 1.0 - MA_WALL_TOL)), m * q
 
 
 _CRITERION = {1: "norm of scaled gradient <= gradtol",
@@ -84,7 +92,7 @@ def _stop_block(r):
     if r.termcode in _CRITERION:
         out.append(f"  Convergence criterion: {_CRITERION[r.termcode]}")
     if r.ma_boundary:
-        out.append(f"  MA boundary: {r.ma_boundary} of {r.ma_nroots} inverse roots at modulus >= 1")
+        out.append(f"  MA boundary: {r.ma_boundary} of {r.ma_nroots} inverse roots within 5e-5 of the unit circle")
     out.append("=" * 61)
     return out
 
@@ -387,7 +395,7 @@ class Fit:
     residuals: np.ndarray = None
     se_method: str = None      # "fdhess", "bfgs", or the fallback, said
     fk: float = None           # the optimiser's objective at the stop
-    ma_boundary: int = 0       # MA inverse roots at modulus >= 1 at the stop
+    ma_boundary: int = 0       # MA inverse roots on the wall at the stop
     ma_nroots: int = 0         # (the C's est(): a stop on the invertibility wall)
     cov: np.ndarray = None     # covariance of the estimates (se_method's Hessian)
 

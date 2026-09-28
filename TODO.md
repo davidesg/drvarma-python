@@ -92,9 +92,10 @@ has an interior maximum: the likelihood keeps climbing along the wall, as in
 c2. drtran shows the same on m6 EP <- EC (drtran-python TODO). So the gap is
 not a porting defect; it is two paths along the same ridge.
 
-Open decision (C and ports together): whether the count should use a
-tolerance (e.g. modulus >= 1 - 1e-6) so a stop just inside the wall is also
-reported. It changes what the C reports, so it is the user's call.
+**Decided (2026-09-28): one tolerance for both sides, 5e-5.** chekma still
+refuses a root at modulus >= 1 + 5e-5; a stop with a root at modulus
+>= 1 - 5e-5 is now reported as on the wall ("within 5e-5 of the unit
+circle"), in the C (lib/lik MA_WALL_TOL) and in the ports. The port now says so on m6 (1,0) too.
 
 ## Standard errors: fdhess is the default (2026-09-27) — follow-ups
 

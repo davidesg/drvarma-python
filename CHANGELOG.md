@@ -6,6 +6,12 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**The MA wall: one tolerance for both sides.** A stop with an MA inverse root
+within 5e-5 of the unit circle is reported as on the wall, as in the C
+(atsw-gui lib/lik MA_WALL_TOL). chekma already accepted up to 1 + 5e-5, so a
+root at 1.000048 was reported and one at 0.99999999 was not, though both are
+the same fact. The note now reads "within 5e-5 of the unit circle".
+
 **Shea's likelihood in pure Python.** `_as242.py` ports multshea.c (AS 242)
 line by line, as `_as311.py` ports elf. `marma_c` uses it when the compiled
 engine is not built, so `Ladder(lik="shea"|"both")` also works without it. It

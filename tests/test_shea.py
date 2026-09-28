@@ -87,6 +87,9 @@ def test_ma_boundary_counts_roots_on_the_wall():
     wall = np.array([[[1.00003, 0.0], [0.0, 0.3]]])     # chekma accepts < 1.00005
     assert _ma_boundary(inside) == (0, 2)
     assert _ma_boundary(wall) == (1, 2)
+    # one tolerance for both sides: just inside the circle is the wall too
+    assert _ma_boundary(np.array([[[0.99999999, 0.0], [0.0, 0.3]]])) == (1, 2)
+    assert _ma_boundary(np.array([[[0.9999, 0.0], [0.0, 0.3]]])) == (0, 2)
 
 
 def test_the_stop_block_is_the_cs():
@@ -105,7 +108,7 @@ def test_a_stop_on_the_wall_says_so():
             fk=0.5, ma_boundary=2, ma_nroots=24)
     b = _stop_block(r)
     assert b[1] == "  OPTIMIZER STOPPED at the MA invertibility boundary after 60 iterations"
-    assert "  MA boundary: 2 of 24 inverse roots at modulus >= 1" in b
+    assert "  MA boundary: 2 of 24 inverse roots within 5e-5 of the unit circle" in b
 
 
 def test_refit_restarts_from_a_given_point():
