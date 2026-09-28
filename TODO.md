@@ -84,11 +84,17 @@ sides, but the two optimisers end in different places:
 - this port converges to an interior maximum: ℓ = −1733.681798,
   39 iterations, termcode 1.
 
-The paths differ. The suspect is the starting point of the joint fit, which
-comes from the gate's univariate fits on each side. It is the same
-phenomenon as the C's bench case c2 (a path that reaches the wall first). To
-study: compare the joint x0 of both, and restart the C from the port's
-optimum.
+**Studied (2026-09-28): the port is on the wall too.** Its "interior"
+optimum has an MA inverse root at modulus 0.99999999955, a hair inside, so the
+shared rule (modulus >= 1) counts none and the port says termcode 1. The C
+stopped a little outside, where chekma still accepts (< 1.00005). Neither run
+has an interior maximum: the likelihood keeps climbing along the wall, as in
+c2. drtran shows the same on m6 EP <- EC (drtran-python TODO). So the gap is
+not a porting defect; it is two paths along the same ridge.
+
+Open decision (C and ports together): whether the count should use a
+tolerance (e.g. modulus >= 1 - 1e-6) so a stop just inside the wall is also
+reported. It changes what the C reports, so it is the user's call.
 
 ## Standard errors: fdhess is the default (2026-09-27) — follow-ups
 
