@@ -428,10 +428,15 @@ class Ladder:
     estwin : estimate on the first ``estwin`` observations of the FIRST series
         (the others are cut at the same date); ``recursive`` then forecasts
         from every later origin with the parameters fixed
+    links : the cross dynamics only on these pairs, as the C's -links:
+        ``"A<-B,C<-A"`` or a list of ``("A", "B")`` (B enters the equation of
+        A: AR and MA, every lag up to p and q), with the series' names.
+        None (default) links every pair.
     """
 
     def __init__(self, series, p=0, q=0, diagcov=False, redet=False,
-                 fixarma=False, method=1, estwin=None, hessian="fd", lik="elf"):
+                 fixarma=False, method=1, estwin=None, hessian="fd", lik="elf",
+                 links=None):
         _warn_if_no_engine()
         if series and not isinstance(series[0], LadderSeries):
             series = load(series)
@@ -450,6 +455,9 @@ class Ladder:
         self.lik_check = {"points": 0, "max": 0.0, "at_optimum": 0.0,
                           "one_only": 0}
         m = len(self.series)
+        self.links = self._parse_links(links)
+        if self.links is not None and self.p == 0 and self.q == 0:
+            raise LadderError("links needs cross dynamics: give p or q > 0")
         # the cross part and Q, indexed by SERIES: they survive a change of
         # the active set, and the diagonal system seeds the full one as is.
         self._cAR = np.zeros((max(self.p, 1), m, m))
@@ -470,6 +478,35 @@ class Ladder:
             self.set_origin(full - self.estwin)
 
     # -- structure -------------------------------------------------------- #
+    def _parse_links(self, links):
+        """None, or the m x m matrix of linked (equation i <- series j) pairs."""
+        if links is None:
+            return None
+        names = [s.name for s in self.series]
+        if isinstance(links, str):
+            pairs = []
+            for tok in links.split(","):
+                if "<-" not in tok:
+                    raise LadderError(f"links: '{tok.strip()}' is not of the form A<-B")
+                a, b = tok.split("<-", 1)
+                pairs.append((a.strip(), b.strip()))
+        else:
+            pairs = [tuple(x) for x in links]
+        L = np.zeros((len(names), len(names)), bool)
+        for a, b in pairs:
+            if a not in names or b not in names or a == b:
+                raise LadderError(f"links: '{a}<-{b}' does not name two different series")
+            L[names.index(a), names.index(b)] = True
+        return L
+
+    def _linked(self, i, j):
+        return i != j and (self.links is None or bool(self.links[i, j]))
+
+    def _pairs(self):
+        """The linked (i, j) among the active series, in the C's order."""
+        act = self._act
+        return [(i, j) for i in act for j in act if self._linked(i, j)]
+
     def _set_structure(self, act, cp, cq, cdiag):
         self._act, self._cp, self._cq, self._cdiag = list(act), cp, cq, cdiag
 
@@ -479,7 +516,7 @@ class Ladder:
     def npar(self):
         a = len(self._act)
         n = sum(int(mk.sum()) for mk in self._masks())
-        n += (self._cp + self._cq) * a * (a - 1)
+        n += (self._cp + self._cq) * len(self._pairs())
         n += a - 1
         if not self._cdiag:
             n += a * (a - 1) // 2
@@ -491,9 +528,9 @@ class Ladder:
             v.extend(self.series[i].x[mk])
         act = self._act
         for k in range(self._cp):
-            v.extend(self._cAR[k, i, j] for i in act for j in act if i != j)
+            v.extend(self._cAR[k, i, j] for i, j in self._pairs())
         for k in range(self._cq):
-            v.extend(self._cMA[k, i, j] for i in act for j in act if i != j)
+            v.extend(self._cMA[k, i, j] for i, j in self._pairs())
         v.extend(self._lvar[i] for i in act[1:])
         if not self._cdiag:
             v.extend(self._qcov[act[a], act[b]] for a in range(1, len(act)) for b in range(a))
@@ -508,15 +545,11 @@ class Ladder:
             idx += k
         act = self._act
         for k in range(self._cp):
-            for i in act:
-                for j in act:
-                    if i != j:
-                        self._cAR[k, i, j] = v[idx]; idx += 1
+            for i, j in self._pairs():
+                self._cAR[k, i, j] = v[idx]; idx += 1
         for k in range(self._cq):
-            for i in act:
-                for j in act:
-                    if i != j:
-                        self._cMA[k, i, j] = v[idx]; idx += 1
+            for i, j in self._pairs():
+                self._cMA[k, i, j] = v[idx]; idx += 1
         for i in act[1:]:
             self._lvar[i] = v[idx]; idx += 1
         if not self._cdiag:
@@ -532,9 +565,9 @@ class Ladder:
         act = self._act
         S = [s.name for s in self.series]
         for k in range(self._cp):
-            out.extend(f"AR{k + 1}[{S[i]}<-{S[j]}]" for i in act for j in act if i != j)
+            out.extend(f"AR{k + 1}[{S[i]}<-{S[j]}]" for i, j in self._pairs())
         for k in range(self._cq):
-            out.extend(f"MA{k + 1}[{S[i]}<-{S[j]}]" for i in act for j in act if i != j)
+            out.extend(f"MA{k + 1}[{S[i]}<-{S[j]}]" for i, j in self._pairs())
         out.extend(f"log(Q[{S[i]}]/Q[{S[act[0]]}])" for i in act[1:])
         if not self._cdiag:
             out.extend(f"Q[{S[act[a]]},{S[act[b]]}]" for a in range(1, len(act)) for b in range(a))
@@ -574,12 +607,12 @@ class Ladder:
         for k in range(self._cp):
             for a, i in enumerate(act):
                 for b, j in enumerate(act):
-                    if i != j:
+                    if self._linked(i, j):
                         PHI[k, a, b] = self._cAR[k, i, j]
         for k in range(self._cq):
             for a, i in enumerate(act):
                 for b, j in enumerate(act):
-                    if i != j:
+                    if self._linked(i, j):
                         THETA[k, a, b] = self._cMA[k, i, j]
         QQ = np.zeros((m, m))
         QQ[0, 0] = 1.0
@@ -836,7 +869,8 @@ class Ladder:
         """LR of the cross dynamics (and covariances) against the diagonal."""
         from scipy.stats import chi2
         m = len(self.series)
-        df = (self.p + self.q) * m * (m - 1) + (0 if self.diagcov else m * (m - 1) // 2)
+        nl = sum(self._linked(i, j) for i in range(m) for j in range(m))
+        df = (self.p + self.q) * nl + (0 if self.diagcov else m * (m - 1) // 2)
         lr = 2.0 * (self.result.logL - self.logL_diag)
         return lr, df, (float(chi2.sf(max(lr, 0.0), df)) if df else float("nan"))
 
@@ -1050,6 +1084,10 @@ def write_report(L, path, forecasts=None, recursive=None):
     S = L.series
     out = [f"Program          : drvarma-python {__version__} (ladder mode: fue files)",
            f"Model            : VARMA with univariate diagonals; cross orders p={L.p} q={L.q}",
+           *([f"Cross links      : " + ", ".join(
+               f"{L.series[i].name}<-{L.series[j].name}"
+               for i in range(len(L.series)) for j in range(len(L.series))
+               if i != j and L.links[i, j])] if L.links is not None else []),
            f"Innovation cov.  : {'diagonal' if L.diagcov else 'full'}",
            f"Deterministics   : {'re-estimated' if L.redet else 'fixed at the file'}",
            f"Univariate ARMA  : {'fixed at the file' if L.fixarma else 're-estimated jointly'}",
@@ -1174,6 +1212,9 @@ def main(argv):
     ap.add_argument("-lik", choices=("elf", "shea", "both"), default="elf",
                     help="exact likelihood: elf (AS 311, default), shea (AS 242), "
                          "or both (elf checked against Shea at every point)")
+    ap.add_argument("-links", default=None,
+                    help='cross dynamics only on these pairs, "A<-B,C<-A" (B enters '
+                         "the equation of A); default: every pair")
     ap.add_argument("-hessian", choices=("fd", "bfgs"), default="fd",
                     help="standard errors: fdhess at the optimum (default) or the "
                          "BFGS Hessian of the search (docs/STUDY-standard-errors.md)")
@@ -1187,7 +1228,7 @@ def main(argv):
     try:
         L = Ladder(files, p, q, diagcov=a.diagcov, redet=a.redet, fixarma=a.fixarma,
                    method=a.method, estwin=a.estwin, hessian=a.hessian,
-                   lik=a.lik)
+                   lik=a.lik, links=a.links)
         L.fit()
     except GateError as e:
         print(f"ERROR: {e}"); return 5

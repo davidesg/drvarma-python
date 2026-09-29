@@ -28,7 +28,8 @@ L.fit(); rows, summary = L.recursive(24)                  # fixed-parameter, eve
 ```
 
 Options: `diagcov`, `redet` (re-estimate the deterministic terms, fixed at the
-file by default), `fixarma`, `method` (1 exact, 2 approximate), `estwin`.
+file by default), `fixarma`, `method` (1 exact, 2 approximate), `estwin`,
+`links` (below).
 
 ## The model
 
@@ -40,6 +41,13 @@ stationary series `w`:
     Phi(B) (w_t - mu) = Theta(B) a_t,        a_t ~ N(0, sigma2 Q)
     Phi_ii = phi_i(B) Phi_i(B^s)      Theta_ii = theta_i(B) Theta_i(B^s)
     Phi_ij = -SUM_k c_ij,k B^k        Theta_ij = -SUM_k e_ij,k B^k   (i != j)
+
+**Restricted cross terms** (`links`, the C's `-links`, 2026-09-29). By default
+every pair (i, j) carries the c and e coefficients up to p and q. With
+`links="A<-B, C<-A"` only the named pairs do (B enters the equation of A); the
+others are zero and are not parameters, so the LR against the diagonal counts
+only the links. On IPC_ES_m10 + IPC_FR_msar, p = q = 1, `links="IPC_ES<-IPC_FR"`:
+8 parameters, logL 81.114461, as the C (`tests/test_links.py`).
 
 Q is normalised with Q11 = 1 (the likelihood concentrates sigma2). Standard
 errors come from Mauricio's finite-difference Hessian (fdhess) at the optimum,

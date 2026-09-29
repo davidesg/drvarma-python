@@ -6,6 +6,14 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**Restricted cross terms: `Ladder(links=)` and the CLI's `-links`**, as drvarma
+C's `-links` (atsw-gui e08bb23). `links="A<-B, C<-A"` (or a list of pairs)
+keeps the cross dynamics only on those pairs; the others are zero and are not
+parameters, and `lr_test` counts only them. Every pair named is the
+unrestricted model to 1e-10; one link on the ES/FR pair gives the C's
+logL 81.114461 with 8 parameters, reached again from the full model's
+optimum (`tests/test_links.py`).
+
 **termcode 3, one reading, and the MA wall in `Model`** (BUG-0010). The package
 read termcode 3 two ways: "AT the optimum" in `estimate_py`, "not a maximum"
 in the report. The report now states the fact and how to tell an optimum from
