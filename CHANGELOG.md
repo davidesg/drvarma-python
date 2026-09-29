@@ -6,6 +6,15 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**Jenkins and Alavi's (1981) identification statistics**, `drvarma.identification_mv`:
+the correlation matrices R_k (Bartlett's standard errors, or 1/sqrt(n) for
+prewhitened series), the partial correlation matrices S_k by the multivariate
+Yule-Walker equations, Alavi's q-conditioned S_k(q), their determinants and the
++ - . table. Checked: with one series S_k is the PACF (6e-16); S_k cuts off
+after 2 on a VAR(2), R_k after 1 on a VMA(1), and on a VARMA(1,1) S_k(1) cuts
+off after 1 and S_1(1) estimates Phi_1 while S_k does not cut off. Phase 1 of
+sima's `docs/DESIGN-jenkins-alavi.md`, Python first.
+
 **The bug register ships inside the package** (`drvarma/material/bugs/`,
 copied by `tools/sync_material.py`, which the publish workflow runs before each
 build) and `drvarma.register.bugs_dir()` finds it, installed or in the working
