@@ -428,6 +428,13 @@ class Ladder:
     estwin : estimate on the first ``estwin`` observations of the FIRST series
         (the others are cut at the same date); ``recursive`` then forecasts
         from every later origin with the parameters fixed
+    cross : how the cross MA enters: "additive" (default, as the C: a cross
+        polynomial next to the univariate operators) or "residual" — Jenkins
+        and Alavi's (1981) form (3.22), w - c = u(B) u*(B) alpha: the cross MA
+        is a model for the univariate models' residuals, so row i of the MA is
+        the univariate MA of series i TIMES row i of U*(B) = I - SUM U_k B^k.
+        The two coincide when the univariate models have no MA factors. The
+        cross AR is additive in both.
     start : where the cross terms start: "zero" (default, as the C) or
         "preliminary" — Jenkins and Alavi's (1981) preliminary estimates: the
         cross MA from the cross covariances of the diagonal system's residuals
@@ -443,7 +450,7 @@ class Ladder:
 
     def __init__(self, series, p=0, q=0, diagcov=False, redet=False,
                  fixarma=False, method=1, estwin=None, hessian="fd", lik="elf",
-                 links=None, start="zero"):
+                 links=None, start="zero", cross="additive"):
         _warn_if_no_engine()
         if series and not isinstance(series[0], LadderSeries):
             series = load(series)
@@ -467,6 +474,9 @@ class Ladder:
             raise ValueError("start must be 'zero' or 'preliminary'")
         self.start = start
         self.start_used = None
+        if cross not in ("additive", "residual"):
+            raise ValueError("cross must be 'additive' or 'residual'")
+        self.cross = cross
         if self.links is not None and self.p == 0 and self.q == 0:
             raise LadderError("links needs cross dynamics: give p or q > 0")
         # the cross part and Q, indexed by SERIES: they survive a change of
@@ -610,6 +620,8 @@ class Ladder:
         n = min(len(w) for w in ws + others)
         P = max([self._cp] + [len(ph) for ph, _t, _m in polys] + [1])
         Q = max([self._cq] + [len(th) for _p, th, _m in polys])
+        if self.cross == "residual" and self._cq:
+            Q = max(Q, self._cq + max(len(th) for _p, th, _m in polys))
         PHI = np.zeros((P, m, m))
         THETA = np.zeros((Q, m, m))
         for a, (ph, th, _mu) in enumerate(polys):
@@ -622,9 +634,18 @@ class Ladder:
                         PHI[k, a, b] = self._cAR[k, i, j]
         for k in range(self._cq):
             for a, i in enumerate(act):
+                th_i = polys[a][1]
                 for b, j in enumerate(act):
                     if self._linked(i, j):
-                        THETA[k, a, b] = self._cMA[k, i, j]
+                        U = self._cMA[k, i, j]
+                        THETA[k, a, b] += U
+                        if self.cross == "residual":
+                            # theta_ii(B) (-U B^(k+1)): with theta_ii(B) =
+                            # 1 - SUM t_l B^l, the term t_l U lands at
+                            # lag l + k + 1 with the sign of +B, i.e. -t_l U
+                            # in the I - SUM Theta_m B^m convention (3.22)
+                            for l, t in enumerate(th_i, 1):
+                                THETA[k + l, a, b] -= t * U
         QQ = np.zeros((m, m))
         QQ[0, 0] = 1.0
         for a in range(1, m):
@@ -1139,7 +1160,9 @@ def write_report(L, path, forecasts=None, recursive=None):
     r = L.result
     S = L.series
     out = [f"Program          : drvarma-python {__version__} (ladder mode: fue files)",
-           f"Model            : VARMA with univariate diagonals; cross orders p={L.p} q={L.q}",
+           f"Model            : VARMA with univariate diagonals; cross orders p={L.p} q={L.q}"
+           + ("; cross MA in the residual-model form (Jenkins-Alavi 3.22)"
+              if getattr(L, "cross", "additive") == "residual" else ""),
            *([f"Cross links      : " + ", ".join(
                f"{L.series[i].name}<-{L.series[j].name}"
                for i in range(len(L.series)) for j in range(len(L.series))

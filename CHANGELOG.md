@@ -6,6 +6,17 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**The cross MA in Jenkins and Alavi's residual-model form** (`Ladder(cross=
+"residual")`, their (3.22) w - c = u(B)u*(B)alpha): row i of the MA is the
+univariate MA of series i times row i of U*(B) = I - SUM U_k B^k, checked
+against the matrix-polynomial product to 0. The same as the additive form
+(the default, as the C) when the univariate models have no MA factors (ES/FR:
+equal to 1e-9). When they have, a different candidate: on m6, where every
+univariate model has an MA, the residual form converged INSIDE in about half
+the iterations where the additive form stopped on the MA invertibility wall
+(EI/EP q=1: -624.67 interior vs -619.85 on the wall; all six series q=1:
+-1729.11 vs -1724.79 with two roots on the wall).
+
 **The ladder can start the cross terms at Jenkins and Alavi's preliminary
 estimates** (`Ladder(start="preliminary")`): the cross MA from the cross
 covariances of the diagonal system's residuals (`identification_mv.
