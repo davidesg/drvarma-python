@@ -80,6 +80,11 @@ test = ["pytest>=7"]
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# The bug register, copied by tools/sync_material.py (generated, not in git):
+# sima serves it as sima://engine-defects, and a wheel only carries src/.
+[tool.setuptools.package-data]
+drvarma = ["material/bugs/*.md"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

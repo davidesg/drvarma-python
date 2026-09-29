@@ -51,6 +51,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The bug register ships inside the package (src/drvarma/material/, not
+      # in git): sima serves it as sima://engine-defects. Without this step the
+      # wheel carries none (art BUG-0125).
+      - name: Sync the bug register into the package
+        run: |
+          python3 tools/sync_material.py
+          test -d src/drvarma/material/bugs
+
       - name: Set up QEMU (Linux only)
         if: runner.os == 'Linux'
         uses: docker/setup-qemu-action@v3
@@ -78,6 +86,13 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install --upgrade build pytest
+      # The bug register ships inside the package (src/drvarma/material/, not
+      # in git): sima serves it as sima://engine-defects. Without this step the
+      # wheel carries none (art BUG-0125).
+      - name: Sync the bug register into the package
+        run: |
+          python3 tools/sync_material.py
+          test -d src/drvarma/material/bugs
       - name: Build pure-Python wheel
         env:
           DRVARMA_NO_ENGINE: "1"
@@ -101,6 +116,13 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install --upgrade build
+      # The bug register ships inside the package (src/drvarma/material/, not
+      # in git): sima serves it as sima://engine-defects. Without this step the
+      # wheel carries none (art BUG-0125).
+      - name: Sync the bug register into the package
+        run: |
+          python3 tools/sync_material.py
+          test -d src/drvarma/material/bugs
       - run: python -m build --sdist
       - uses: actions/upload-artifact@v4
         with:

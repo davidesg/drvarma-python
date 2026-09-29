@@ -44,6 +44,7 @@ Follow semver. `0.1.0` is the first public release.
 
 ```sh
 rm -rf dist build
+python3 tools/sync_material.py      # the bug register, inside the package (sima://engine-defects)
 DRVARMA_NO_ENGINE=1 rbuild          # sdist + pure-Python wheel
 ```
 

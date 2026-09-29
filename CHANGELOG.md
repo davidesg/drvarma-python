@@ -6,6 +6,11 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**The bug register ships inside the package** (`drvarma/material/bugs/`,
+copied by `tools/sync_material.py`, which the publish workflow runs before each
+build) and `drvarma.register.bugs_dir()` finds it, installed or in the working
+tree. sima serves it as `sima://engine-defects`.
+
 **`Ladder.irf_fevd_bands` also returns the FEVD band at every horizon**
 (`fevd_lo_h`, `fevd_hi_h`, H x m x m), for sima's figure; `fevd_lo`/`fevd_hi`
 (the last horizon) are unchanged.
