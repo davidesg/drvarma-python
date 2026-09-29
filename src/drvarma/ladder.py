@@ -428,6 +428,13 @@ class Ladder:
     estwin : estimate on the first ``estwin`` observations of the FIRST series
         (the others are cut at the same date); ``recursive`` then forecasts
         from every later origin with the parameters fixed
+    start : where the cross terms start: "zero" (default, as the C) or
+        "preliminary" — Jenkins and Alavi's (1981) preliminary estimates: the
+        cross MA from the cross covariances of the diagonal system's residuals
+        (their prewhitened residuals), the cross AR from the multivariate
+        Yule-Walker equations on the stationary series, the innovation
+        covariance from the residuals'. If that start is not admissible, zero
+        is used and ``start_used`` says so.
     links : the cross dynamics only on these pairs, as the C's -links:
         ``"A<-B,C<-A"`` or a list of ``("A", "B")`` (B enters the equation of
         A: AR and MA, every lag up to p and q), with the series' names.
@@ -436,7 +443,7 @@ class Ladder:
 
     def __init__(self, series, p=0, q=0, diagcov=False, redet=False,
                  fixarma=False, method=1, estwin=None, hessian="fd", lik="elf",
-                 links=None):
+                 links=None, start="zero"):
         _warn_if_no_engine()
         if series and not isinstance(series[0], LadderSeries):
             series = load(series)
@@ -456,6 +463,10 @@ class Ladder:
                           "one_only": 0}
         m = len(self.series)
         self.links = self._parse_links(links)
+        if start not in ("zero", "preliminary"):
+            raise ValueError("start must be 'zero' or 'preliminary'")
+        self.start = start
+        self.start_used = None
         if self.links is not None and self.p == 0 and self.q == 0:
             raise LadderError("links needs cross dynamics: give p or q > 0")
         # the cross part and Q, indexed by SERIES: they survive a change of
@@ -789,9 +800,48 @@ class Ladder:
         else:
             self._cAR[:] = 0.0; self._cMA[:] = 0.0; self._qcov[:] = 0.0
             self._set_structure(list(range(m)), self.p, self.q, self.diagcov)
+            self.start_used = "zero"
+            if self.start == "preliminary":
+                self._preliminary(diag)
             self.x_start = self.pack()    # where the requested fit starts
             self.result = self._fit()
         return self.result
+
+    def _preliminary(self, diag):
+        """Jenkins and Alavi's preliminary estimates for the cross terms and Q
+        (see ``start``), from the fitted diagonal system."""
+        from .identification_mv import residual_ma_preliminary, yule_walker
+        m = len(self.series)
+        res = np.asarray(diag.residuals, float)
+        _mu, _phi, _th, _qq, W, _ifa = self.cast(self.pack())   # w_t: no cross terms in it
+        seeds = {}
+        if self.q:
+            seeds["ma"] = residual_ma_preliminary(res, self._cq)
+        if self.p:
+            seeds["ar"] = yule_walker(W, self._cp)
+        S = np.cov(res.T, bias=True)
+        x0 = self.pack()
+        for k in range(self._cq):
+            for i, j in self._pairs():
+                self._cMA[k, i, j] = seeds["ma"][k, i, j]
+        for k in range(self._cp):
+            for i, j in self._pairs():
+                self._cAR[k, i, j] = seeds["ar"][k, i, j]
+        if not self._cdiag:
+            for a in range(1, m):
+                for b in range(a):
+                    self._qcov[a, b] = S[a, b] / S[0, 0]
+        mu, phi, theta, qq, w, ifa = self.cast(self.pack())
+        ok = not ifa
+        if ok:
+            _l, f1, f2, _a, ifa2 = self._elf(mu, phi, theta, qq, w)
+            ok = not ifa2 and np.isfinite(f1) and f1 > 0 and f2 > 0
+        if ok:
+            self.start_used = "preliminary"
+        else:
+            self.unpack(x0)
+            self._cAR[:] = 0.0; self._cMA[:] = 0.0; self._qcov[:] = 0.0
+            self.start_used = "zero (the preliminary start was not admissible)"
 
     def irf_fevd_bands(self, horizon, ndraws=800, alpha=0.05, seed=0):
         """Monte-Carlo bands for the orthogonalised IRF and the FEVD of the fit.

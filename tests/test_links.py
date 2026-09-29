@@ -49,3 +49,15 @@ def test_links_as_pairs():
 def test_links_refused(p, q, links, msg):
     with pytest.raises(LadderError, match=msg):
         Ladder(PAIR, p, q, links=links)
+
+
+def test_the_preliminary_start_reaches_the_same_optimum_sooner():
+    """Jenkins and Alavi's preliminary estimates as the start of the cross
+    terms (start="preliminary"): the same optimum, in fewer iterations here."""
+    z = Ladder(PAIR, 1, 1).fit()
+    L = Ladder(PAIR, 1, 1, start="preliminary")
+    p = L.fit()
+    assert L.start_used == "preliminary"
+    assert p.logL == pytest.approx(z.logL, abs=1e-6) and p.nit < z.nit
+    with pytest.raises(ValueError):
+        Ladder(PAIR, 1, 1, start="random")

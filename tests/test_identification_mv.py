@@ -67,3 +67,22 @@ def test_prewhitened_standard_error_and_symbols():
     M = np.array([[[0.3, -0.3], [0.0, 0.1]]])
     assert symbols(M, 0.1).tolist() == [[["+", "-"], [".", "."]]]
     assert determinants(M)[0] == pytest.approx(0.03)
+
+
+def test_yule_walker_recovers_a_var2():
+    from drvarma.identification_mv import yule_walker
+    w = _sim(8000, [P1, P2], [], 5)
+    Phi = yule_walker(w, 2)
+    np.testing.assert_allclose(Phi[0], P1, atol=0.05)
+    np.testing.assert_allclose(Phi[1], P2, atol=0.05)
+
+
+def test_residual_ma_preliminary_recovers_a_small_cross_ma():
+    """a_t = alpha_t - U_1 alpha_{t-1}, U_1 off-diagonal: U_1 ~ -c_ij(1)/c_jj."""
+    from drvarma.identification_mv import residual_ma_preliminary
+    rng = np.random.default_rng(6)
+    al = rng.standard_normal((20000, 2)) * [1.0, 2.0]
+    U = np.array([[0.0, 0.2], [-0.1, 0.0]])
+    a = al.copy()
+    a[1:] -= al[:-1] @ U.T
+    np.testing.assert_allclose(residual_ma_preliminary(a, 1)[0], U, atol=0.02)

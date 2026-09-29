@@ -6,6 +6,17 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**The ladder can start the cross terms at Jenkins and Alavi's preliminary
+estimates** (`Ladder(start="preliminary")`): the cross MA from the cross
+covariances of the diagonal system's residuals (`identification_mv.
+residual_ma_preliminary`, their theta_ij,k = -r_ji(k) with the variances
+kept), the cross AR from the multivariate Yule-Walker equations on the
+stationary series (`identification_mv.yule_walker`), the innovation covariance
+from the residuals'. If that start is not admissible, zero, and `start_used`
+says so. Measured: the same optimum as from zero on ES/FR (1,1), ES/WTI (1,0),
+ES/FR with one link and m6 (1,0), in fewer iterations in three of the four
+(24→18, 32→28, 21→17); m6 does not change, so its path gap was not the start.
+
 **Jenkins and Alavi's (1981) identification statistics**, `drvarma.identification_mv`:
 the correlation matrices R_k (Bartlett's standard errors, or 1/sqrt(n) for
 prewhitened series), the partial correlation matrices S_k by the multivariate

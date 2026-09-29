@@ -89,6 +89,43 @@ def _last_ar_matrix(z, k, q=0):
     return Phi[:, (k - 1) * m:]
 
 
+def yule_walker(x, p):
+    """Phi_1..Phi_p (p x m x m) of the AR(p) by the multivariate Yule-Walker
+    equations (3.11), in the units of x (not standardised): the preliminary
+    AR estimates, "very good approximations to the maximum likelihood
+    estimates" [§3.2]."""
+    x = np.asarray(x, float)
+    m = x.shape[1]
+    C = {h: _cov(x, h) for h in range(-p, p + 1)}
+    M = np.zeros((m * p, m * p))
+    for l in range(1, p + 1):
+        for j, h in enumerate(range(1, p + 1)):
+            M[(l - 1) * m:l * m, j * m:(j + 1) * m] = C[h - l]
+    rhs = np.hstack([C[h] for h in range(1, p + 1)])
+    Phi = np.linalg.solve(M.T, rhs.T).T
+    return np.array([Phi[:, l * m:(l + 1) * m] for l in range(p)])
+
+
+def residual_ma_preliminary(a, q):
+    """U_1..U_q (q x m x m) of the MA residual model a_t = alpha_t - SUM U_k
+    alpha_{t-k}, from the cross covariances of the prewhitened residuals:
+    cov(a_i,t, a_j,t-k) ~ -U_k[i, j] Sigma_jj, so U_k[i, j] ~ -c_ij(k)/c_jj(0)
+    (off-diagonal; the diagonal is left at zero, the univariate models' part).
+    Jenkins and Alavi's rule theta_ij,k = -r_ji(k) [§3.4] is this with equal
+    variances; valid while the cross terms are small."""
+    a = np.asarray(a, float)
+    m = a.shape[1]
+    c0 = np.diag(_cov(a, 0))
+    U = np.zeros((q, m, m))
+    for k in range(1, q + 1):
+        Ck = _cov(a, k)
+        for i in range(m):
+            for j in range(m):
+                if i != j:
+                    U[k - 1, i, j] = -Ck[i, j] / c0[j]
+    return U
+
+
 def partial_corr_matrices(x, K):
     """S_1..S_K (K x m x m) by the multivariate Yule-Walker equations (3.11),
     on the standardised series; standard error 1/sqrt(n)."""
