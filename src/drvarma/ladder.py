@@ -804,6 +804,10 @@ class Ladder:
         and counted: a large rejected share says the fit sits near a boundary.
         sigma2 is held at its estimate (it is concentrated out). The responses
         are those of the stationary series, as the point IRF.
+
+        ``fevd_lo``/``fevd_hi`` are the band at the last horizon (m x m), as
+        before; ``fevd_lo_h``/``fevd_hi_h`` are the band at every horizon
+        (H x m x m, like `fevd`), for a figure that draws them all.
         """
         from .irf import oirf, fevd, _stable, _bands_from_draws
         r = self.result
@@ -814,7 +818,7 @@ class Ladder:
         ev, V = np.linalg.eigh(cov)
         Lc = V @ np.diag(np.sqrt(np.clip(ev, 0.0, None)))
         rng = np.random.default_rng(seed)
-        od, fd, rejected = [], [], 0
+        od, fd, fh, rejected = [], [], [], 0
         try:
             for _ in range(int(ndraws)):
                 vec = r.x + Lc @ rng.standard_normal(r.x.size)
@@ -834,7 +838,7 @@ class Ladder:
                     rejected += 1; continue
                 if not (np.all(np.isfinite(o)) and np.all(np.isfinite(f))):
                     rejected += 1; continue
-                od.append(o); fd.append(f[-1])
+                od.append(o); fd.append(f[-1]); fh.append(f)
         finally:
             self.cast(r.x)                            # the state back at x_hat
         if len(od) < 20:
@@ -843,7 +847,9 @@ class Ladder:
                              "boundary for a meaningful band")
         o_lo, o_hi = _bands_from_draws(np.stack(od), alpha)
         f_lo, f_hi = _bands_from_draws(np.stack(fd), alpha)
+        fh_lo, fh_hi = _bands_from_draws(np.stack(fh), alpha)
         return {"oirf_lo": o_lo, "oirf_hi": o_hi, "fevd_lo": f_lo, "fevd_hi": f_hi,
+                "fevd_lo_h": fh_lo, "fevd_hi_h": fh_hi,
                 "ndraws_used": len(od), "ndraws_rejected": rejected, "alpha": alpha}
 
     def refit(self, x=None):

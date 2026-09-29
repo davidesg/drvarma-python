@@ -6,6 +6,10 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**`Ladder.irf_fevd_bands` also returns the FEVD band at every horizon**
+(`fevd_lo_h`, `fevd_hi_h`, H x m x m), for sima's figure; `fevd_lo`/`fevd_hi`
+(the last horizon) are unchanged.
+
 **Restricted cross terms: `Ladder(links=)` and the CLI's `-links`**, as drvarma
 C's `-links` (atsw-gui e08bb23). `links="A<-B, C<-A"` (or a list of pairs)
 keeps the cross dynamics only on those pairs; the others are zero and are not
