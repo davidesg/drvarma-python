@@ -86,3 +86,33 @@ def test_residual_ma_preliminary_recovers_a_small_cross_ma():
     a = al.copy()
     a[1:] -= al[:-1] @ U.T
     np.testing.assert_allclose(residual_ma_preliminary(a, 1)[0], U, atol=0.02)
+
+
+def test_two_sided_r_is_drvus_ccf():
+    """The pair (i, j) of R_k laid out over -K..K is drvus' CCF of (x_i, x_j):
+    k > 0 the second series leads, k < 0 the first — the figure's convention."""
+    from drvarma.diagnostics import ccf
+    from drvarma.identification_mv import two_sided
+    w = _sim(150, [P1], [], 7)
+    R, _se = corr_matrices(w, 8)
+    r0 = np.corrcoef(w.T)[0, 1]
+    np.testing.assert_allclose(two_sided(R, 0, 1, r0), ccf(w[:, 0], w[:, 1], 8), atol=1e-12)
+    np.testing.assert_allclose(two_sided(R, 1, 0, r0), ccf(w[:, 1], w[:, 0], 8), atol=1e-12)
+    S, _ = partial_corr_matrices(w, 3)
+    s = two_sided(S, 0, 1)
+    assert s[3] == 0.0 and s[4] == S[0, 0, 1] and s[2] == S[0, 1, 0]
+
+
+def test_haugh_by_side_and_power():
+    """Haugh's S*: the sides add up to the total less lag 0; unrelated white
+    series do not reject; a cross lead is caught on its own side."""
+    from drvarma.identification_mv import haugh
+    rng = np.random.default_rng(3)
+    e = rng.standard_normal((400, 2))
+    h = haugh(e[:, 0], e[:, 1], 10)
+    assert h["all"][1] == 21 and h["k>0"][1] == h["k<0"][1] == 10
+    assert h["all"][2] > 0.01
+    y = e[:, 1].copy()
+    y[1:] += 0.5 * e[:-1, 0]                  # series 1 leads series 2 by one
+    h = haugh(e[:, 0], y, 10)
+    assert h["k<0"][2] < 1e-6 and h["k>0"][2] > 0.01

@@ -6,6 +6,15 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**The CCF panel takes a band** (`plots._draw_ccf_panel(band=)`): a scalar
+or one value per lag, default drvus' 2/sqrt(N) — for a series that is not
+white (Bartlett's band of Jenkins and Alavi's (3.13)). And
+`identification_mv.two_sided`: one pair of R_k or S_k as a two-sided function
+over -K..K, drvus' CCF layout (for R_k it is `diagnostics.ccf`, to 1e-12). And
+`identification_mv.haugh`: Haugh's (1976) S*, the independence test of two
+prewhitened series from their cross correlations only (chi2, 2K + 1 d.f.),
+in total and by side (k > 0, k < 0: who leads).
+
 **The cross MA in Jenkins and Alavi's residual-model form** (`Ladder(cross=
 "residual")`, their (3.22) w - c = u(B)u*(B)alpha): row i of the MA is the
 univariate MA of series i times row i of U*(B) = I - SUM U_k B^k, checked

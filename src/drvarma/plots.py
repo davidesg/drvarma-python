@@ -172,7 +172,7 @@ def plot_ccf(w1, w2, lags=None, freq=12, names=("1", "2"), ax=None):
     return fig
 
 
-def _draw_ccf_panel(ax, rho, lags, n, freq, title, q_label):
+def _draw_ccf_panel(ax, rho, lags, n, freq, title, q_label, band=None, cmax=None):
     """One two-sided CCF panel, copying the drvus gnuplot ``ccf`` plot exactly.
 
     drvus (``x11plots.c``): borderless (``set border 2`` → left axis only, **no
@@ -180,16 +180,30 @@ def _draw_ccf_panel(ax, rho, lags, n, freq, title, q_label):
     dashed ±2/√N bands; solid black seasonal grid lines at ±freq, ±2·freq, ±3·freq
     with the lag labels floating beneath them; y-labels at ±cmax/±½cmax/0; the
     residual pair as the title and the Hosking ``Q( k ) = …`` underneath.
+
+    ``band`` (default ±2/√N, drvus'): the half-width of the dashed band, a
+    scalar or one value per lag -K..K. A series that is not white needs its
+    own — Bartlett's for two unrelated autocorrelated series (Jenkins and
+    Alavi 1981, (3.13)) — and the band then follows the lag. ``cmax`` fixes
+    the y-limit (default: snapped to the panel), so that stacked panels share
+    a scale, as fue's ACF over PACF.
     """
-    band = 2.0 / np.sqrt(n)
-    cmax = _snap_cmax(max(float(np.max(np.abs(rho))), band))
+    if band is None:
+        band = 2.0 / np.sqrt(n)
+    band = np.broadcast_to(np.asarray(band, float), (2 * lags + 1,))
+    if cmax is None:
+        cmax = _snap_cmax(max(float(np.max(np.abs(rho))), float(band.max())))
     x = np.arange(-lags, lags + 1)
     seas = [s for s in range(freq, lags + 1, freq)] if freq > 1 else []
     # seasonal vertical grid lines (solid black, full height) at 0 and ±freq·k
     for xx in [0] + seas + [-s for s in seas]:
         ax.plot([xx, xx], [-cmax, cmax], color="k", lw=0.8, zorder=1)
-    ax.axhline(band, color="k", ls="--", lw=1.0, zorder=2)
-    ax.axhline(-band, color="k", ls="--", lw=1.0, zorder=2)
+    if np.all(band == band[0]):                                   # drvus: flat
+        ax.axhline(band[0], color="k", ls="--", lw=1.0, zorder=2)
+        ax.axhline(-band[0], color="k", ls="--", lw=1.0, zorder=2)
+    else:                                                         # by lag
+        ax.plot(x, band, color="k", ls="--", lw=1.0, zorder=2, drawstyle="steps-mid")
+        ax.plot(x, -band, color="k", ls="--", lw=1.0, zorder=2, drawstyle="steps-mid")
     ax.axhline(0.0, color="k", lw=1.4, zorder=2)                  # zero line
     ax.vlines(x, 0.0, rho, color="k", lw=5.0, zorder=3)           # thick impulses
     ax.set_ylim(-cmax, cmax)

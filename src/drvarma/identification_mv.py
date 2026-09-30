@@ -24,6 +24,9 @@ For a stationary vector series x_t (n x m) — the w_t of the univariate models
 * `determinants`: |R_k|, |S_k|, |S_k(q)| — scalar guides with the same cut-off
   properties, for many series ("the curse of higher dimensionality").
 * `symbols`: the + - . table (beyond +-2 standard errors).
+* `haugh`: Haugh's (1976) independence test of two prewhitened series, by side.
+* `two_sided`: one pair of a stack as a two-sided function over -K..K, the
+  layout of drvus' CCF, for R_k and S_k alike (sima's figures).
 
 Facts only: which order or structure to entertain is the analyst's reading.
 Convention throughout: the AR model is x_t = SUM_l Phi_l x_{t-l} + a_t, so the
@@ -141,6 +144,47 @@ def q_partial_corr_matrices(x, K, q):
     size, and with the 1/sqrt(n) guide only as a guide."""
     z = _standardise(x)
     return np.array([_last_ar_matrix(z, k, q) for k in range(1, K + 1)]), 1.0 / np.sqrt(z.shape[0])
+
+
+def two_sided(mats, i, j, lag0=0.0):
+    """The pair (i, j) of a K x m x m stack as ONE two-sided function over lags
+    -K..K, the drvus CCF layout: k > 0 is mats[k-1, i, j] (series j leads, on
+    series i), k < 0 is mats[|k|-1, j, i] (series i leads, on series j), and
+    lag 0 is `lag0` (the contemporaneous correlation for R_k; S_k has none).
+    For R_k this is exactly drvus' `ccf(x_i, x_j)`; for S_k it is the same
+    reading of the partial matrices. Returns an array of 2K + 1."""
+    M = np.asarray(mats, float)
+    K = M.shape[0]
+    out = np.empty(2 * K + 1)
+    out[K] = lag0
+    out[K + 1:] = M[:, i, j]
+    out[:K] = M[::-1, j, i]
+    return out
+
+
+def haugh(a1, a2, K):
+    """Haugh's (1976) test that two prewhitened series are independent, from
+    their cross correlations only: S* = n^2 SUM_{|k|<=K} r(k)^2 / (n - |k|),
+    chi-squared with 2K + 1 degrees of freedom — the portmanteau of method 2
+    (each series prewhitened by its own model; Hosking's Q adds the
+    autocorrelations, which is the checking of a fitted model, not this).
+    Also split by side, as Haugh and Box (1977) read direction: k > 0 (the
+    second series leads, K d.f.) and k < 0 (the first leads, K d.f.).
+    Returns {"all": (S, df, p), "k>0": (...), "k<0": (...)}."""
+    from scipy.stats import chi2
+    from .diagnostics import ccf
+    a1 = np.asarray(a1, float).ravel()
+    a2 = np.asarray(a2, float).ravel()
+    n = a1.shape[0]
+    r = ccf(a1, a2, K)
+    k = np.arange(-K, K + 1)
+    term = n * n * r ** 2 / (n - np.abs(k))
+
+    def one(mask):
+        S = float(term[mask].sum())
+        df = int(mask.sum())
+        return S, df, float(chi2.sf(S, df))
+    return {"all": one(np.ones_like(k, bool)), "k>0": one(k > 0), "k<0": one(k < 0)}
 
 
 def determinants(mats):
