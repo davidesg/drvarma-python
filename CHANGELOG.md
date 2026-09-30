@@ -8,7 +8,8 @@ compiled C engine.
 
 **The residual CCF's P has GraphMaker's degrees of freedom**
 (`plot_residual_ccf`): 4(K - (p + q)), as GraphMaker discounted the orders;
-when none are left the label says so.
+when none are left the label says so. The default lags keep at least 2 beyond
+p + q (drvus' window moves up for long models in annual data).
 
 **The CCF is GraphMaker's** (`plots._draw_ccf_panel`, `plot_ccf`,
 `plot_residual_ccf`): the CCF Treadway approved — GraphMaker's

@@ -244,7 +244,8 @@ def plot_residual_ccf(model, lags=None, save_prefix=None, dpi=150):
     freq = getattr(model.series, "freq", 1)
     if lags is None:                               # drvus graphic window = 3·(f+1)
         lags = 3 * (freq + 1) if freq > 1 else min(3 * 3, n // 4)
-        lags = min(lags, n - 2)
+        # at least 2 lags beyond p + q, so that P keeps degrees of freedom
+        lags = min(max(lags, model.p + model.q + 2), n - 2)
 
     pairs = [(i, j) for i in range(1, m) for j in range(i)]      # (1,0),(2,0),(2,1)
     figs = []
