@@ -227,7 +227,8 @@ def plot_residual_ccf(model, lags=None, save_prefix=None, dpi=150):
     """Residual cross-correlation functions, in GraphMaker's CCF panel.
 
     Produces **one figure per residual pair** (i>j) — as drvus writes a separate
-    ``ccf<i>_<j>.eps`` for each — with Hosking's ``P ( m^2 K ) = …`` below.
+    ``ccf<i>_<j>.eps`` for each — with Hosking's P below, GraphMaker's d.f.
+    ``4 (K - (p + q))``.
     Lags default to the drvus graphic window ``3·(freq+1)``.  ``k>0`` pairs series
     *i* leading *j* (as in the ``.out`` report).
 
@@ -251,9 +252,11 @@ def plot_residual_ccf(model, lags=None, save_prefix=None, dpi=150):
         fig, ax = plt.subplots(figsize=(11.0, 3.0), layout="constrained")
         # orient k>0 as i→j (i leading), matching the .out report's convention
         rho = _ccf(res[:, j], res[:, i], lags)
-        Q, df, _ = _qccf(res[:, i], res[:, j], lags)
+        Q, _df, _ = _qccf(res[:, i], res[:, j], lags)
+        df = 4 * (lags - (model.p + model.q))     # GraphMaker: 4 (K - (p + q))
         _draw_ccf_panel(ax, rho, lags, n, freq, "%s - %s" % (names[i], names[j]),
-                        "P ( %d ) = %.1f" % (df, Q))
+                        "P ( %d ) = %.1f" % (df, Q) if df > 0 else
+                        "P = %.1f  (K \u2264 p + q)" % Q)
         if save_prefix is not None:
             fig.savefig("%s_ccf_%d_%d_%s_%s.png" % (save_prefix, i + 1, j + 1,
                                                     names[i], names[j]),
