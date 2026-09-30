@@ -129,13 +129,30 @@ def _snap_cmax(value):
     return max(0.3, min(c, 1.0))
 
 
-def plot_ccf(w1, w2, lags=None, freq=12, names=("1", "2"), ax=None):
-    """Two-sided cross-correlation plot, reproducing the drvus ``ccf`` format.
+def ccf_default_lags(freq):
+    """GraphMaker's lags for the CCF: 7 for annual data, 15 for quarterly; for
+    monthly it let the analyst choose 8 to 39, and 12 is the default the
+    suite's C (atsw-gui `lib/ccfplot`) takes."""
+    return {1: 7, 4: 15, 12: 12}.get(int(freq), 3 * int(freq) if freq > 1 else 7)
 
-    Impulse bars over lags -K..K, ±2/√N significance bands (dashed), vertical
-    seasonal dividers at ±freq, ±2·freq, ±3·freq, and an ``Q ( K ) = ...`` label
-    (Hosking bivariate portmanteau).  ``w1``/``w2`` are 1-D arrays (e.g. two model
-    residual series).  Reference: drv4.040804/drvus ``ccf.c`` + ``x11plots.c``.
+
+def _ccf_scale(value):
+    """GraphMaker's vertical scale for a CCF: +-0.4 (marks every 0.2), enlarged
+    to 0.6, 0.8 or 1.0 when a bar or the band does not fit (as `lib/ccfplot`)."""
+    for e in (0.4, 0.6, 0.8, 1.0):
+        if value <= e * 0.98:
+            return e
+    return 1.0
+
+
+def plot_ccf(w1, w2, lags=None, freq=12, names=("1", "2"), ax=None):
+    """The two-sided CCF of (w1, w2) in GraphMaker's format (`_draw_ccf_panel`).
+
+    At lag k > 0, w2 leads (``diagnostics.ccf``), so the title names w2 FIRST:
+    ``names`` are those of (w1, w2) and the title is "name2 - name1" —
+    GraphMaker's "second series - first series", drtran's "input - output".
+    Under the panel, Hosking's bivariate portmanteau as GraphMaker labels it,
+    ``P ( m^2 K ) = ...`` (P, not to be confused with Ljung-Box's Q).
     """
     plt = _need_mpl()
     from .diagnostics import ccf as _ccf, qccf as _qccf
@@ -143,95 +160,74 @@ def plot_ccf(w1, w2, lags=None, freq=12, names=("1", "2"), ax=None):
     w2 = np.asarray(w2, float).ravel()
     n = w1.shape[0]
     if lags is None:
-        lags = max(3 * freq, 12) if freq > 1 else min(20, n // 4)
+        lags = min(ccf_default_lags(freq), n // 4)
     rho = _ccf(w1, w2, lags)
     Q, df, _ = _qccf(w1, w2, lags)
-    band = 2.0 / np.sqrt(n)
-    cmax = _snap_cmax(max(np.max(np.abs(rho)), band))
-    x = np.arange(-lags, lags + 1)
-
     if ax is None:
-        fig, ax = plt.subplots(figsize=(9, 3))
+        fig, ax = plt.subplots(figsize=(9.0, 3.2))
     else:
         fig = ax.get_figure()
-    # seasonal vertical dividers
-    if freq > 1:
-        for s in range(freq, lags + 1, freq):
-            for xx in (s, -s):
-                ax.axvline(xx, color="0.6", lw=0.8, zorder=1)
-    ax.axhline(0, color="k", lw=1.0, zorder=2)
-    ax.axhline(band, color="k", lw=1.0, ls="--", zorder=2)
-    ax.axhline(-band, color="k", lw=1.0, ls="--", zorder=2)
-    ax.vlines(x, 0.0, rho, color="k", lw=1.6, zorder=3)         # impulses
-    ax.set_ylim(-cmax, cmax)
-    ax.set_xlim(-lags - 0.5, lags + 0.5)
-    ax.set_yticks([-cmax, -cmax / 2, 0, cmax / 2, cmax])
-    ax.set_title("ccf  %s%s%s" % (names[0], "↔", names[1]), fontsize=11)
-    ax.set_xlabel("Q ( %d ) = %.1f" % (lags, Q), fontsize=11)
+    _draw_ccf_panel(ax, rho, lags, n, freq, "%s - %s" % (names[1], names[0]),
+                    "P ( %d ) = %.1f" % (df, Q))
     fig.tight_layout()
     return fig
 
 
 def _draw_ccf_panel(ax, rho, lags, n, freq, title, q_label, band=None, cmax=None):
-    """One two-sided CCF panel, copying the drvus gnuplot ``ccf`` plot exactly.
+    """One two-sided CCF panel in GraphMaker's format — the CCF Treadway
+    approved (GraphMaker `ccfgrafico.cpp`, the same as drvus' `ccf2_1.eps` and
+    atsw-gui's `lib/ccfplot`, which drtran's GUI draws with).
 
-    drvus (``x11plots.c``): borderless (``set border 2`` → left axis only, **no
-    bottom axis**); thick black ``impulses`` (ls 5 lw 7-9); a solid zero line and
-    dashed ±2/√N bands; solid black seasonal grid lines at ±freq, ±2·freq, ±3·freq
-    with the lag labels floating beneath them; y-labels at ±cmax/±½cmax/0; the
-    residual pair as the title and the Hosking ``Q( k ) = …`` underneath.
+    Lags -K..K symmetric; black bars at 21 % of the lag step; a solid zero
+    line; the +-2/sqrt(N) bands dotted; a dashed vertical at lag 0 dividing
+    the two sides; the left and bottom axes; the title (the series that leads
+    at k > 0 first, "A - B") centred above and the statistic centred below —
+    between the panels when two are stacked, as fue's Q between ACF and PACF.
+    Scale +-0.4 with marks every half, enlarged to 0.6, 0.8, 1.0 to fit.
 
-    ``band`` (default ±2/√N, drvus'): the half-width of the dashed band, a
-    scalar or one value per lag -K..K. A series that is not white needs its
-    own — Bartlett's for two unrelated autocorrelated series (Jenkins and
-    Alavi 1981, (3.13)) — and the band then follows the lag. ``cmax`` fixes
-    the y-limit (default: snapped to the panel), so that stacked panels share
-    a scale, as fue's ACF over PACF.
+    ``band``: the half-width of the band, a scalar or one value per lag -K..K
+    (default 2/sqrt(N)); a series that is not white needs its own —
+    Bartlett's for two unrelated autocorrelated series (Jenkins and Alavi
+    1981, (3.13)) — and the band then follows the lag. ``cmax`` fixes the
+    scale, so that stacked panels share it.
     """
     if band is None:
         band = 2.0 / np.sqrt(n)
     band = np.broadcast_to(np.asarray(band, float), (2 * lags + 1,))
     if cmax is None:
-        cmax = _snap_cmax(max(float(np.max(np.abs(rho))), float(band.max())))
+        cmax = _ccf_scale(max(float(np.max(np.abs(rho))), float(band.max())))
     x = np.arange(-lags, lags + 1)
-    seas = [s for s in range(freq, lags + 1, freq)] if freq > 1 else []
-    # seasonal vertical grid lines (solid black, full height) at 0 and ±freq·k
-    for xx in [0] + seas + [-s for s in seas]:
-        ax.plot([xx, xx], [-cmax, cmax], color="k", lw=0.8, zorder=1)
-    if np.all(band == band[0]):                                   # drvus: flat
-        ax.axhline(band[0], color="k", ls="--", lw=1.0, zorder=2)
-        ax.axhline(-band[0], color="k", ls="--", lw=1.0, zorder=2)
+    ax.axhline(0.0, color="k", lw=1.0, zorder=2)                  # the zero
+    if np.all(band == band[0]):
+        ax.axhline(band[0], color="k", ls=":", lw=1.2, zorder=2)
+        ax.axhline(-band[0], color="k", ls=":", lw=1.2, zorder=2)
     else:                                                         # by lag
-        ax.plot(x, band, color="k", ls="--", lw=1.0, zorder=2, drawstyle="steps-mid")
-        ax.plot(x, -band, color="k", ls="--", lw=1.0, zorder=2, drawstyle="steps-mid")
-    ax.axhline(0.0, color="k", lw=1.4, zorder=2)                  # zero line
-    ax.vlines(x, 0.0, rho, color="k", lw=5.0, zorder=3)           # thick impulses
+        ax.plot(x, band, color="k", ls=":", lw=1.2, zorder=2, drawstyle="steps-mid")
+        ax.plot(x, -band, color="k", ls=":", lw=1.2, zorder=2, drawstyle="steps-mid")
+    ax.axvline(0.0, color="k", ls="--", lw=0.8, zorder=1)         # the two sides
+    ax.bar(x, np.clip(rho, -cmax, cmax), width=0.21, color="k", lw=0, zorder=3)
     ax.set_ylim(-cmax, cmax)
-    half = cmax / 2.0
-    ax.set_yticks([-cmax, -half, 0.0, half, cmax])
+    ax.set_yticks([-cmax, -cmax / 2.0, 0.0, cmax / 2.0, cmax])
     ax.set_xlim(-lags - 0.5, lags + 0.5)
-    if seas:                                       # x labels only on the grid
-        xt = [-s for s in reversed(seas)] + [0] + seas
-    else:
-        xt = [-lags, -(lags // 2), 0, lags // 2, lags]
-    ax.set_xticks(xt)
-    ax.tick_params(axis="y", direction="out", length=4, labelsize=10)  # y tick marks
-    ax.tick_params(axis="x", length=0, labelsize=10)             # x labels float
-    # borderless except the left axis (drvus `set border 2`)
-    for sp in ("top", "right", "bottom"):
+    if freq > 1 and lags > 8:                   # GraphMaker: 12 a month, 4 a quarter
+        step = freq
+    else:                                       # 2 a year (or with 8 monthly lags)
+        step = 2 if lags <= 12 else 4
+    ticks = list(range(0, lags + 1, step))
+    ax.set_xticks([-t for t in reversed(ticks[1:])] + ticks)
+    ax.tick_params(axis="both", direction="out", length=3, labelsize=9)
+    for sp in ("top", "right"):
         ax.spines[sp].set_visible(False)
-    ax.spines["left"].set_linewidth(1.6)
-    ax.set_title(title, fontsize=14)                             # pair = title
+    ax.set_title(title, fontsize=11)                              # centred above
     if q_label:
-        ax.set_xlabel(q_label, fontsize=12, labelpad=6)
+        ax.set_xlabel(q_label, fontsize=10, labelpad=4)           # centred below
 
 
 def plot_residual_ccf(model, lags=None, save_prefix=None, dpi=150):
-    """Residual cross-correlation functions, copying the drvus gnuplot ``ccf`` plot.
+    """Residual cross-correlation functions, in GraphMaker's CCF panel.
 
     Produces **one figure per residual pair** (i>j) — as drvus writes a separate
-    ``ccf<i>_<j>.eps`` for each — in the drvus borderless style (pair as title,
-    seasonal grid incl. lag 0, ±2/√N bands, thick impulses, ``Q( k ) = …``).
+    ``ccf<i>_<j>.eps`` for each — with Hosking's ``P ( m^2 K ) = …`` below.
     Lags default to the drvus graphic window ``3·(freq+1)``.  ``k>0`` pairs series
     *i* leading *j* (as in the ``.out`` report).
 
@@ -248,8 +244,6 @@ def plot_residual_ccf(model, lags=None, save_prefix=None, dpi=150):
     if lags is None:                               # drvus graphic window = 3·(f+1)
         lags = 3 * (freq + 1) if freq > 1 else min(3 * 3, n // 4)
         lags = min(lags, n - 2)
-    # drvus Q label: "Q( k )" for seasonal data (f>4), "Q ( k )" otherwise
-    qfmt = "Q( %d ) = %.1f" if freq > 4 else "Q ( %d ) = %.1f"
 
     pairs = [(i, j) for i in range(1, m) for j in range(i)]      # (1,0),(2,0),(2,1)
     figs = []
@@ -257,9 +251,9 @@ def plot_residual_ccf(model, lags=None, save_prefix=None, dpi=150):
         fig, ax = plt.subplots(figsize=(11.0, 3.0), layout="constrained")
         # orient k>0 as i→j (i leading), matching the .out report's convention
         rho = _ccf(res[:, j], res[:, i], lags)
-        Q, _df, _ = _qccf(res[:, i], res[:, j], lags)
+        Q, df, _ = _qccf(res[:, i], res[:, j], lags)
         _draw_ccf_panel(ax, rho, lags, n, freq, "%s - %s" % (names[i], names[j]),
-                        qfmt % (lags, Q))
+                        "P ( %d ) = %.1f" % (df, Q))
         if save_prefix is not None:
             fig.savefig("%s_ccf_%d_%d_%s_%s.png" % (save_prefix, i + 1, j + 1,
                                                     names[i], names[j]),

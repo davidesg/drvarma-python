@@ -6,6 +6,17 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**The CCF is GraphMaker's** (`plots._draw_ccf_panel`, `plot_ccf`,
+`plot_residual_ccf`): the CCF Treadway approved — GraphMaker's
+`ccfgrafico.cpp`, the same as drvus' `ccf2_1.eps` and atsw-gui's
+`lib/ccfplot`, which drtran's C GUI draws with. Bars at 21 % of the lag step,
+dotted +-2/sqrt(N) bands, a dashed vertical at lag 0, the title with the series
+leading at k > 0 first ("A - B"; drtran's "input - output") and Hosking's
+portmanteau centred below, labelled P with its degrees of freedom, as
+GraphMaker did (not Ljung-Box's Q). Scale 0.4 / 0.6 / 0.8 / 1.0 with marks
+every half; GraphMaker's lags by frequency (`ccf_default_lags`: 7 a year, 15 a
+quarter, 12 a month). `plot_ccf(names=)` now names (w1, w2) in order.
+
 **The CCF panel takes a band** (`plots._draw_ccf_panel(band=)`): a scalar
 or one value per lag, default drvus' 2/sqrt(N) — for a series that is not
 white (Bartlett's band of Jenkins and Alavi's (3.13)). And

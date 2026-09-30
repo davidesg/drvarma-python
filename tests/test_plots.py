@@ -81,3 +81,17 @@ def test_plot_series_into_given_axes(fitted):
     fig, axes = plt.subplots(2, 1)
     out = plots.plot_series(sim, axes=axes)
     assert out is fig
+
+
+def test_ccf_is_graphmakers(fitted):
+    """GraphMaker's CCF (Treadway's): the series leading at k > 0 first in the
+    title, Hosking's P with its degrees of freedom below, the scale 0.4 / 0.6 /
+    0.8 / 1.0, and GraphMaker's lags by frequency (7 a year, 15 a quarter)."""
+    mdl, _ = fitted
+    res = mdl.residuals
+    ax = plots.plot_ccf(res[:, 0], res[:, 1], lags=10, freq=12, names=("A", "B")).axes[0]
+    assert ax.get_title() == "B - A"
+    assert ax.get_xlabel().startswith("P ( 40 ) = ")
+    assert ax.get_ylim()[1] in (0.4, 0.6, 0.8, 1.0)
+    assert plots.ccf_default_lags(1) == 7 and plots.ccf_default_lags(4) == 15
+    assert [plots._ccf_scale(v) for v in (0.2, 0.45, 0.7, 0.9)] == [0.4, 0.6, 0.8, 1.0]

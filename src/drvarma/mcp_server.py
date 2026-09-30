@@ -502,8 +502,8 @@ def _grid_axes(m, per=2.4):
 def _drvus_onesided(ax, vals, lags, band, freq, title, cmax=None):
     """One ONE-SIDED panel in the drvus house style (`x11plots.c`, `set border 2`).
 
-    Same conventions as `plots._draw_ccf_panel`, which reproduces the C exactly:
-    borderless except a thick left axis, solid black seasonal grid lines at
+    drvus' one-sided ACF style (not the CCF, which is GraphMaker's, in
+    `plots._draw_ccf_panel`): borderless except a thick left axis, solid black seasonal grid lines at
     freq/2·freq/3·freq, a solid zero line, dashed ±band lines and thick black
     impulses. Kept visually identical so these plots sit alongside the residual
     CCFs of the .out report rather than looking like a different program.
@@ -693,17 +693,16 @@ def plot_cross_correlation_functions(name: str, lam: float = -99.0, d: int = -1,
     fig, axes = plt.subplots(len(pairs), 1, figsize=(11.0, 3.0 * len(pairs)),
                              squeeze=False, layout="constrained")
     band = 2.0 / np.sqrt(n)
-    qfmt = "Q( %d ) = %.1f" if freq > 4 else "Q ( %d ) = %.1f"
     lines = []
     for ax, (i, j) in zip([a[0] for a in axes], pairs):
         # CANONICAL ORIENTATION (drvus / the .out report): for the pair titled
         # "A - B", k > 0 means A --> B, i.e. the FIRST name leads. `ccf(w1, w2)`
         # returns w2 leading at k > 0, so the arguments go in reversed.
         rho = _ccf(w[:, j], w[:, i], n_lags)
-        Q, _df, _p = _qccf(w[:, i], w[:, j], n_lags)
+        Q, df, _p = _qccf(w[:, i], w[:, j], n_lags)
         _draw_ccf_panel(ax, rho, n_lags, n, freq,
                         "%s - %s" % (ms.names[i], ms.names[j]),
-                        qfmt % (n_lags, Q))
+                        "P ( %d ) = %.1f" % (df, Q))
         # Report WHICH lags, not just how many: an isolated spike at the seasonal
         # lag means something very different from one at lag 1.
         lead = [k for k in range(1, n_lags + 1) if abs(rho[n_lags + k]) > band]
