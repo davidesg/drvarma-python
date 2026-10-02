@@ -209,6 +209,21 @@ class LadderSeries:
             self._w_cache = (key, np.asarray(w, float))
         return self._w_cache[1]
 
+    def levels(self):
+        """The transformed LEVELS of the current sample: the model's Box-Cox
+        and its seasonal differences, but NOT its regular ones — what Box and
+        Tiao's (1977) canonical analysis reads to ask whether the series need
+        their regular differences jointly (§4.4). Deterministic terms are not
+        removed (their effect stays in the levels)."""
+        from fue.forecast import _boxcox
+        m = self.model
+        y = np.array([_boxcox(float(v), m.boxlam, m.refactor)
+                      for v in self.ts.data[:self.nobs]])
+        s = self.freq
+        for _ in range(int(m.D or 0)):
+            y = y[s:] - y[:-s]
+        return y
+
     def polynomials(self):
         """(phi, theta, mu, ifault): the expanded ARMA of the series."""
         from fue.cast_us import cast_us_py

@@ -6,6 +6,23 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**Tiao and Box's stepwise autoregression and Box and Tiao's canonical
+analysis** (`identification_mv`):
+- `stepwise_ar` / `stepwise_order`: the AR(l) fits by least squares on a common
+  sample, the last coefficient matrix with its t-ratios, M(l) (4.3) with m²
+  d.f., and the residual covariance matrices. They reproduce Tiao and Box's
+  (1981) gas furnace M(l) (Table 12(b), l ≤ 8 to the printed digit), and the
+  residual covariances and indicator symbols of every fit in Table 14.
+- `canonical` / `canonical_from_moments`: the components of a VAR(p) ordered by
+  predictability, with unit-variance scaling and, for p = 1, the variance
+  components. They reproduce Box and Tiao's (1977) Tables 4.2 and 4.3 from the
+  printed hog-data moments.
+- `LadderSeries.levels()`: the transformed levels, without the regular
+  differences.
+
+The data are in `tests/data/tiao_box/` (Series J, with its source), and the
+tests in `tests/test_tiao_box.py`.
+
 **The residual CCF's P has GraphMaker's degrees of freedom**
 (`plot_residual_ccf`): 4(K - (p + q)), as GraphMaker discounted the orders;
 when none are left the label says so. The default lags keep at least 2 beyond

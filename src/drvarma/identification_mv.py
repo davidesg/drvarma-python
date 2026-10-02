@@ -28,6 +28,17 @@ For a stationary vector series x_t (n x m) — the w_t of the univariate models
 * `two_sided`: one pair of a stack as a two-sided function over -K..K, the
   layout of drvus' CCF, for R_k and S_k alike (sima's figures).
 
+And from the Wisconsin line (sima-python `docs/STUDY-tiao-box.md`):
+
+* `stepwise_ar`: Tiao and Box's (1981, §4.1) stepwise autoregression — the
+  last coefficient matrix of each AR(l) by least squares with its t-ratios,
+  the likelihood-ratio statistic M(l) (4.3), chi-squared with m^2 d.f., and
+  the diagonal of the residual covariance matrix. The test beside S_k's guide.
+* `canonical`: Box and Tiao's (1977) canonical analysis of a VAR(p) —
+  components ordered from least to most predictable; near-white ones are
+  static relations among the series, near-non-stationary ones their common
+  growth.
+
 Facts only: which order or structure to entertain is the analyst's reading.
 Convention throughout: the AR model is x_t = SUM_l Phi_l x_{t-l} + a_t, so the
 (i, j) element of Phi_l (and of S_k) is the effect of x_j at lag l on x_i.
@@ -200,4 +211,162 @@ def symbols(mats, se, width=2.0):
     out = np.full(mats.shape, ".", dtype="<U1")
     out[mats > width * se] = "+"
     out[mats < -width * se] = "-"
+    return out
+
+
+# --------------------------------------------------------------------------- #
+#  Tiao and Box (1981): the stepwise autoregression                           #
+# --------------------------------------------------------------------------- #
+
+def _ls_var(x, l, start, const=True):
+    """Least-squares AR(l) on x[start:], with a constant: (B, resid, XtX^-1).
+    B is (1 + l m) x m, rows [const, Phi_1', ..., Phi_l']."""
+    n = x.shape[0]
+    Y = x[start:]
+    cols = [np.ones(n - start)] if const else []
+    cols += [x[start - j:n - j] for j in range(1, l + 1)]
+    X = np.column_stack(cols) if cols else np.zeros((n - start, 0))
+    XtXi = np.linalg.pinv(X.T @ X) if X.shape[1] else np.zeros((0, 0))
+    B = XtXi @ X.T @ Y if X.shape[1] else np.zeros((0, x.shape[1]))
+    return B, Y - X @ B, XtXi
+
+
+def stepwise_ar(x, L):
+    """Tiao and Box's (1981) stepwise autoregression [§4.1], l = 1..L.
+
+    Every AR(l) is fitted by multivariate least squares, with a constant, on
+    the COMMON sample t = L+1..n, so that the determinants compare; then
+
+    * P[l-1] = Phi_l of the AR(l), the partial autoregression matrix, and
+      T[l-1] its t-ratios (their indicator symbols use +-2);
+    * M[l-1] = -(N - 1/2 - l m) ln(|S(l)| / |S(l-1)|) (4.3), N = n - L - 1
+      the effective number of observations with a constant, asymptotically
+      chi-squared with m^2 d.f. under Phi_l = 0; pvalue its tail;
+    * Sigma[l-1] = S(l)/(n - L), the residual covariance matrix, sigma[l-1]
+      its diagonal and det_sigma its determinant — their Table 14 to the
+      printed digit on the gas furnace (the t-ratios use the residual degrees
+      of freedom instead, as least squares does);
+    * aic[l-1] = N ln|S(l)/N| + 2 l m^2, as information only.
+
+    This reproduces their gas furnace M(l) (Table 12(b)) to the printed digit
+    for l = 1..8; see the test. Phi_all[l-1] and T_all[l-1] hold every
+    coefficient matrix of the AR(l) and its t-ratios (their Table 14, the
+    successive fits). Returns a dict of arrays, and n_eff = n - L
+    observations used."""
+    from scipy.stats import chi2
+    x = np.asarray(x, float)
+    n, m = x.shape
+    L = int(L)
+    T = n - L
+    N = n - L - 1
+    _B, e0, _ = _ls_var(x, 0, L)
+    S_prev = e0.T @ e0
+    out = {k: [] for k in ("P", "T", "M", "pvalue", "sigma", "det_sigma", "aic")}
+    out["Sigma"], out["Phi_all"], out["T_all"] = [], [], []
+    for l in range(1, L + 1):
+        B, e, XtXi = _ls_var(x, l, L)
+        S = e.T @ e
+        dof = T - (1 + l * m)
+        Sig = S / T
+        r0 = 1 + (l - 1) * m
+        Phi = B[r0:r0 + m].T                       # (i, j): x_j at lag l on x_i
+        se = np.sqrt(np.outer(np.diag(S / dof), np.diag(XtXi)[r0:r0 + m]))
+        with np.errstate(divide="ignore", invalid="ignore"):
+            t = np.where(se > 0, Phi / se, 0.0)
+        M = -(N - 0.5 - l * m) * np.log(np.linalg.det(S) / np.linalg.det(S_prev))
+        out["P"].append(Phi)
+        out["T"].append(t)
+        out["M"].append(M)
+        out["pvalue"].append(float(chi2.sf(M, m * m)))
+        out["Sigma"].append(Sig)
+        sea = np.sqrt(np.outer(np.diag(S / dof), np.diag(XtXi)[1:]))
+        allP = B[1:].T                                         # m x l m
+        out["Phi_all"].append(np.array([allP[:, j * m:(j + 1) * m] for j in range(l)]))
+        out["T_all"].append(np.array([(allP / sea)[:, j * m:(j + 1) * m] for j in range(l)]))
+        out["sigma"].append(np.diag(Sig))
+        out["det_sigma"].append(float(np.linalg.det(Sig)))
+        out["aic"].append(float(N * np.log(np.linalg.det(S / N)) + 2 * l * m * m))
+        S_prev = S
+    res = {k: (v if k in ("Phi_all", "T_all") else np.array(v)) for k, v in out.items()}
+    res["df"] = m * m
+    res["n_eff"] = T
+    return res
+
+
+def stepwise_order(sw, alpha=0.05):
+    """Tiao and Box's reading of the M(l) column: the order beyond which no
+    M(l) is significant at `alpha` — "for l > 2 ... the M(l) statistic fails
+    to show significant improvement" [§5.1]; on the gas furnace AR(6), with
+    M(5) not significant on the way. Returns (p, gaps): p the last significant
+    l (0 if none) and the non-significant l below it, which the analyst reads
+    (a gap is not a reason to stop: the gas furnace's delay of 3 shows at
+    l = 4, and its input's AR(3) at l = 3, Table 14)."""
+    sig = [l + 1 for l, pv in enumerate(sw["pvalue"]) if pv < alpha]
+    p = max(sig) if sig else 0
+    return p, [l for l in range(1, p) if l not in sig]
+
+
+# --------------------------------------------------------------------------- #
+#  Box and Tiao (1977): the canonical analysis                                #
+# --------------------------------------------------------------------------- #
+
+def canonical_from_moments(G0, Gpred):
+    """The canonical analysis from the variance of the series G0 = Gamma_0(z)
+    and that of its predictable part Gpred = Gamma_0(z_hat) (2.1)-(2.5):
+    the eigenvalues lam of G0^-1 Gpred, ascending (least predictable first),
+    and the rows of M, scaled so that M G0 M' = I (3.7): every component has
+    unit variance and lam_j is its predictable share (2.2). Returns (lam, M)."""
+    from scipy.linalg import eigh
+    G0 = np.asarray(G0, float)
+    Gp = np.asarray(Gpred, float)
+    Gp = (Gp + Gp.T) / 2
+    lam, V = eigh(Gp, (G0 + G0.T) / 2)            # V' G0 V = I, ascending
+    return lam, V.T
+
+
+def canonical(x, p):
+    """Box and Tiao's (1977) canonical analysis of x (n x m) under a VAR(p)
+    fitted by least squares with a constant.
+
+    Returns a dict:
+    * lam: the predictabilities, ascending, in [0, 1]; near 0, a (nearly)
+      white component — a static relation among the series (2.9); near 1, a
+      nearly non-stationary one — their common growth (§3.2, for p = 1 if and
+      only if roots of Phi approach the unit circle);
+    * M: the rows m_j' (component y_jt = m_j' (x_t - mean)), unit-variance
+      scaling M G0 M' = I;
+    * weights: each row normalised to its largest absolute element 1, for
+      reading the combination;
+    * components: the series y_t = M (x_t - mean), n_eff x m;
+    * phi_bar and shares, for p = 1 only: the transformed AR matrix
+      M Phi M^-1, whose j-th row sums in squares to lam_j (3.8), and the
+      proportional contributions (Table 4.3): shares[j, i] = phi_bar[j, i]^2
+      from component i's past, and shares[j, m] = 1 - lam_j from its shock.
+
+    A reading, not a test: lam near 1 also arises from a nearly singular
+    innovation covariance (§5.1), and lam near 0 from exact identities in the
+    data (§5.2). Johansen's reduced-rank tests are the formal successors."""
+    x = np.asarray(x, float)
+    n, m = x.shape
+    p = int(p)
+    B, e, _ = _ls_var(x, p, p)
+    Y = x[p:]
+    fit = Y - e
+    mu = Y.mean(0)
+    T = Y.shape[0]
+    G0 = (Y - mu).T @ (Y - mu) / T
+    Gp = (fit - fit.mean(0)).T @ (fit - fit.mean(0)) / T
+    lam, M = canonical_from_moments(G0, Gp)
+    lam = np.clip(lam, 0.0, 1.0)
+    W = M / np.abs(M).max(axis=1, keepdims=True)
+    out = {"lam": lam, "M": M, "weights": W, "components": (Y - mu) @ M.T,
+           "p": p, "n_eff": T}
+    if p == 1:
+        Phi = B[1:1 + m].T
+        pb = M @ Phi @ np.linalg.inv(M)
+        sh = np.zeros((m, m + 1))
+        sh[:, :m] = pb ** 2
+        sh[:, m] = 1.0 - lam
+        out["phi_bar"] = pb
+        out["shares"] = sh
     return out
