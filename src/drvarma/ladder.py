@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import copy
 import math
+import re
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -461,11 +462,16 @@ class Ladder:
         ``"A<-B,C<-A"`` or a list of ``("A", "B")`` (B enters the equation of
         A: AR and MA, every lag up to p and q), with the series' names.
         None (default) links every pair.
+    zeros : cross coefficients fixed at zero, by the names the fit prints:
+        ``"AR3[CO2<-GAS], MA1[A<-B]"`` or a list of them — Tiao and Box's
+        simplification by coefficient (1981, §4): the restricted model is
+        refitted and compared by an LR test. Finer than ``links``, which
+        removes a whole pair.
     """
 
     def __init__(self, series, p=0, q=0, diagcov=False, redet=False,
                  fixarma=False, method=1, estwin=None, hessian="fd", lik="elf",
-                 links=None, start="zero", cross="additive"):
+                 links=None, start="zero", cross="additive", zeros=None):
         _warn_if_no_engine()
         if series and not isinstance(series[0], LadderSeries):
             series = load(series)
@@ -494,6 +500,7 @@ class Ladder:
         self.cross = cross
         if self.links is not None and self.p == 0 and self.q == 0:
             raise LadderError("links needs cross dynamics: give p or q > 0")
+        self.zeros = self._parse_zeros(zeros)
         # the cross part and Q, indexed by SERIES: they survive a change of
         # the active set, and the diagonal system seeds the full one as is.
         self._cAR = np.zeros((max(self.p, 1), m, m))
@@ -535,6 +542,43 @@ class Ladder:
             L[names.index(a), names.index(b)] = True
         return L
 
+    _ZERO = re.compile(r"\s*(AR|MA)(\d+)\[([^<\]]+)<-([^\]]+)\]\s*")
+
+    def _parse_zeros(self, zeros):
+        """frozenset of (kind, k, i, j), k 0-based, from the printed names."""
+        if not zeros:
+            return frozenset()
+        toks = zeros.split(",") if isinstance(zeros, str) else list(zeros)
+        names = [s.name for s in self.series]
+        out = set()
+        for tok in toks:
+            if not str(tok).strip():
+                continue
+            mm = self._ZERO.fullmatch(str(tok))
+            if not mm:
+                raise LadderError(f"zeros: '{str(tok).strip()}' is not of the form AR3[A<-B]")
+            kind, k, a, b = mm.group(1), int(mm.group(2)), mm.group(3).strip(), mm.group(4).strip()
+            if a not in names or b not in names or a == b:
+                raise LadderError(f"zeros: '{str(tok).strip()}' does not name two different series")
+            top = self.p if kind == "AR" else self.q
+            if not 1 <= k <= top:
+                raise LadderError(f"zeros: '{str(tok).strip()}': the cross {kind} order is {top}")
+            i, j = names.index(a), names.index(b)
+            if not self._linked(i, j):
+                raise LadderError(f"zeros: '{str(tok).strip()}' is not a linked pair")
+            out.add((kind, k - 1, i, j))
+        return frozenset(out)
+
+    def _slots(self):
+        """The free cross coefficients, in the C's order (AR lag by lag, then
+        MA), without those fixed at zero."""
+        z = getattr(self, "zeros", frozenset())
+        ar = [("AR", k, i, j) for k in range(self._cp) for i, j in self._pairs()
+              if ("AR", k, i, j) not in z]
+        ma = [("MA", k, i, j) for k in range(self._cq) for i, j in self._pairs()
+              if ("MA", k, i, j) not in z]
+        return ar + ma
+
     def _linked(self, i, j):
         return i != j and (self.links is None or bool(self.links[i, j]))
 
@@ -552,7 +596,7 @@ class Ladder:
     def npar(self):
         a = len(self._act)
         n = sum(int(mk.sum()) for mk in self._masks())
-        n += (self._cp + self._cq) * len(self._pairs())
+        n += len(self._slots())
         n += a - 1
         if not self._cdiag:
             n += a * (a - 1) // 2
@@ -563,10 +607,8 @@ class Ladder:
         for i, mk in zip(self._act, self._masks()):
             v.extend(self.series[i].x[mk])
         act = self._act
-        for k in range(self._cp):
-            v.extend(self._cAR[k, i, j] for i, j in self._pairs())
-        for k in range(self._cq):
-            v.extend(self._cMA[k, i, j] for i, j in self._pairs())
+        for kind, k, i, j in self._slots():
+            v.append((self._cAR if kind == "AR" else self._cMA)[k, i, j])
         v.extend(self._lvar[i] for i in act[1:])
         if not self._cdiag:
             v.extend(self._qcov[act[a], act[b]] for a in range(1, len(act)) for b in range(a))
@@ -580,12 +622,8 @@ class Ladder:
             self.series[i].x[mk] = v[idx:idx + k]
             idx += k
         act = self._act
-        for k in range(self._cp):
-            for i, j in self._pairs():
-                self._cAR[k, i, j] = v[idx]; idx += 1
-        for k in range(self._cq):
-            for i, j in self._pairs():
-                self._cMA[k, i, j] = v[idx]; idx += 1
+        for kind, k, i, j in self._slots():
+            (self._cAR if kind == "AR" else self._cMA)[k, i, j] = v[idx]; idx += 1
         for i in act[1:]:
             self._lvar[i] = v[idx]; idx += 1
         if not self._cdiag:
@@ -600,10 +638,7 @@ class Ladder:
             out.extend(n for n, f in zip(nm, mk) if f)
         act = self._act
         S = [s.name for s in self.series]
-        for k in range(self._cp):
-            out.extend(f"AR{k + 1}[{S[i]}<-{S[j]}]" for i, j in self._pairs())
-        for k in range(self._cq):
-            out.extend(f"MA{k + 1}[{S[i]}<-{S[j]}]" for i, j in self._pairs())
+        out.extend(f"{kind}{k + 1}[{S[i]}<-{S[j]}]" for kind, k, i, j in self._slots())
         out.extend(f"log(Q[{S[i]}]/Q[{S[act[0]]}])" for i in act[1:])
         if not self._cdiag:
             out.extend(f"Q[{S[act[a]]},{S[act[b]]}]" for a in range(1, len(act)) for b in range(a))
@@ -857,12 +892,9 @@ class Ladder:
             seeds["ar"] = yule_walker(W, self._cp)
         S = np.cov(res.T, bias=True)
         x0 = self.pack()
-        for k in range(self._cq):
-            for i, j in self._pairs():
-                self._cMA[k, i, j] = seeds["ma"][k, i, j]
-        for k in range(self._cp):
-            for i, j in self._pairs():
-                self._cAR[k, i, j] = seeds["ar"][k, i, j]
+        for kind, k, i, j in self._slots():
+            (self._cAR if kind == "AR" else self._cMA)[k, i, j] = \
+                seeds["ar" if kind == "AR" else "ma"][k, i, j]
         if not self._cdiag:
             for a in range(1, m):
                 for b in range(a):

@@ -6,6 +6,12 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**Cross coefficients fixed at zero** (`Ladder(zeros=)`): by the names the fit
+prints, `"AR3[A<-B], MA1[B<-A]"`. It is Tiao and Box's simplification by
+coefficient, finer than `links`: zeroing a pair's every coefficient is the
+same model as unlinking it, which pins the C's `-links` value. Python only for
+now; the C has `-links`. Tests: `tests/test_zeros.py`.
+
 **Tiao and Box's stepwise autoregression and Box and Tiao's canonical
 analysis** (`identification_mv`):
 - `stepwise_ar` / `stepwise_order`: the AR(l) fits by least squares on a common
