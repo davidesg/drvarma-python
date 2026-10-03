@@ -46,7 +46,10 @@ def test_plot_residual_diagnostics_all(fitted):
     mdl, _ = fitted
     figs = plots.plot_residual_diagnostics_all(mdl)    # one per series (m=2)
     assert len(figs) == 2 and all(isinstance(f, Figure) for f in figs)
-    assert all(tuple(f.get_size_inches()) == (15.0, 5.5) for f in figs)
+    # pyfug's native size: fug C's big canvas (fugplot.c), in points.
+    from pyfug.graphics.fugplot import LAYOUT_BIG as L
+    size = (L["W"] / 72.0, L["H"] / 72.0)
+    assert all(tuple(f.get_size_inches()) == pytest.approx(size) for f in figs)
 
 
 def test_plot_mean_deviation(fitted):
