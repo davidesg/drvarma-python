@@ -1,11 +1,11 @@
 ---
 id: BUG-0005
 title: Donde no hay rueda binaria se instala la de Python puro y el motor C no se usa, sin ningún aviso
-status: open
+status: fixed
 severity: medium
 component: packaging
 found_in: 0.1.6
-fixed_in:
+fixed_in: 0.2.0
 reported: 2026-09-12
 reporter: David / Claude — revisión de las ruedas de la suite tras publicar art 0.2.1
 tags: [pure-python, ruedas, aviso]
@@ -63,3 +63,29 @@ publicar ruedas para cp314 y macOS x86_64.
 
 Un test que simule la ausencia del `.so` y compruebe que el aviso sale una vez, y
 que no sale con `DRVARMA_NO_ENGINE`.
+
+## Arreglo (2026-10-04)
+
+El mismo de fue BUG-0024, que ya cerró su mitad de este informe:
+
+- `_engine._load_c()` intenta el motor C; si no carga, guarda el
+  `ImportError`. No cachea el éxito: tras la primera vez el import es una
+  búsqueda en `sys.modules`, y así siguen siendo honestos los tests que
+  bloquean el módulo para forzar el porte.
+- El primer respaldo del proceso avisa (`RuntimeWarning`, con el error de
+  importación y cómo instalar el motor) desde los tres puntos de entrada:
+  `estimate_w`, `elf_c` y `marma_c`. El aviso que ya tenía la escalera
+  (`ladder._warn_if_no_engine`) pasa a ser ese mismo, así que no sale dos
+  veces.
+- Con `DRVARMA_NO_ENGINE` no avisa: el respaldo lo pide el usuario.
+- `drvarma.engine_backend()` → `"c"` / `"python"` y
+  `drvarma.engine_load_error()` → la causa, para que sima pueda sellar el
+  motor como art sella el de fue.
+
+Validación: `tests/test_bug_0005_respaldo_avisa.py`. Comprueba que el aviso sale una
+vez con el `.so` bloqueado, también desde `elf_c` y `marma_c`; que no sale con
+`DRVARMA_NO_ENGINE` ni con el motor cargado; y que `engine_backend()` lo dice.
+
+Queda fuera, como decisión de publicación y no de código: ruedas para cp314 y
+macOS x86_64.
+

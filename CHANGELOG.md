@@ -6,6 +6,17 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**Fix — BUG-0005: drvarma says when it falls back to the pure-Python port.**
+Where no binary wheel exists (Intel Mac, macOS < 14, Python 3.14, Windows on
+ARM) pip installs the `py3-none-any` wheel, and `estimate_w`, `elf_c` and
+`marma_c` used the port in silence: same results, 20-250x slower. The first
+fallback in a process now warns (`RuntimeWarning`, with the import error);
+the ladder's own warning is that same one, so it is not printed twice.
+`DRVARMA_NO_ENGINE=1` asks for the port and stays silent.
+`drvarma.engine_backend()` returns `"c"` or `"python"` and
+`drvarma.engine_load_error()` the cause, as in fue (BUG-0024). Tests:
+`tests/test_bug_0005_respaldo_avisa.py`.
+
 **Cross coefficients fixed at zero** (`Ladder(zeros=)`): by the names the fit
 prints, `"AR3[A<-B], MA1[B<-A]"`. It is Tiao and Box's simplification by
 coefficient, finer than `links`: zeroing a pair's every coefficient is the

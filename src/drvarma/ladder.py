@@ -109,15 +109,12 @@ PRE_MOVE = 1e-3                             # a .pre that moves more is no optim
 def _warn_if_no_engine():
     """The ladder evaluates the likelihood thousands of times per fit. Without
     the compiled engine (the binary wheels) elf_c falls back to the pure-Python
-    AS 311, ~250x slower: say so instead of degrading in silence."""
-    try:
-        import drvarma._drvarma_engine  # noqa: F401
-    except ImportError:
-        import warnings
-        warnings.warn("drvarma's compiled engine is not available: the ladder will "
-                      "run the pure-Python likelihood, ~250x slower. Install a binary "
-                      "wheel (pip install drvarma) or build it (pip install "
-                      "'drvarma[c-engine]').", RuntimeWarning, stacklevel=3)
+    AS 311, ~250x slower: say so instead of degrading in silence. The same
+    once-per-process warning as every other fallback (BUG-0005)."""
+    from . import _engine
+    if _engine._load_c() is None:
+        _engine._warn_python_fallback(
+            "the ladder will run the pure-Python likelihood", stacklevel=4)
 
 
 class LadderError(ValueError):
