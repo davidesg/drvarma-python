@@ -16,10 +16,18 @@ the raw-series path, so they are documented rather than rebuilt:
   k nor in the bands.
 Test: `tests/test_bug_0011_0013_limitaciones.py`.
 
-**Registered — BUG-0015: Hosking's Q subtracts no estimated parameter.**
-`df = m²·s` on the residuals of a fitted model, in the C and in the port;
-it rejects 0.3-1.5% of the time at a nominal 5% (`tools/hosking_size.py`).
-Affects `Model.diagnostics`, the reports and sima. Open.
+**Fix — BUG-0015: Hosking's Q subtracts the estimated ARMA coefficients.**
+It used `df = m²·s` on the residuals of a fitted model, and rejected
+0.3-1.5% of the time at a nominal 5% (`tools/hosking_size.py`).
+- `hosking_q(res, s, k=0)` and `qccf(..., k=0)` give `df = m²·s − k`, with a
+  `nan` p-value when no degree of freedom is left.
+- `Model.n_arma()` feeds `Model.diagnostics` (the MCP `diagnose`) and the
+  `.out`, which now prints `Q(m²(s−p−q))`.
+- `Ladder.n_arma()` counts each series' own ARMA coefficients plus the free
+  cross ones, for sima.
+On 150 simulated VARMA(1,1) the test now rejects near its 5%. The C engine
+(`diagnose.c`) still uses `m²·s`: pending on the drvarma-v5 branch. Test:
+`tests/test_bug_0015_hosking_gl.py`.
 
 **Docs — BUG-0004: the pure-Python fallback is the full VARMA(p,q).** The
 `_engine` docstrings still said «q=0 only» / «exact VAR only», from before the

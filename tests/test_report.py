@@ -64,9 +64,13 @@ def test_out_deterministic_sections_byte_exact(tmp_path, marker_pair):
     subprocess.run([os.path.abspath(C_BIN), str(tmp_path / "o"), "3", "0",
                     "-mean", "-deseason", "auto"], check=True, capture_output=True)
     c_text = open(tmp_path / "o.out", encoding="latin-1").read()
-    py_text = report.out_report(_fit_ipc3("auto"))
+    mdl = _fit_ipc3("auto")
+    py_text = report.out_report(mdl)
     start, end = marker_pair
-    assert _section(py_text, start, end) == _section(c_text, start, end)
+    from _bug0015 import without_hosking
+    c_sec, py_sec = without_hosking(_section(c_text, start, end),
+                                    _section(py_text, start, end), mdl.n_arma())
+    assert py_sec == c_sec
 
 
 @needs_c

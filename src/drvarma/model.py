@@ -168,6 +168,13 @@ class Model:
         return fevd(self.result["phi"], self.result["theta"],
                     self.result["sigma"], horizon)
 
+    def n_arma(self):
+        """The ARMA coefficients estimated: m per lag under a diagonal
+        restriction, m^2 otherwise. Hosking's Q subtracts them (BUG-0015)."""
+        m = self.series.data.shape[1]
+        return (self.p * (m if self.diag_ar else m * m)
+                + self.q * (m if self.diag_ma else m * m))
+
     def diagnostics(self, lag=None):
         """Multivariate residual diagnostics: Hosking Q and Jarque-Bera.
 
@@ -179,7 +186,7 @@ class Model:
         res = self.result["residuals"]
         if lag is None:
             lag = (self.series.freq + 2) if self.series.freq > 1 else 10
-        Q, qdf, qp = hosking_q(res, lag)
+        Q, qdf, qp = hosking_q(res, lag, self.n_arma())
         JB, jdf, jp = jarque_bera_mv(res)
         return {"hosking_Q": Q, "hosking_df": qdf, "hosking_p": qp, "hosking_lag": lag,
                 "JB": JB, "JB_df": jdf, "JB_p": jp}

@@ -44,10 +44,17 @@ except Exception:  # pragma: no cover - scipy expected, but degrade gracefully
         return h * math.exp(-xx + a * math.log(xx) - math.lgamma(a))
 
 
-def hosking_q(res, s):
+def hosking_q(res, s, k=0):
     """Hosking multivariate portmanteau Q on residuals (nobs x m), s lags.
 
-    Returns (Q, df, pvalue);  df = m^2 * s.
+    `k` is the number of ARMA coefficients estimated to get the residuals:
+    Hosking (1980) gives df = m^2 (s - p - q) for a fitted VARMA(p, q), and in
+    general m^2 s - k. With k = 0 (the default: a series, not residuals) it is
+    m^2 s. Before BUG-0015 every caller passed residuals with k = 0, and the
+    test rejected 0.3-1.5% of the time at a nominal 5%.
+
+    Returns (Q, df, pvalue); the p-value is nan when df < 1 (s too short for
+    the parameters: raise s).
     """
     res = np.atleast_2d(np.asarray(res, float))
     n, m = res.shape
@@ -59,8 +66,8 @@ def hosking_q(res, s):
         Cr = C[r]
         Q += np.trace(Cr.T @ C0inv @ Cr @ C0inv)
     Q *= n
-    df = m * m * s
-    return float(Q), df, _chisq_sf(Q, df)
+    df = m * m * s - int(k)
+    return float(Q), df, (_chisq_sf(Q, df) if df >= 1 else float("nan"))
 
 
 def series_stats(x):
@@ -199,15 +206,16 @@ def ccf(w1, w2, lags):
     return rho
 
 
-def qccf(w1, w2, lags):
+def qccf(w1, w2, lags, k=0):
     """Hosking bivariate portmanteau Q for the pair (w1, w2) up to `lags`.
 
     Port of drvus ``ccf.c``/``qccf.c``; equivalent to `hosking_q` on the
-    stacked 2-variate series.  Returns (Q, df, pvalue).
+    stacked 2-variate series. On residuals, `k` is the ARMA coefficients of
+    the two models (BUG-0015). Returns (Q, df, pvalue).
     """
     res = np.column_stack([np.asarray(w1, float).ravel(),
                            np.asarray(w2, float).ravel()])
-    return hosking_q(res, lags)
+    return hosking_q(res, lags, k)
 
 
 def jarque_bera_mv(res):

@@ -279,6 +279,11 @@ class LadderSeries:
                 k += 1
         return changed
 
+    def n_arma(self):
+        """The series' own ARMA coefficients, those its .pre estimated: the
+        block of x between the deterministic terms and the mean."""
+        return int(self.x.size - self.n_det - int(self.has_mu))
+
     def free_mask(self, redet, fixarma):
         mask = np.zeros(self.x.size, bool)
         mask[:self.n_det] = bool(redet)
@@ -589,6 +594,13 @@ class Ladder:
 
     def _masks(self):
         return [self.series[i].free_mask(self.redet, self.fixarma) for i in self._act]
+
+    def n_arma(self):
+        """The ARMA coefficients behind the residuals, for Hosking's Q
+        (BUG-0015): each active series' own (estimated by its .pre, even when
+        the ladder holds them fixed) plus the free cross ones."""
+        return (sum(self.series[i].n_arma() for i in self._act)
+                + len(self._slots()))
 
     def npar(self):
         a = len(self._act)

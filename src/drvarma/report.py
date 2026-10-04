@@ -542,7 +542,7 @@ def _diagnostics_block(model):
         s = 1
     if s > n - 2:
         s = n - 2
-    Q, qdf, qp = hosking_q(res, s)
+    Q, qdf, qp = hosking_q(res, s, model.n_arma())
     JB, jdf, jp = jarque_bera_mv(res)
     out = ["\n\n", _banner("           MULTIVARIATE RESIDUAL DIAGNOSTICS                ")]
     out.append("\nHosking's Multivariate Portmanteau Test (lag %d):\n" % s)
