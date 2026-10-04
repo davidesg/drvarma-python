@@ -9,6 +9,7 @@ pytest.importorskip("pyfug", reason="pyfug not installed")
 pytest.importorskip("drvarma._drvarma_engine", reason="C engine not built")
 
 from drvarma import load, Model, report
+from _bug0003 import c_deseason_in_levels
 
 C_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "drvarma_v.04.1")
 IPC3 = os.path.join(C_DIR, "data", "models_group1", "IPC3.inp")
@@ -28,6 +29,7 @@ def _strip_val(line):
 
 
 @needs_ipc3
+@c_deseason_in_levels
 def test_residual_section_matches_ipc3_out():
     ser, spec = load(IPC3)
     mdl = Model(ser, lam=spec.lam, d=spec.d, D=spec.D, p=3, q=0,

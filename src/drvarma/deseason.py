@@ -9,6 +9,18 @@ Delicate point (matches the C exactly):
   * The amplitudes are then mapped back to LEVEL seasonal dummies via the A0
     matrix (harmonics evaluated at periods 1..s-1) plus a sum-to-zero constraint,
     and subtracted from the raw *levels*.
+
+The ORDER is log -> d=1 -> deseasonalization (BUG-0003), as in art: the
+pattern is estimated on the differences of the Box-Cox series (the log for
+lam=0) and subtracted on that scale, where a multiplicative pattern is
+additive. `deseasonalize` does that for a Model; `deseasonalize_raw` is the
+engine underneath and works on whatever scale it is given. The dummies are on
+the Box-Cox scale WITHOUT `scale`, and `reseasonalize` puts them back there:
+on a log forecast the annual rate (TLVA) is free of them exactly.
+
+The C (drvarma.c, deseason.c) still adjusts the raw levels before the log
+(d=1 -> deseasonalization -> log); the port no longer does. Pending in
+drvarma-v5.
 """
 
 import numpy as np
@@ -116,6 +128,37 @@ def _acf_at(x, k):
     return float((xc[:n - k] * xc[k:]).sum()) / (n * var)
 
 
+def deseasonalize(levels, lam, s, start_sub=1, mode="auto", alpha=0.05):
+    """Log (Box-Cox) first, then d=1 and the harmonic adjustment (BUG-0003).
+
+    Returns (levels_des, dummies, info): the deseasonalized series back in
+    level units (so the rest of the pipeline is unchanged), the dummies on the
+    Box-Cox scale (m, s), and `deseasonalize_raw`'s per-series info.
+    """
+    from . import transform
+    g = transform.boxcox_fwd(np.atleast_2d(np.asarray(levels, float)), lam)
+    g_adj, dummies, info = deseasonalize_raw(g, s=s, start_sub=start_sub,
+                                             mode=mode, alpha=alpha)
+    return transform.boxcox_inv(g_adj, lam), dummies, info
+
+
+def seasonal_path(dummies, origin, L, start_sub, s):
+    """The (L, m) dummies of the L periods after raw observation `origin`
+    (1-based count of observations), on the dummies' own scale."""
+    m = dummies.shape[0]
+    out = np.zeros((L, m))
+    for l in range(1, L + 1):
+        out[l - 1] = dummies[:, (origin + l + start_sub - 2) % s]
+    return out
+
+
+def reseasonalize(lev_des, dseas, lam):
+    """Deseasonalized levels back to the original series: the dummies are added
+    on the Box-Cox scale, where they were removed."""
+    from . import transform
+    return transform.boxcox_inv(transform.boxcox_fwd(lev_des, lam) + dseas, lam)
+
+
 def deseasonalize_raw(raw, s, start_sub=1, mode="auto", d=1, alpha=0.05):
     """Harmonic seasonal adjustment of raw levels (port of deseasonalize_raw).
 
@@ -149,6 +192,11 @@ def deseasonalize_raw(raw, s, start_sub=1, mode="auto", d=1, alpha=0.05):
             continue
         diff = raw[1:, j] - raw[:-1, j]
         coeffs, f_stat, r2 = harmonic_regression_differenced(diff, d, s)
+        # The decision is the OLS F, as the C. art decides with a HAC F, and
+        # drvarma and art should share one mechanism; but on 2026-10-04 art's
+        # HAC F measured oversized (20% at n=216 on a random walk, nominal
+        # 5%), so it is not adopted here until art's study settles which test
+        # both use (art BUG-0206).
         f_crit = _f_crit(num_harm, n_diff - num_harm - 1, alpha)
         is_seasonal = f_stat > f_crit
         do_des = True if force else is_seasonal

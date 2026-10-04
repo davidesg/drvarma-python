@@ -13,6 +13,7 @@ from drvarma import diagnostics, load, transform
 from drvarma.datasets import (simulate_varma, varma_cases, is_stationary,
                               is_invertible)
 from drvarma.estimate_py import estimate_w_py
+from _bug0003 import c_deseason_in_levels
 
 has_engine = True
 try:
@@ -132,6 +133,7 @@ def test_hosking_q_matches_formula():
 
 @needs_engine
 @needs_pt
+@c_deseason_in_levels
 def test_series_stats_match_c_out():
     # exact match vs the IPC3.out residual-diagnostics section (series a[1]).
     from drvarma import load

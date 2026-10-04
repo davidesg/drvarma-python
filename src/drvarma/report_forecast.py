@@ -217,13 +217,12 @@ def _forecast_arrays(model, L, b=0):
     v_lvl, v_mon, v_ann = forecast_level_variances(
         res["phi"], res["theta"], res["sigma"], L, model.d, model.D, freq)
     origin = nobs_raw - b
-    dseas = np.zeros((L, m))
+    from .deseason import seasonal_path, reseasonalize
+    dseas = np.zeros((L, m))                      # Box-Cox scale (BUG-0003)
     if model.deseason and model._dummies is not None:
-        for l in range(1, L + 1):
-            period = (origin + l + model.series.start[1] - 2) % freq
-            dseas[l - 1] = model._dummies[:, period]
+        dseas = seasonal_path(model._dummies, origin, L, model.series.start[1], freq)
     cf = scale * transform.boxcox_fwd(lev_des, lam)
-    level = lev_des + dseas
+    level = reseasonalize(lev_des, dseas, lam)
     sc = 100.0 / scale
     diff1 = np.zeros((L, m)); annual = np.zeros((L, m))
     lvl_std = np.zeros((L, m)); d1_std = np.zeros((L, m)); an_std = np.zeros((L, m))

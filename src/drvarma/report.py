@@ -78,23 +78,23 @@ def forecast_report(model, L, b=0):
         res["phi"], res["theta"], res["sigma"], L, model.d, model.D, freq)
 
     origin = nobs_raw - b
-    # re-seasonalization dummies and forecast on the scale*BoxCox scale (cf)
+    # re-seasonalization dummies (Box-Cox scale, BUG-0003) and the forecast on
+    # the scale*BoxCox scale (cf)
+    from .deseason import seasonal_path, reseasonalize
     dseas = np.zeros((L, m))
     if model.deseason and model._dummies is not None:
-        for l in range(1, L + 1):
-            period = (origin + l + sub0 - 2) % freq
-            dseas[l - 1] = model._dummies[:, period]
+        dseas = seasonal_path(model._dummies, origin, L, sub0, freq)
     cf = scale * transform.boxcox_fwd(lev_des, lam)             # (L, m)
-    level = lev_des + dseas
+    level = reseasonalize(lev_des, dseas, lam)
     low = np.zeros((L, m))
     high = np.zeros((L, m))
     for l in range(1, L + 1):
         for i in range(m):
             sd = np.sqrt(v_lvl[l, i, i])
             low[l - 1, i] = transform.boxcox_inv(
-                (cf[l - 1, i] - 1.96 * sd) / scale, lam) + dseas[l - 1, i]
+                (cf[l - 1, i] - 1.96 * sd) / scale + dseas[l - 1, i], lam)
             high[l - 1, i] = transform.boxcox_inv(
-                (cf[l - 1, i] + 1.96 * sd) / scale, lam) + dseas[l - 1, i]
+                (cf[l - 1, i] + 1.96 * sd) / scale + dseas[l - 1, i], lam)
 
     deseason_str = (model.deseason if model.deseason else "no")
     reseas = " (re-seasonalized)" if model.deseason else ""

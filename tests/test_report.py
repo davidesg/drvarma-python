@@ -10,6 +10,7 @@ pytest.importorskip("drvarma._drvarma_engine",
                     reason="C engine not built (run: python -m drvarma._build_cffi)")
 
 from drvarma import load, Model, report
+from _bug0003 import c_deseason_in_levels
 
 C_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "drvarma_v.04.1")
 IPC3 = os.path.join(C_DIR, "data", "models_group1", "IPC3.inp")
@@ -40,6 +41,7 @@ def _fit_ipc3(deseason="auto"):
 
 
 @needs_c
+@c_deseason_in_levels
 def test_forecast_report_byte_exact(tmp_path):
     shutil.copy(IPC3, tmp_path / "fc.inp")
     subprocess.run([os.path.abspath(C_BIN), str(tmp_path / "fc"), "3", "0",
@@ -58,6 +60,7 @@ def test_forecast_report_byte_exact(tmp_path):
     ("MULTIVARIATE RESIDUAL", "Normalized model"),
     ("Normalized model", "Inverse roots"),
 ])
+@c_deseason_in_levels
 def test_out_deterministic_sections_byte_exact(tmp_path, marker_pair):
     # These sections depend only on the (exactly-matching) point estimates.
     shutil.copy(IPC3, tmp_path / "o.inp")
@@ -74,6 +77,7 @@ def test_out_deterministic_sections_byte_exact(tmp_path, marker_pair):
 
 
 @needs_c
+@c_deseason_in_levels
 def test_out_parameter_estimates_match(tmp_path):
     # SE/t/p carry the documented <1e-5 engine tolerance, so compare estimates.
     shutil.copy(IPC3, tmp_path / "p.inp")
@@ -91,6 +95,7 @@ def test_out_parameter_estimates_match(tmp_path):
 
 
 @needs_c
+@c_deseason_in_levels
 def test_recursive_report_matches_c(tmp_path):
     shutil.copy(IPC3, tmp_path / "r.inp")
     subprocess.run([os.path.abspath(C_BIN), str(tmp_path / "r"), "3", "0", "-mean",

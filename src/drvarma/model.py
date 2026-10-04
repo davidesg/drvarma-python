@@ -51,15 +51,22 @@ class Model:
         "the series we identify on" and "the series we estimate on" cannot drift
         apart when this pipeline changes.
 
-        Returns (w, bc, levels_after_deseason).
+        The seasonal adjustment is log -> d=1 -> deseasonalization (BUG-0003):
+        `levels` comes back deseasonalized in level units, the dummies on the
+        Box-Cox scale.
+
+        Returns (w, bc, levels_after_deseason, dummies, deseason_info).
         """
         levels = self.series.data
         dummies = deseason_info = None
+        # BUG-0003: log -> d=1 -> deseasonalization, as art. The dummies are on
+        # the Box-Cox scale; `levels` comes back deseasonalized in level units.
         if self.deseason:
-            from .deseason import deseasonalize_raw
+            from .deseason import deseasonalize
             yr, sub = self.series.start
-            levels, dummies, deseason_info = deseasonalize_raw(
-                levels, s=self.series.freq, start_sub=sub, mode=self.deseason)
+            levels, dummies, deseason_info = deseasonalize(
+                levels, self.lam, s=self.series.freq, start_sub=sub,
+                mode=self.deseason)
         w, bc = transform.transform(levels, lam=self.lam, d=self.d, D=self.D,
                                     s=self.series.freq,
                                     scale=self.scale if scale is None else scale)
@@ -112,16 +119,15 @@ class Model:
         lev_des, _ = forecast_levels(self.result, self._w, self._bc,
                                      lam=self.lam, scale=self.scale, d=self.d,
                                      D=self.D, s=self.series.freq, L=L, b=b)
+        from .deseason import seasonal_path, reseasonalize
         m = self.series.m
         freq = self.series.freq
         sub = self.series.start[1]
         origin = self.series.nobs - b
-        dseas = np.zeros((L, m))
+        dseas = np.zeros((L, m))                  # on the Box-Cox scale
         if self.deseason and self._dummies is not None:
-            for l in range(1, L + 1):
-                period = (origin + l + sub - 2) % freq
-                dseas[l - 1] = self._dummies[:, period]
-        levels = lev_des + dseas
+            dseas = seasonal_path(self._dummies, origin, L, sub, freq)
+        levels = reseasonalize(lev_des, dseas, self.lam)
         if not bands:
             return levels
         v_level, _, _ = forecast_level_variances(
@@ -132,8 +138,10 @@ class Model:
             for i in range(m):
                 sd = np.sqrt(v_level[l, i, i])
                 cf = self.scale * transform.boxcox_fwd(lev_des[l - 1, i], self.lam)
-                low[l - 1, i] = transform.boxcox_inv((cf - 1.96 * sd) / self.scale, self.lam) + dseas[l - 1, i]
-                high[l - 1, i] = transform.boxcox_inv((cf + 1.96 * sd) / self.scale, self.lam) + dseas[l - 1, i]
+                low[l - 1, i] = transform.boxcox_inv(
+                    (cf - 1.96 * sd) / self.scale + dseas[l - 1, i], self.lam)
+                high[l - 1, i] = transform.boxcox_inv(
+                    (cf + 1.96 * sd) / self.scale + dseas[l - 1, i], self.lam)
         return levels, low, high
 
     def recursive_forecast(self, estwin, H):

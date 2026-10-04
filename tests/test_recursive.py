@@ -8,6 +8,7 @@ pytest.importorskip("drvarma._drvarma_engine", reason="C engine not built")
 
 from drvarma import load
 from drvarma.model import Model
+from _bug0003 import c_deseason_in_levels
 
 C_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "drvarma_v.04.1")
 IPC3 = os.path.join(C_DIR, "data", "models_group1", "IPC3.inp")
@@ -37,7 +38,8 @@ def _py_dict(series, rows):
 
 @pytest.mark.skipif(not (os.path.exists(IPC3) and os.path.exists(C_BIN)),
                     reason="C binary or IPC3.inp not available")
-@pytest.mark.parametrize("deseason_flag", [[], ["-deseason", "auto"]])
+@pytest.mark.parametrize("deseason_flag", [
+    [], pytest.param(["-deseason", "auto"], marks=c_deseason_in_levels)])
 def test_recursive_matches_c(tmp_path, deseason_flag):
     import shutil, subprocess
     shutil.copy(IPC3, tmp_path / "r.inp")

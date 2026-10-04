@@ -10,6 +10,7 @@ pytest.importorskip("drvarma._drvarma_engine",
 from drvarma import load, transform, MultiSeries
 from drvarma.model import Model
 from drvarma.datasets import simulate_varma
+from _bug0003 import c_deseason_in_levels
 
 C_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "drvarma_v.04.1")
 IPC3 = os.path.join(C_DIR, "data", "models_group1", "IPC3.inp")
@@ -44,6 +45,7 @@ def test_forecast_levels_match_c(tmp_path):
 
 @pytest.mark.skipif(not (os.path.exists(IPC3) and os.path.exists(C_BIN)),
                     reason="C drvarma binary or IPC3.inp not available")
+@c_deseason_in_levels
 def test_forecast_bands_match_c(tmp_path):
     import shutil, subprocess
     shutil.copy(IPC3, tmp_path / "fb.inp")

@@ -106,7 +106,7 @@ def recursive_forecast(series, estwin, H, lam, d, D, scale, p, q,
     """
     from ._engine import estimate_w
     from . import transform as _t
-    from .deseason import deseasonalize_raw
+    from .deseason import deseasonalize_raw, reseasonalize
 
     levels = np.asarray(series.data, float)
     m = series.m
@@ -116,12 +116,14 @@ def recursive_forecast(series, estwin, H, lam, d, D, scale, p, q,
 
     dummies = None
     if deseason:
-        _, dummies, _ = deseasonalize_raw(levels[:estwin], s=freq,
+        # BUG-0003: estimated and removed on the Box-Cox scale (log first)
+        g = _t.boxcox_fwd(levels, lam)
+        _, dummies, _ = deseasonalize_raw(g[:estwin], s=freq,
                                           start_sub=sub, mode=deseason)
-        levels = levels.copy()
         periods = (np.arange(len(levels)) + sub - 1) % freq
         for j in range(m):
-            levels[:, j] = levels[:, j] - dummies[j][periods]
+            g[:, j] = g[:, j] - dummies[j][periods]
+        levels = _t.boxcox_inv(g, lam)
 
     w_full, bc_full = _t.transform(levels, lam=lam, d=d, D=D, s=freq, scale=scale)
     nobs_eff = w_full.shape[0]
@@ -149,7 +151,7 @@ def recursive_forecast(series, estwin, H, lam, d, D, scale, p, q,
                 v = lvl[l - 1, j]
                 if deseason and dummies is not None:
                     period = (rraw + l + sub - 2) % freq
-                    v += dummies[j][period]
+                    v = float(reseasonalize(v, dummies[j][period], lam))
                 rows.append((rraw, j, l, float(v)))
     return rows, result
 

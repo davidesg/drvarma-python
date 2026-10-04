@@ -373,10 +373,10 @@ def characterize_series(name: str) -> str:
     check = ""
     if deseason_c:
         try:
-            from .deseason import deseasonalize_raw
-            _, _, dinfo = deseasonalize_raw(ms.data, s=ms.freq,
-                                            start_sub=ms.start[1],
-                                            mode=deseason_c)
+            from .deseason import deseasonalize
+            _, _, dinfo = deseasonalize(ms.data, lam_c, s=ms.freq,
+                                        start_sub=ms.start[1],
+                                        mode=deseason_c)
             crows, worse = [], []
             for lab, di in zip(ms.names, dinfo):
                 if not di["adjusted"]:

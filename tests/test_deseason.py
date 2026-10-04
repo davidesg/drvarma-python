@@ -11,6 +11,7 @@ import pytest
 from drvarma import load
 from drvarma.deseason import (deseasonalize_raw, harmonics_to_dummies,
                               harmonic_regression_differenced)
+from _bug0003 import c_deseason_in_levels
 
 C_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "drvarma_v.04.1")
 IPC3 = os.path.join(C_DIR, "data", "models_group1", "IPC3.inp")
@@ -50,6 +51,7 @@ def test_fstats_match_c(tmp_path):
 
 @pytest.mark.skipif(not (os.path.exists(IPC3) and os.path.exists(C_BIN)),
                     reason="C binary or IPC3.inp not available")
+@c_deseason_in_levels
 def test_deseason_params_and_forecast_match_c(tmp_path):
     pytest.importorskip("drvarma._drvarma_engine")
     import shutil, subprocess

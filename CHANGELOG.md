@@ -16,6 +16,18 @@ the raw-series path, so they are documented rather than rebuilt:
   k nor in the bands.
 Test: `tests/test_bug_0011_0013_limitaciones.py`.
 
+**Fix — BUG-0003: the seasonal adjustment is log -> d=1 -> deseasonalization,
+as art.** It was d=1 -> deseasonalization -> log: the pattern was estimated on
+the differenced levels and subtracted from them. Now
+`deseason.deseasonalize` estimates and removes it on the Box-Cox scale, and
+`deseason.reseasonalize` puts it back there. `Model`, its forecast and bands,
+both forecast reports, the recursive forecast and the MCP check use them. The
+dummies equal art's `detect_seasonality` (1e-14 on IPC3), and the annual rate
+(TLVA) of a forecast is free of them exactly. The C still adjusts the levels
+(untouched, pending drvarma-v5); the 13 binary-parity tests with
+`-deseason` are a declared strict xfail (`tests/_bug0003.py`). Tests:
+`tests/test_bug_0003_log_primero.py`; measurement: `tools/deseason_order.py`.
+
 **Fix — BUG-0015: Hosking's Q subtracts the estimated ARMA coefficients.**
 It used `df = m²·s` on the residuals of a fitted model, and rejected
 0.3-1.5% of the time at a nominal 5% (`tools/hosking_size.py`).
