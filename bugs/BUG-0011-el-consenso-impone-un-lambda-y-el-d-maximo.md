@@ -1,7 +1,7 @@
 ---
 id: BUG-0011
 title: The consensus imposes one lambda and d = max(d_i), which over-differences an I(0) series
-status: open
+status: wontfix
 severity: low
 component: mcp
 found_in: 0.1.7
@@ -41,3 +41,18 @@ warn when the dᵢ differ.
 ## Validation
 
 Pending the decision.
+
+## Decision (2026-10-04): documented, not rebuilt
+
+sima supersedes this path: its ladder starts from each series' own `.pre`
+(art) and keeps that model, λ and d included, on the diagonal. So per-series
+λ and d in `Model` is not built here.
+
+What changed in the drvarma MCP:
+- `characterize_series` says it when the consensus forces a series away from
+  its own transformation. It names the series it over-differences (dᵢ < d)
+  and those whose λ is ≥ 0.25 away from the common one, and points to sima.
+- Its docstring states the limitation.
+
+Test: `tests/test_bug_0011_0013_limitaciones.py` (a random walk with an
+AR(1) warns; two random walks do not).

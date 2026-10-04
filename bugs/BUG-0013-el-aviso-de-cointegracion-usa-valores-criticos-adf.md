@@ -1,7 +1,7 @@
 ---
 id: BUG-0013
 title: The cointegration warning uses ADF critical values on a residual, and always normalises on the first series
-status: open
+status: wontfix
 severity: low
 component: mcp
 found_in: 0.1.7
@@ -43,3 +43,15 @@ Johansen.
 
 A simulated pair of independent random walks: no warning at the nominal
 rate.
+
+## Decision (2026-10-04): documented, not rebuilt
+
+sima supersedes this path and sends cointegration to drvec, where
+Johansen's test decides. The Engle-Granger notice in `characterize_series`
+stays as a hint and now says so: it uses ADF critical values, not
+MacKinnon's for residuals, so it warns too often, and it normalises on the
+first series, so it can change with the order. Johansen, via sima → drvec,
+is what decides.
+
+Test: `tests/test_bug_0011_0013_limitaciones.py` (a cointegrated pair
+raises the notice with that text).

@@ -259,6 +259,11 @@ def characterize_series(name: str) -> str:
     (λ, d, deseason) that the VARMA tools use by default. Without this, a VARMA
     spec is blind guessing. Defensive: falls back to log/d=1 per piece if a
     component analysis is unavailable.
+
+    LIMITATION (BUG-0011): v1 takes ONE λ and d = max(dᵢ) for every series,
+    so an I(0) component in a mixed system is over-differenced (an MA unit
+    root). It says so when the series disagree. Per-series models are sima's:
+    its ladder keeps each series' own .pre on the diagonal.
     """
     ms = _require(name)
     try:
@@ -339,6 +344,22 @@ def characterize_series(name: str) -> str:
     def _fmt(v, spec):
         return "—" if v is None or v != v else format(v, spec)
 
+    # BUG-0011: the consensus is one λ and the largest d. Say it when that
+    # forces a series away from its own transformation.
+    mixed = ""
+    over = [r["name"] for r in per if r["d"] < d_c]
+    lam_off = [r["name"] for r in per if abs(r["lam"] - lam_c) >= 0.25]
+    if over or lam_off:
+        mixed = ("\n⚠ **LIMITACIÓN de v1 (BUG-0011): un solo λ y d = máx(dᵢ) para "
+                 "todas las series.**\n"
+                 + (f"   Se SOBREDIFERENCIAN {', '.join(over)} (su d es menor que "
+                    f"{d_c}): eso mete una raíz unitaria en su MA y el VARMA estima "
+                    f"contra la frontera de invertibilidad.\n" if over else "")
+                 + (f"   El λ común ({lam_c:.2f}) no es el suyo para "
+                    f"{', '.join(lam_off)}.\n" if lam_off else "")
+                 + "   Para un modelo por serie, usa **sima**: su escalera parte del "
+                   "`.pre` de cada serie (art) y lo conserva en la diagonal.\n")
+
     rows = "\n".join(
         f"| {r['name']} | {r['lam']:.2f} | {r['d']} | "
         f"{'sí' if r['seasonal'] else 'no'} | {_fmt(r['f_seas'], '.1f')} | "
@@ -411,6 +432,11 @@ def characterize_series(name: str) -> str:
                     "\n🔶 **Posible COINTEGRACIÓN.** Todas las series son I(1), pero "
                     "el residuo de la regresión estática entre ellas sale I(0) "
                     "(Engle-Granger): se mueven juntas a largo plazo.\n"
+                    "   Es un INDICIO, no un contraste (BUG-0013): usa los valores "
+                    "críticos del ADF y no los de MacKinnon para residuos, así que "
+                    "avisa de más, y normaliza sobre la primera serie, así que "
+                    "puede cambiar con el orden. Quien decide es Johansen: sima "
+                    "lleva estas series a drvec.\n"
                     "   sima v1 es VARMA ESTACIONARIO — diferencia cada serie por "
                     "separado, y eso DESCARTA la relación de largo plazo. Las "
                     "previsiones de corto plazo siguen siendo utilizables; las "
@@ -425,7 +451,7 @@ def characterize_series(name: str) -> str:
             f"**Consenso para el VARMA (guardado):** λ={lam_c:.2f}, d={d_c}, "
             f"deseason={deseason_c or 'no'}, techo (p,q)≤({p_ceil},{q_ceil}).\n"
             f"{'⚠ Estacionalidad detectada → se usará desestacionalización armónica (deseason=auto).' if deseason_c else ''}\n"
-            f"{check}{coint}"
+            f"{check}{mixed}{coint}"
             f"Siguiente: cross_correlation_matrices({name!r}) y "
             f"partial_autoregression_matrices({name!r}) (usan este seed), luego "
             f"identify_varma_order({name!r}).\n"
@@ -1010,6 +1036,12 @@ def diagnose(name: str, lag: int = 0) -> str:
                      "estacionalidad sin modelar. Subir p/q no es la solución — "
                      "revisa la desestacionalización (λ/d/deseason y el período "
                      "inicial declarado).")
+    if mod.deseason and mod._dummies is not None:
+        lines.append(f"- Nota (BUG-0012): los {int(ms.freq) - 1} coeficientes armónicos "
+                     "de la desestacionalización, por serie, se estiman ANTES del "
+                     "modelo y no cuentan en sus k: el AIC/BIC no los incluye (no "
+                     "cambia la ordenación entre órdenes, todos los llevan) y las "
+                     "bandas de previsión no incluyen su incertidumbre.")
     if ok_q and not seasonal_flag:
         lines.append("Modelo adecuado.")
     else:
@@ -1029,6 +1061,10 @@ def generate_forecast(name: str, horizon: int = 12) -> str:
         out += [f"\n## {lab}", "| h | previsión | IC 95% |", "|---|-----------|--------|"]
         out += [f"| {h+1} | {levels[h, j]:.3f} | [{low[h, j]:.3f}, {high[h, j]:.3f}] |"
                 for h in range(horizon)]
+    if mod.deseason and mod._dummies is not None:
+        out.append("\n_Las bandas no incluyen la incertidumbre de los coeficientes "
+                   "armónicos de la desestacionalización, que se estiman antes del "
+                   "modelo: son algo estrechas (BUG-0012)._")
     return "\n".join(out)
 
 

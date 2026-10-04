@@ -1,7 +1,7 @@
 ---
 id: BUG-0012
 title: The harmonic seasonal coefficients are not counted in degrees of freedom, k or forecast uncertainty
-status: open
+status: wontfix
 severity: low
 component: deseason
 found_in: 0.1.7
@@ -39,3 +39,20 @@ the report that they are not counted.
 ## Validation
 
 Pending the decision.
+
+## Decision (2026-10-04): documented; the Hosking part is BUG-0015
+
+The adjustment stays a preprocessing step; the output says what it does not
+count:
+- `diagnose`, when the harmonic adjustment was applied: the s−1 coefficients
+  per series are not in k, so AIC/BIC leave them out. That does not change
+  the ranking of orders, because every candidate carries them. And the
+  forecast bands leave out their uncertainty.
+- `generate_forecast`: the bands are somewhat narrow for that reason.
+
+Hosking's degrees of freedom: checking this showed a larger defect, now
+BUG-0015. `hosking_q` subtracts no estimated parameter at all, not even the
+ARMA ones, and the test almost never rejects. The harmonics themselves, to
+first order, do not change the asymptotic distribution of the residual
+autocorrelations (they are coefficients of deterministic regressors), so
+they belong in k for the criteria and the bands, not in Hosking's df.

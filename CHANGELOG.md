@@ -6,6 +6,21 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**The MCP v1 says its limitations (BUG-0011, 0012, 0013).** sima supersedes
+the raw-series path, so they are documented rather than rebuilt:
+- `characterize_series` warns when the one-λ, d = max(dᵢ) consensus
+  over-differences a series or imposes another λ, and points to sima;
+- its Engle-Granger notice says it is a hint (ADF critical values, first
+  series as dependent) and that Johansen, in drvec, decides;
+- `diagnose` and `generate_forecast` say the harmonic coefficients are not in
+  k nor in the bands.
+Test: `tests/test_bug_0011_0013_limitaciones.py`.
+
+**Registered — BUG-0015: Hosking's Q subtracts no estimated parameter.**
+`df = m²·s` on the residuals of a fitted model, in the C and in the port;
+it rejects 0.3-1.5% of the time at a nominal 5% (`tools/hosking_size.py`).
+Affects `Model.diagnostics`, the reports and sima. Open.
+
 **Docs — BUG-0004: the pure-Python fallback is the full VARMA(p,q).** The
 `_engine` docstrings still said «q=0 only» / «exact VAR only», from before the
 MA part was ported; the port gives the C engine's logelf and iterations.
