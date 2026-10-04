@@ -6,6 +6,11 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**Docs — BUG-0004: the pure-Python fallback is the full VARMA(p,q).** The
+`_engine` docstrings still said «q=0 only» / «exact VAR only», from before the
+MA part was ported; the port gives the C engine's logelf and iterations.
+Test: `tests/test_bug_0004_respaldo_varma.py`.
+
 **Fix — BUG-0005: drvarma says when it falls back to the pure-Python port.**
 Where no binary wheel exists (Intel Mac, macOS < 14, Python 3.14, Windows on
 ARM) pip installs the `py3-none-any` wheel, and `estimate_w`, `elf_c` and

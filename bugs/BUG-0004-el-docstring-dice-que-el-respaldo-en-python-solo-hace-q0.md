@@ -1,11 +1,11 @@
 ---
 id: BUG-0004
 title: El docstring de `estimate_w` dice que el respaldo en Python sólo hace q=0, y hace VARMA completo desde junio
-status: open
+status: fixed
 severity: low
 component: engine
 found_in: 0.1.6
-fixed_in:
+fixed_in: 0.2.0
 reported: 2026-09-12
 reporter: David / Claude — revisión de las ruedas de la suite tras publicar art 0.2.1
 tags: [documentacion, pure-python]
@@ -62,3 +62,14 @@ estimates to ~1e-10, std errors to ~1e-4 (the finite-difference Hessian).»*
 Un test que fije la afirmación y no sólo el texto: VARMA(1,1) con el motor y sin
 él (`DRVARMA_NO_ENGINE=1`), logelf igual a 1e-8 y el mismo número de
 iteraciones.
+
+## Arreglo (2026-10-04)
+
+Los dos sitios de `_engine.py` que lo decían: la cabecera del módulo («exact
+VAR only» → «the full VARMA(p,q)») y el docstring de `estimate_w`, con la
+frase propuesta arriba.
+
+Validación: `tests/test_bug_0004_respaldo_varma.py`. Un VARMA(1,1) bivariante
+simulado (T=300), motor C frente a `estimate_w_py`: el mismo logelf a 1e-8, el
+mismo número de iteraciones y una parte MA estimada, no nula.
+

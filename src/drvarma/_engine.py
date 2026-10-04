@@ -3,7 +3,7 @@
 `estimate_w(...)` estimates a VARMA(p,q) on an already-transformed stationary
 series `w` (shape nobs x m) via the C engine and returns a result dict.  When the
 C extension is not built it falls back to the pure-Python estimator
-(`estimate_py`, exact VAR only) — mirroring fue's `_engine.py` — and says so
+(`estimate_py`, the full VARMA(p,q)) — mirroring fue's `_engine.py` — and says so
 (BUG-0005).
 """
 import os
@@ -76,7 +76,9 @@ def estimate_w(w, p, q, include_mean=False,
     """Estimate VARMA(p,q) on the stationary series w (nobs x m).
 
     Uses the compiled C engine when available; otherwise falls back to the
-    pure-Python exact-ML estimator (`estimate_py.estimate_w_py`, q=0 only).
+    pure-Python exact-ML estimator (`estimate_py.estimate_w_py`), a faithful
+    port of the C engine: same logelf and estimates to ~1e-10, std errors to
+    ~1e-4 (the finite-difference Hessian).
     """
     # Runtime opt-out: DRVARMA_NO_ENGINE forces the pure-Python estimator (e.g. to
     # dodge a C-engine issue) without rebuilding.  Otherwise use the C engine if
