@@ -89,6 +89,57 @@ def harmonic_regression_differenced(y, d, s):
     return coeffs, f_stat, r2
 
 
+def _newey_west_hac(X, u, max_lags):
+    """Newey-West HAC covariance of the OLS coefficients (Bartlett kernel), the
+    meat as a SUM over t. Port of art's `seasonal_detection._newey_west_hac`."""
+    p = X.shape[1]
+    xu = X * u[:, None]
+    S = xu.T @ xu
+    for lag in range(1, max_lags + 1):
+        w = 1.0 - lag / (max_lags + 1.0)
+        cross = xu[lag:].T @ xu[:-lag]
+        S += w * (cross + cross.T)
+    try:
+        XtX_inv = np.linalg.inv(X.T @ X)
+    except np.linalg.LinAlgError:
+        XtX_inv = np.eye(p)
+    return XtX_inv @ S @ XtX_inv
+
+
+def seasonal_f_hac(y, d, s, alpha=0.05):
+    """art's identification test of seasonality: the HAC F of the s-1
+    harmonics on the differenced basis (`art.seasonal_detection.
+    detect_seasonality`, test="hac"), with art's lags (1 up to n=100, 2 up to
+    200, 3 beyond) and d.f. Returns (f, p, seasonal).
+
+    The mechanism art and drvarma share (art BUG-0206): for IDENTIFICATION,
+    the HAC F, which has more power and is liberal on white-noise or MA
+    differences. On a model's residuals art uses the OLS F instead.
+    """
+    y = np.asarray(y, float)
+    n = len(y)
+    q = s - 1
+    if s < 2 or n <= 2 * s:
+        return 0.0, 1.0, False
+    X = _harmonic_design(n, d, s)
+    c, *_ = np.linalg.lstsq(X, y, rcond=None)
+    u = y - X @ c
+    lags = 1 if n <= 100 else (2 if n <= 200 else 3)
+    V = _newey_west_hac(X, u, lags)[1:, 1:]
+    g = c[1:]
+    try:
+        f = float(g @ np.linalg.inv(V) @ g) / q
+    except np.linalg.LinAlgError:
+        f = 0.0
+    df2 = max(n - q - 1, 1)
+    try:
+        from scipy.stats import f as _fd
+        p = float(_fd.sf(f, q, df2))
+    except Exception:                                      # pragma: no cover
+        p = float("nan")
+    return f, p, bool(f > _f_crit(q, df2, alpha))
+
+
 def _A0_matrix(s):
     """Map harmonic amplitudes to the first s-1 level dummies (port of generate_A0_matrix)."""
     sz = s - 1
@@ -174,7 +225,9 @@ def deseasonalize_raw(raw, s, start_sub=1, mode="auto", d=1, alpha=0.05):
     (adjusted, dummies, info)
       adjusted : (nobs, m) deseasonalised levels
       dummies  : (m, s) level seasonal dummies (zeros for series left unadjusted)
-      info     : list of per-series dicts {f_stat, r2, seasonal, adjusted}
+      info     : list of per-series dicts {f_stat (art's HAC F, the one that
+                 decides in "auto"), p_value, f_stat_ols (the C's), r2,
+                 seasonal, adjusted, ...}
     """
     raw = np.atleast_2d(np.asarray(raw, float))
     nobs, m = raw.shape
@@ -186,19 +239,17 @@ def deseasonalize_raw(raw, s, start_sub=1, mode="auto", d=1, alpha=0.05):
     info = []
     for j in range(m):
         if n_diff <= num_harm + 1:
-            info.append({"f_stat": 0.0, "r2": 0.0, "seasonal": False,
+            info.append({"f_stat": 0.0, "p_value": 1.0, "f_stat_ols": 0.0,
+                         "r2": 0.0, "seasonal": False,
                          "adjusted": False, "acf_s_before": 0.0,
                          "acf_s_after": 0.0, "improved": True})
             continue
         diff = raw[1:, j] - raw[:-1, j]
-        coeffs, f_stat, r2 = harmonic_regression_differenced(diff, d, s)
-        # The decision is the OLS F, as the C. art decides with a HAC F, and
-        # drvarma and art should share one mechanism; but on 2026-10-04 art's
-        # HAC F measured oversized (20% at n=216 on a random walk, nominal
-        # 5%), so it is not adopted here until art's study settles which test
-        # both use (art BUG-0206).
-        f_crit = _f_crit(num_harm, n_diff - num_harm - 1, alpha)
-        is_seasonal = f_stat > f_crit
+        coeffs, f_ols, r2 = harmonic_regression_differenced(diff, d, s)
+        # The "auto" decision is art's identification test, the HAC F (art
+        # BUG-0206: the shared mechanism). The C still decides with the OLS
+        # F, kept as `f_stat_ols` for parity.
+        f_stat, p_value, is_seasonal = seasonal_f_hac(diff, d, s, alpha)
         do_des = True if force else is_seasonal
         if do_des:
             # `_harmonic_design` builds the harmonics from t = i + d + 1, i.e. in a
@@ -245,7 +296,8 @@ def deseasonalize_raw(raw, s, start_sub=1, mode="auto", d=1, alpha=0.05):
                 a = _acf_at(cand[1:] - cand[:-1], s)
                 if abs(a) < abs(acf_best):
                     acf_best = a
-        info.append({"f_stat": f_stat, "r2": r2,
+        info.append({"f_stat": f_stat, "p_value": p_value, "f_stat_ols": f_ols,
+                     "r2": r2,
                      "seasonal": bool(is_seasonal), "adjusted": bool(do_des),
                      "acf_s_before": acf_before, "acf_s_after": acf_after,
                      "acf_s_best": acf_best,

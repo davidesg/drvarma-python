@@ -72,3 +72,21 @@ def test_the_annual_rate_is_free_of_the_dummies():
     tlva = 100 * np.log(full[n:] / full[n - 12:n - 12 + L])
     assert np.allclose(q["annual"], tlva, atol=1e-8)
 
+
+def test_auto_decides_with_arts_identification_test():
+    """drvarma's "auto" and art's identification share the test: the HAC F
+    (art BUG-0206)."""
+    pytest.importorskip("art")
+    import fue
+    from art import seasonal_detection as sd
+    for seed in (4, 5):
+        y, _ = _multiplicative(seed=seed)
+        _, _, info = deseasonalize(y[:, None], 0.0, s=12, mode="auto")
+        ts = fue.TimeSeries.from_array(y.tolist(), freq=12, start=[2000, 1], name="Y")
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            r = sd.detect_seasonality(ts, d=1, lam=0.0)
+        assert info[0]["f_stat"] == pytest.approx(r.f_stat, rel=1e-9)
+        assert info[0]["p_value"] == pytest.approx(r.p_value, abs=1e-12)
+        assert info[0]["seasonal"] == r.seasonal_detected
+

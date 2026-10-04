@@ -16,6 +16,14 @@ the raw-series path, so they are documented rather than rebuilt:
   k nor in the bands.
 Test: `tests/test_bug_0011_0013_limitaciones.py`.
 
+**The "auto" deseasonalization decides with art's identification test, the
+HAC F** (art BUG-0206). drvarma and art share the mechanism:
+`deseason.seasonal_f_hac` is a port of `art.seasonal_detection` (it gives
+art's F and p to 1e-9). art's size-and-power study
+(`research/seasonal_test`) chose it for identification for its power; it is
+liberal on white-noise differences (28% at n=120), a cost accepted in a
+screening step. `info["f_stat_ols"]` keeps the C's OLS F for parity.
+
 **Fix — BUG-0003: the seasonal adjustment is log -> d=1 -> deseasonalization,
 as art.** It was d=1 -> deseasonalization -> log: the pattern was estimated on
 the differenced levels and subtracted from them. Now
