@@ -4,7 +4,7 @@ In-repo bug tracker for **drvarma-diag**.  One Markdown file per bug (`BUG-NNNN-
 
 New report: `art-bug new` (or copy `TEMPLATE.md`).  Validate: `art-bug check`.  A fix commit references the id, e.g. `fix(pipeline): BUG-0001 …`.
 
-**16 report(s), 3 open.**
+**19 report(s), 3 open.**
 
 | id | status | sev | component | title | fixed in |
 |----|--------|-----|-----------|-------|----------|
@@ -20,6 +20,9 @@ New report: `art-bug new` (or copy `TEMPLATE.md`).  Validate: `art-bug check`.  
 | [BUG-0014](BUG-0014-help-arranca-el-servidor.md) | fixed | low | mcp | sima --help starts the stdio server instead of printing help | sima-tseries 0.1.0, drtran 0.2.5, art-tseries 0.2.3 |
 | [BUG-0015](BUG-0015-hosking-no-resta-los-parametros-estimados.md) | fixed | high | diagnostics | El Q de Hosking usa gl = m²·s sin restar los parámetros ARMA estimados, así que casi nunca rechaza y da por buenos modelos cortos | 0.2.0 (the C: atsw-gui lib/diagmv, 2026-10-11) |
 | [BUG-0016](BUG-0016-la-diagnosis-del-out-no-sigue-a-lib-diagmv.md) | fixed | medium | diagnostics | The .out's residual diagnosis and the line search lag behind the C (drvec BUG-41 and BUG-42) | 0.2.0 |
+| [BUG-0017](BUG-0017-el-lr-de-la-escalera-no-descuenta-los-ceros.md) | fixed | medium | ladder | Ladder.lr_test counts (p + q) cross coefficients per linked pair, whatever `zeros` fixed, so the LR's df is too large | 0.2.0 |
+| [BUG-0018](BUG-0018-overflow-de-logq-rompe-el-ajuste.md) | fixed | medium | ladder | A line-search step with log(Q_ii/Q_11) > 709 raises OverflowError out of Ladder.fit; the C rejects the point and goes on | 0.2.0 |
+| [BUG-0019](BUG-0019-hessiana-singular-rompe-el-ajuste.md) | fixed | medium | stderr | An exactly singular fdhess Hessian passes Cholesky and then raises LinAlgError out of Ladder.fit, instead of falling back to BFGS and saying so | 0.2.0 |
 | [BUG-0009](BUG-0009-load-data-toma-la-columna-de-fecha-como-serie.md) | wontfix | medium | mcp | load_data takes a date column as a series, and the sample start is not read from it | — |
 | [BUG-0011](BUG-0011-el-consenso-impone-un-lambda-y-el-d-maximo.md) | wontfix | low | mcp | The consensus imposes one lambda and d = max(d_i), which over-differences an I(0) series | — |
 | [BUG-0012](BUG-0012-los-coeficientes-armonicos-no-cuentan.md) | wontfix | low | deseason | The harmonic seasonal coefficients are not counted in degrees of freedom, k or forecast uncertainty | — |
