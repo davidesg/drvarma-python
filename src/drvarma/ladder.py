@@ -117,6 +117,10 @@ def _warn_if_no_engine():
             "the ladder will run the pure-Python likelihood", stacklevel=4)
 
 
+# log(Q_ii/Q_11) beyond this overflows exp(): the point is inadmissible
+_LVAR_MAX = 700.0
+
+
 class LadderError(ValueError):
     """The input cannot be crossed, or the gate failed."""
 
@@ -469,11 +473,19 @@ class Ladder:
         simplification by coefficient (1981, §4): the restricted model is
         refitted and compared by an LR test. Finer than ``links``, which
         removes a whole pair.
+    rows : cross orders per equation, ``{"A": (p_A, q_A), ...}`` or
+        ``"A(1,0), B(2,1)"``: equation A's cross AR runs up to lag p_A and
+        its cross MA up to q_A, on every linked pair. A row not named takes
+        (p, q); ``p`` and ``q`` then become the largest orders. The
+        unequal row degrees of the echelon form, without its restriction
+        table (docs/ECHELON_PLAN.md, stage 2): not identified on its own.
+        ``links``, ``rows`` and ``zeros`` compose.
     """
 
     def __init__(self, series, p=0, q=0, diagcov=False, redet=False,
                  fixarma=False, method=1, estwin=None, hessian="fd", lik="elf",
-                 links=None, start="zero", cross="additive", zeros=None):
+                 links=None, start="zero", cross="additive", zeros=None,
+                 rows=None):
         _warn_if_no_engine()
         if series and not isinstance(series[0], LadderSeries):
             series = load(series)
@@ -500,6 +512,10 @@ class Ladder:
         if cross not in ("additive", "residual"):
             raise ValueError("cross must be 'additive' or 'residual'")
         self.cross = cross
+        self.rows = self._parse_rows(rows)
+        if self.rows is not None:
+            self.p = int(max(self.rows[:, 0]))
+            self.q = int(max(self.rows[:, 1]))
         if self.links is not None and self.p == 0 and self.q == 0:
             raise LadderError("links needs cross dynamics: give p or q > 0")
         self.zeros = self._parse_zeros(zeros)
@@ -544,6 +560,44 @@ class Ladder:
             L[names.index(a), names.index(b)] = True
         return L
 
+    _ROW = re.compile(r"\s*([^(,]+?)\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)\s*")
+
+    def _parse_rows(self, rows):
+        """None, or the m x 2 array of (p_i, q_i), the cross orders of each
+        equation."""
+        if rows is None:
+            return None
+        names = [s.name for s in self.series]
+        if isinstance(rows, str):
+            items = []
+            for tok in re.findall(r"[^,()]+\([^)]*\)|[^,\s]+", rows):
+                mm = self._ROW.fullmatch(tok)
+                if not mm:
+                    raise LadderError(f"rows: '{tok.strip()}' is not of the form A(p,q)")
+                items.append((mm.group(1), (int(mm.group(2)), int(mm.group(3)))))
+        else:
+            items = list(dict(rows).items())
+        R = np.tile([self.p, self.q], (len(names), 1))
+        seen = set()
+        for a, pq in items:
+            if a not in names:
+                raise LadderError(f"rows: '{a}' is not a series")
+            if a in seen:
+                raise LadderError(f"rows: '{a}' is given twice")
+            seen.add(a)
+            pr, qr = (int(x) for x in pq)
+            if pr < 0 or qr < 0:
+                raise LadderError(f"rows: the orders of '{a}' must be >= 0")
+            R[names.index(a)] = (pr, qr)
+        return R
+
+    def _row_order(self, kind, i):
+        """The cross order of equation i (AR or MA), before any change of
+        the active structure."""
+        if self.rows is None:
+            return self.p if kind == "AR" else self.q
+        return int(self.rows[i, 0 if kind == "AR" else 1])
+
     _ZERO = re.compile(r"\s*(AR|MA)(\d+)\[([^<\]]+)<-([^\]]+)\]\s*")
 
     def _parse_zeros(self, zeros):
@@ -562,10 +616,11 @@ class Ladder:
             kind, k, a, b = mm.group(1), int(mm.group(2)), mm.group(3).strip(), mm.group(4).strip()
             if a not in names or b not in names or a == b:
                 raise LadderError(f"zeros: '{str(tok).strip()}' does not name two different series")
-            top = self.p if kind == "AR" else self.q
-            if not 1 <= k <= top:
-                raise LadderError(f"zeros: '{str(tok).strip()}': the cross {kind} order is {top}")
             i, j = names.index(a), names.index(b)
+            top = self._row_order(kind, i)
+            if not 1 <= k <= top:
+                where = "" if self.rows is None else f" of {a}"
+                raise LadderError(f"zeros: '{str(tok).strip()}': the cross {kind} order{where} is {top}")
             if not self._linked(i, j):
                 raise LadderError(f"zeros: '{str(tok).strip()}' is not a linked pair")
             out.add((kind, k - 1, i, j))
@@ -573,12 +628,12 @@ class Ladder:
 
     def _slots(self):
         """The free cross coefficients, in the C's order (AR lag by lag, then
-        MA), without those fixed at zero."""
+        MA), without those fixed at zero or beyond their row's order."""
         z = getattr(self, "zeros", frozenset())
         ar = [("AR", k, i, j) for k in range(self._cp) for i, j in self._pairs()
-              if ("AR", k, i, j) not in z]
+              if k < self._row_order("AR", i) and ("AR", k, i, j) not in z]
         ma = [("MA", k, i, j) for k in range(self._cq) for i, j in self._pairs()
-              if ("MA", k, i, j) not in z]
+              if k < self._row_order("MA", i) and ("MA", k, i, j) not in z]
         return ar + ma
 
     def _linked(self, i, j):
@@ -708,7 +763,10 @@ class Ladder:
         QQ = np.zeros((m, m))
         QQ[0, 0] = 1.0
         for a in range(1, m):
-            QQ[a, a] = math.exp(self._lvar[act[a]])
+            lv = self._lvar[act[a]]
+            if not lv < _LVAR_MAX:      # exp overflows: the C gets inf and
+                return None, None, None, None, None, 6   # rejects it (BUG-0018)
+            QQ[a, a] = math.exp(lv)
         if not self._cdiag:
             for a in range(1, m):
                 for b in range(a):
@@ -809,7 +867,9 @@ class Ladder:
             if cov is not None:
                 return std, "fdhess", cov
             why = ("the optimum is on the boundary of the admissible region"
-                   if info.get("boundary") else "the Hessian is not positive definite")
+                   if info.get("boundary") else
+                   "the Hessian is singular: some coefficients are not identified"
+                   if info.get("singular") else "the Hessian is not positive definite")
             if not nit:
                 # raxopt starts b at the identity: no iteration, no BFGS Hessian.
                 return (np.full(xhat.size, np.nan),
@@ -1002,8 +1062,11 @@ class Ladder:
         """LR of the cross dynamics (and covariances) against the diagonal."""
         from scipy.stats import chi2
         m = len(self.series)
-        nl = sum(self._linked(i, j) for i in range(m) for j in range(m))
-        df = (self.p + self.q) * nl + (0 if self.diagcov else m * (m - 1) // 2)
+        # the free cross coefficients of the requested model: rows and zeros
+        # count (BUG-0017), not (p + q) for every linked pair
+        nx = sum(self._row_order("AR", i) + self._row_order("MA", i)
+                 for i in range(m) for j in range(m) if self._linked(i, j))
+        df = nx - len(self.zeros) + (0 if self.diagcov else m * (m - 1) // 2)
         lr = 2.0 * (self.result.logL - self.logL_diag)
         return lr, df, (float(chi2.sf(max(lr, 0.0), df)) if df else float("nan"))
 
@@ -1223,6 +1286,12 @@ def write_report(L, path, forecasts=None, recursive=None):
                f"{L.series[i].name}<-{L.series[j].name}"
                for i in range(len(L.series)) for j in range(len(L.series))
                if i != j and L.links[i, j])] if L.links is not None else []),
+           *([f"Cross rows       : " + ", ".join(
+               f"{s.name}({L.rows[i, 0]},{L.rows[i, 1]})" for i, s in enumerate(L.series))]
+             if getattr(L, "rows", None) is not None else []),
+           *([f"Fixed at zero    : " + ", ".join(sorted(
+               f"{kind}{k + 1}[{L.series[i].name}<-{L.series[j].name}]"
+               for kind, k, i, j in L.zeros))] if getattr(L, "zeros", None) else []),
            f"Innovation cov.  : {'diagonal' if L.diagcov else 'full'}",
            f"Deterministics   : {'re-estimated' if L.redet else 'fixed at the file'}",
            f"Univariate ARMA  : {'fixed at the file' if L.fixarma else 're-estimated jointly'}",

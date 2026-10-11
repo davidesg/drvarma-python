@@ -6,6 +6,29 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**Cross orders per equation (`Ladder(rows=)`)** are stage 2 of the echelon form
+(`docs/ECHELON_PLAN.md`): `rows="A(2,1), B(0,1)"` or a dict. Equation A's
+cross AR runs to lag 2 and its cross MA to lag 1, on every linked pair. Rows
+not named take (p, q), and p, q become the largest orders. `links`, `rows`
+and `zeros` compose, and the `.out` lists rows and zeros. These are the row
+degrees of the echelon form without its restriction table, so the model is
+not identified on its own. Tests: `tests/test_rows.py`. The C has no row
+orders: the parity is by equivalence with `zeros` and `-links`.
+
+**The LR against the diagonal counts what is free (BUG-0017).** Its df was
+(p + q) per linked pair even with `zeros`. It now counts the free cross
+coefficients, and so matches the `npar` difference.
+
+**An overflowing log-variance no longer aborts a fit (BUG-0018).** A
+line-search step with log(Q_ii/Q_11) > 709 raised `OverflowError`. The point
+is now inadmissible, as in the C.
+
+**A singular Hessian falls back to BFGS (BUG-0019).** An fdhess Hessian with a
+zero eigenvalue, i.e. an unidentified coefficient, passed the Cholesky check
+and then raised `LinAlgError` out of the fit. It now falls back to BFGS, and
+the reason given is "the Hessian is singular: some coefficients are not
+identified".
+
 **The residual diagnosis and the line search follow the C (BUG-0016;
 BUG-0015 closed).** On 2026-10-11 atsw-gui moved the multivariate diagnosis
 of drvarma, drtran and drvec into one place, `lib/diagmv` (drvec BUG-42),

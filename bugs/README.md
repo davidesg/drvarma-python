@@ -4,13 +4,14 @@ In-repo bug tracker for **drvarma-diag**.  One Markdown file per bug (`BUG-NNNN-
 
 New report: `art-bug new` (or copy `TEMPLATE.md`).  Validate: `art-bug check`.  A fix commit references the id, e.g. `fix(pipeline): BUG-0001 …`.
 
-**16 report(s), 3 open.**
+**20 report(s), 4 open.**
 
 | id | status | sev | component | title | fixed in |
 |----|--------|-----|-----------|-------|----------|
 | [BUG-0001](BUG-0001-deseason-phase-still-unpatched-in-the-c-engine.md) | open | high | deseason | The seasonal-adjustment phase off-by-one is fixed in the Python port but STILL LIVE in the C engine, which the standalone executable uses | — |
 | [BUG-0002](BUG-0002-c-sources-are-copies-and-have-already-drifted.md) | open | high | csrc | The C sources are three unsynchronised COPIES, and they have already drifted — the termcode fix lives in the embedded copy only | — |
 | [BUG-0003](BUG-0003-seasonal-adjustment-applied-in-levels-before-box-cox.md) | in-progress | medium | deseason | The seasonal component is estimated and subtracted in LEVELS, before the Box-Cox log, so a multiplicative pattern on a trending index is adjusted at the wrong scale | 0.2.0 (Python; the C pending) |
+| [BUG-0020](BUG-0020-la-puerta-falla-con-un-ma-en-la-pared.md) | open | low | ladder | The diagonal gate fails with NaN when a univariate optimum sits on the MA wall; the same polynomial is admissible alone and ifault 3 in the joint elf | — |
 | [BUG-0004](BUG-0004-el-docstring-dice-que-el-respaldo-en-python-solo-hace-q0.md) | fixed | low | engine | El docstring de `estimate_w` dice que el respaldo en Python sólo hace q=0, y hace VARMA completo desde junio | 0.2.0 |
 | [BUG-0005](BUG-0005-el-respaldo-en-python-puro-entra-sin-avisar.md) | fixed | medium | packaging | Donde no hay rueda binaria se instala la de Python puro y el motor C no se usa, sin ningún aviso | 0.2.0 |
 | [BUG-0006](BUG-0006-la-busqueda-lineal-no-vuelve-con-un-objetivo-no-finito.md) | fixed | high | optimizer | La búsqueda lineal no vuelve nunca si el objetivo es NaN o infinito — el optimizador (C y Python) se queda girando, sin error ni salida | 0.1.7 |
@@ -20,6 +21,9 @@ New report: `art-bug new` (or copy `TEMPLATE.md`).  Validate: `art-bug check`.  
 | [BUG-0014](BUG-0014-help-arranca-el-servidor.md) | fixed | low | mcp | sima --help starts the stdio server instead of printing help | sima-tseries 0.1.0, drtran 0.2.5, art-tseries 0.2.3 |
 | [BUG-0015](BUG-0015-hosking-no-resta-los-parametros-estimados.md) | fixed | high | diagnostics | El Q de Hosking usa gl = m²·s sin restar los parámetros ARMA estimados, así que casi nunca rechaza y da por buenos modelos cortos | 0.2.0 (the C: atsw-gui lib/diagmv, 2026-10-11) |
 | [BUG-0016](BUG-0016-la-diagnosis-del-out-no-sigue-a-lib-diagmv.md) | fixed | medium | diagnostics | The .out's residual diagnosis and the line search lag behind the C (drvec BUG-41 and BUG-42) | 0.2.0 |
+| [BUG-0017](BUG-0017-el-lr-de-la-escalera-no-descuenta-los-ceros.md) | fixed | medium | ladder | Ladder.lr_test counts (p + q) cross coefficients per linked pair, whatever `zeros` fixed, so the LR's df is too large | 0.2.0 |
+| [BUG-0018](BUG-0018-overflow-de-logq-rompe-el-ajuste.md) | fixed | medium | ladder | A line-search step with log(Q_ii/Q_11) > 709 raises OverflowError out of Ladder.fit; the C rejects the point and goes on | 0.2.0 |
+| [BUG-0019](BUG-0019-hessiana-singular-rompe-el-ajuste.md) | fixed | medium | stderr | An exactly singular fdhess Hessian passes Cholesky and then raises LinAlgError out of Ladder.fit, instead of falling back to BFGS and saying so | 0.2.0 |
 | [BUG-0009](BUG-0009-load-data-toma-la-columna-de-fecha-como-serie.md) | wontfix | medium | mcp | load_data takes a date column as a series, and the sample start is not read from it | — |
 | [BUG-0011](BUG-0011-el-consenso-impone-un-lambda-y-el-d-maximo.md) | wontfix | low | mcp | The consensus imposes one lambda and d = max(d_i), which over-differences an I(0) series | — |
 | [BUG-0012](BUG-0012-los-coeficientes-armonicos-no-cuentan.md) | wontfix | low | deseason | The harmonic seasonal coefficients are not counted in degrees of freedom, k or forecast uncertainty | — |
