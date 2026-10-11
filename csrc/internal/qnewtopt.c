@@ -541,8 +541,12 @@ real lnsrch( int n, real *xk, real fk, real *gk, real *dk, real *xkp1,
       else if ( lambda < minlam )
          {
       /* Convergence on x values:                                            */
+      /* The point goes back to xk, and so must its value: *fkp1 still held  */
+      /* the rejected trial's, and raxopt returned it as the optimum's       */
+      /* (drvec BUG-41, item 2; atsw-gui lib/optim/lnsrch.c).                */
          *retcode = 1;
          for ( i = 1; i <= n; i++ ) xkp1[i] = xk[i];
+         *fkp1 = fk;
          }
       else
          {

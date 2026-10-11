@@ -534,25 +534,34 @@ def _fevd_block(model, horizon):
 
 
 def _diagnostics_block(model):
-    from .diagnostics import hosking_q, jarque_bera_mv
+    """lib/diagmv's `multivariate_diagnostics`, line for line (drvec BUG-42)."""
+    from .diagnostics import hosking_q, hosking_lags, jarque_bera_mv
     res = model.result["residuals"]
     n, m = res.shape
-    s = int(math.sqrt(n))
-    if s < 1:
-        s = 1
-    if s > n - 2:
-        s = n - 2
-    Q, qdf, qp = hosking_q(res, s, model.n_arma())
-    JB, jdf, jp = jarque_bera_mv(res)
+    s = hosking_lags(model.series.freq, n)
+    k = model.n_arma()
+    Q, qdf, qp = hosking_q(res, s, k)
+    JB, jdf, jp, sk, ku = jarque_bera_mv(res, parts=True)
     out = ["\n\n", _banner("           MULTIVARIATE RESIDUAL DIAGNOSTICS                ")]
     out.append("\nHosking's Multivariate Portmanteau Test (lag %d):\n" % s)
-    out.append("  Q(%d) = %.4f, p-value = %.4f\n" % (qdf, Q, qp))
-    out.append("  *** REJECT H0: residuals are not white noise.\n" if qp < 0.05
-               else "  Cannot reject H0: residuals appear white noise.\n")
-    out.append("\nMultivariate Jarque-Bera Test (normality):\n")
-    out.append("  JB(%d) = %.4f, p-value = %.4f\n" % (jdf, JB, jp))
-    out.append("  *** REJECT H0: residuals are not normally distributed.\n" if jp < 0.05
-               else "  Cannot reject H0: residuals appear normal.\n")
+    if qdf >= 1:
+        out.append("  Q(%d) = %.4f, p-value = %.4f\n" % (qdf, Q, qp))
+        out.append("  df = m^2 s - k = %d - %d, k = dynamic coefficients "
+                   "estimated\n" % (m * m * s, k))
+        out.append("  *** REJECT H0: residuals are not white noise.\n" if qp < 0.05
+                   else "  Cannot reject H0: residuals appear white noise.\n")
+    else:
+        out.append("  Q = %.4f; df = m^2 s - k = %d - %d < 1: too few lags "
+                   "for the parameters, no p-value.\n" % (Q, m * m * s, k))
+    out.append("\nMultivariate Jarque-Bera Test (normality; Lutkepohl, "
+               "symmetric square root of Sigma):\n")
+    if math.isfinite(JB):
+        out.append("  JB(%d) = %.4f, p-value = %.4f\n" % (jdf, JB, jp))
+        out.append("  skewness %.4f, kurtosis %.4f, each chi2(%d)\n" % (sk, ku, m))
+        out.append("  *** REJECT H0: residuals are not normally distributed.\n"
+                   if jp < 0.05 else "  Cannot reject H0: residuals appear normal.\n")
+    else:
+        out.append("  not computed: the residual covariance is singular.\n")
     out.append(EQ + "\n")
     return "".join(out)
 
@@ -790,8 +799,11 @@ def residual_report(model):
         st = series_stats(col)
         out.append(_ascii.hist_ser(col, st["mean"], st["variance"]))
         a = _acf(col, nlags)
-        out.append(_ascii.plot_cor(a, nlags, 1, nobs, freq))
-        out.append(_ascii.plot_cor(_pacf(a), nlags, 0, nobs, freq))
+        # The Ljung-Box subtracts the equation's coefficients on its own
+        # lags, the diagonal of every phi_k and theta_j (drvec BUG-42).
+        npar = model.p + model.q
+        out.append(_ascii.plot_cor(a, nlags, 1, nobs, freq, npar))
+        out.append(_ascii.plot_cor(_pacf(a), nlags, 0, nobs, freq, npar))
 
     # cross-correlation functions between residual pairs (port of diagnose())
     if m > 1:

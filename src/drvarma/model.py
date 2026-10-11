@@ -193,7 +193,8 @@ class Model:
         from .diagnostics import hosking_q, jarque_bera_mv
         res = self.result["residuals"]
         if lag is None:
-            lag = (self.series.freq + 2) if self.series.freq > 1 else 10
+            from .diagnostics import hosking_lags
+            lag = hosking_lags(self.series.freq, res.shape[0])
         Q, qdf, qp = hosking_q(res, lag, self.n_arma())
         JB, jdf, jp = jarque_bera_mv(res)
         return {"hosking_Q": Q, "hosking_df": qdf, "hosking_p": qp, "hosking_lag": lag,

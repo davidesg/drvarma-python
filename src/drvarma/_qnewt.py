@@ -340,9 +340,13 @@ def lnsrch(n, xk, fk, gk, dk, xkp1, maxstep, steptol, func):
             if (lam == 1.0) and (newtlen > 0.99 * maxstep):
                 maxtaken = 1
         elif lam < minlam:
+            # The point goes back to xk, and so must its value: fkp1 still
+            # held the rejected trial's, and raxopt returned it as the
+            # optimum's (drvec BUG-41, item 2; lib/optim/lnsrch.c).
             retcode = 1
             for i in range(1, n + 1):
                 xkp1[i] = xk[i]
+            fkp1 = fk
         else:
             if not haveprev:
                 tlambda = -initslp / (2.0 * (fkp1 - fk - initslp))

@@ -162,6 +162,10 @@ def hist_ser(data, mean=None, var=None):
                         s1 = "  " + s1
                     elif len(s1) == 3:
                         s1 = s1 + " "
+                # A count wider than its cell keeps the cell's width and says
+                # it did not fit (the C overflowed the row: drvec BUG-42.1).
+                if len(s1) > nphor:
+                    s1 = "*" * nphor
                 aux[j - 2] += s1
                 chk[i] = 1
             else:

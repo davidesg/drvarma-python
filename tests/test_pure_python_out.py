@@ -25,6 +25,7 @@ from drvarma.estimate_py import estimate_w_py
 C_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "drvarma_v.04.1")
 IPC3 = os.path.join(C_DIR, "data", "models_group1", "IPC3.inp")
 C_BIN = os.path.join(C_DIR, "bin", "drvarma")
+from _cdiag import C_DIAG_BIN                 # the residual diagnosis is lib/diagmv's
 
 has_engine = True
 try:
@@ -84,7 +85,11 @@ def test_engine_free_out_byte_exact(tmp_path, monkeypatch, marker_pair):
     # against the C binary (VAR(3): the σ²/Q split also lands byte-exact here).
     monkeypatch.setitem(sys.modules, "drvarma._drvarma_engine", None)
     shutil.copy(IPC3, tmp_path / "o.inp")
-    subprocess.run([os.path.abspath(C_BIN), str(tmp_path / "o"), "3", "0", "-mean"],
+    start, end = marker_pair
+    cbin = C_DIAG_BIN if start == "MULTIVARIATE RESIDUAL" else C_BIN
+    if not os.path.exists(cbin):
+        pytest.skip(f"{cbin} not available")
+    subprocess.run([os.path.abspath(cbin), str(tmp_path / "o"), "3", "0", "-mean"],
                    check=True, capture_output=True)
     c_text = open(tmp_path / "o.out", encoding="latin-1").read()
 
@@ -104,8 +109,4 @@ def test_engine_free_out_byte_exact(tmp_path, monkeypatch, marker_pair):
                 out.append(ln)
         return "".join(out)
 
-    start, end = marker_pair
-    from _bug0015 import without_hosking
-    c_sec, py_sec = without_hosking(section(c_text, start, end),
-                                    section(py_text, start, end), mdl.n_arma())
-    assert py_sec == c_sec
+    assert section(py_text, start, end) == section(c_text, start, end)

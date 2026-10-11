@@ -1,13 +1,15 @@
 """Multivariate residual diagnostics (numpy ports of diagnose.c).
 
 - hosking_q : multivariate portmanteau test (Hosking).
-- jarque_bera_mv : multivariate normality (sum of univariate Jarque-Bera).
+- jarque_bera_mv : multivariate normality (Lutkepohl, symmetric square root).
+
+The C keeps both tests once, in atsw-gui's lib/diagmv (drvec BUG-42).
 """
 
 
 # The public API: what an assistant (sima-tseries) may call. Identification
 # evidence (ccf, qccf) is the same class as drtran's public `identify`.
-__all__ = ["hosking_q", "series_stats", "acf", "pacf", "ljung_box",
+__all__ = ["hosking_q", "hosking_lags", "series_stats", "acf", "pacf", "ljung_box",
            "residual_diagnostics", "ccf", "qccf", "jarque_bera_mv"]
 
 import numpy as np
@@ -42,6 +44,13 @@ except Exception:  # pragma: no cover - scipy expected, but degrade gracefully
             if abs(de - 1.0) < 1e-15:
                 break
         return h * math.exp(-xx + a * math.log(xx) - math.lgamma(a))
+
+
+def hosking_lags(freq, nobs):
+    """Lags of Hosking's Q: freq + 2 for seasonal data, 10 otherwise, at most
+    nobs - 2 (lib/diagmv's `diagmv_lags`)."""
+    s = (freq + 2) if freq > 1 else 10
+    return max(1, min(s, nobs - 2))
 
 
 def hosking_q(res, s, k=0):
@@ -218,18 +227,33 @@ def qccf(w1, w2, lags, k=0):
     return hosking_q(res, lags, k)
 
 
-def jarque_bera_mv(res):
-    """Multivariate Jarque-Bera (sum of univariate JB) on residuals (nobs x m).
+def jarque_bera_mv(res, parts=False):
+    """Multivariate Jarque-Bera (Lutkepohl 2005, 4.5) on residuals (nobs x m).
 
-    Returns (JB, df, pvalue);  df = 2*m.
+    The residuals are standardised by the SYMMETRIC square root of their
+    covariance, so the statistic does not depend on the order of the series
+    (a Cholesky factor would). JB = skewness part + kurtosis part, each
+    chi2(m); JB ~ chi2(2m). Until drvec BUG-42 it was a sum of univariate
+    JBs, chi2(2m) only with uncorrelated residuals: it over-rejected.
+
+    Returns (JB, df, pvalue), or (JB, df, pvalue, skew, kurt) with `parts`.
+    All NaN when the covariance is singular. lib/diagmv's `diagmv_jb`.
     """
     res = np.atleast_2d(np.asarray(res, float))
     n, m = res.shape
     x = res - res.mean(axis=0)
-    sd = np.sqrt((x ** 2).mean(axis=0))
-    sd = np.where(sd > 1e-12, sd, np.inf)
-    skew = (x ** 3).mean(axis=0) / sd ** 3
-    kurt = (x ** 4).mean(axis=0) / sd ** 4 - 3.0
-    JB = float(np.sum(n * (skew ** 2 / 6.0 + kurt ** 2 / 24.0)))
+    S = (x.T @ x) / n
+    w, V = np.linalg.eigh(S)
     df = 2 * m
-    return JB, df, _chisq_sf(JB, df)
+    if not np.all(w > 1e-12 * w.max()):
+        nan = float("nan")
+        return (nan, df, nan, nan, nan) if parts else (nan, df, nan)
+    R = (V / np.sqrt(w)) @ V.T                 # S^(-1/2)
+    v = x @ R                                  # R symmetric
+    s3 = (v ** 3).mean(axis=0)
+    s4 = (v ** 4).mean(axis=0) - 3.0
+    skew = float(n / 6.0 * np.sum(s3 ** 2))
+    kurt = float(n / 24.0 * np.sum(s4 ** 2))
+    JB = skew + kurt
+    p = _chisq_sf(JB, df)
+    return (JB, df, p, skew, kurt) if parts else (JB, df, p)
