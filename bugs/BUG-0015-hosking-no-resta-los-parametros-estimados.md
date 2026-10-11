@@ -1,11 +1,11 @@
 ---
 id: BUG-0015
 title: El Q de Hosking usa gl = m²·s sin restar los parámetros ARMA estimados, así que casi nunca rechaza y da por buenos modelos cortos
-status: in-progress
+status: fixed
 severity: high
 component: diagnostics
 found_in: 0.1.0
-fixed_in:
+fixed_in: 0.2.0 (the C: atsw-gui lib/diagmv, 2026-10-11)
 reported: 2026-10-04
 reporter: David / Claude — al decidir BUG-0012 (los armónicos tampoco cuentan)
 tags: [hosking, portmanteau, grados-de-libertad, sima, motor-c]
@@ -130,3 +130,12 @@ cuando el C se arregle.
 Queda el C (`diagnose.c:930`), en la rama drvarma-v5 de atsw-gui. Por eso el
 informe sigue `in-progress`.
 
+
+## El C, arreglado (2026-10-11)
+
+atsw-gui PR #22 (drvec BUG-42): `lib/diagmv` resta k en los tres motores
+(drvarma, drtran, drvec), y el `.out` del C dice `df = m^2 s - k`. Se retira
+`tests/_bug0015.py`: la sección de diagnosis se compara byte a byte con el
+drvarma de atsw-gui (`tests/_cdiag.py`). El resto de lo que cambió en el C
+(retardos freq + 2, Jarque-Bera de Lütkepohl, Ljung-Box por serie) está en
+BUG-0016.

@@ -15,6 +15,7 @@ from _bug0003 import c_deseason_in_levels
 C_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "drvarma_v.04.1")
 IPC3 = os.path.join(C_DIR, "data", "models_group1", "IPC3.inp")
 C_BIN = os.path.join(C_DIR, "bin", "drvarma")
+from _cdiag import C_DIAG_BIN                 # the residual diagnosis is lib/diagmv's
 
 needs_c = pytest.mark.skipif(
     not (os.path.exists(IPC3) and os.path.exists(C_BIN)),
@@ -64,16 +65,15 @@ def test_forecast_report_byte_exact(tmp_path):
 def test_out_deterministic_sections_byte_exact(tmp_path, marker_pair):
     # These sections depend only on the (exactly-matching) point estimates.
     shutil.copy(IPC3, tmp_path / "o.inp")
-    subprocess.run([os.path.abspath(C_BIN), str(tmp_path / "o"), "3", "0",
+    start, end = marker_pair
+    cbin = C_DIAG_BIN if start == "MULTIVARIATE RESIDUAL" else C_BIN
+    if not os.path.exists(cbin):
+        pytest.skip(f"{cbin} not available")
+    subprocess.run([os.path.abspath(cbin), str(tmp_path / "o"), "3", "0",
                     "-mean", "-deseason", "auto"], check=True, capture_output=True)
     c_text = open(tmp_path / "o.out", encoding="latin-1").read()
-    mdl = _fit_ipc3("auto")
-    py_text = report.out_report(mdl)
-    start, end = marker_pair
-    from _bug0015 import without_hosking
-    c_sec, py_sec = without_hosking(_section(c_text, start, end),
-                                    _section(py_text, start, end), mdl.n_arma())
-    assert py_sec == c_sec
+    py_text = report.out_report(_fit_ipc3("auto"))
+    assert _section(py_text, start, end) == _section(c_text, start, end)
 
 
 @needs_c

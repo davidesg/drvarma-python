@@ -14,7 +14,7 @@ from drvarma.datasets import simulate_varma
 
 C_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "drvarma_v.04.1")
 IPC3 = os.path.join(C_DIR, "data", "models_group1", "IPC3.inp")
-C_BIN = os.path.join(C_DIR, "bin", "drvarma")
+from _cdiag import C_DIAG_BIN as C_BIN
 
 
 @pytest.mark.skipif(not (os.path.exists(IPC3) and os.path.exists(C_BIN)),
@@ -25,15 +25,18 @@ def test_hosking_jb_match_c(tmp_path):
     subprocess.run([os.path.abspath(C_BIN), str(tmp_path / "d"), "3", "0", "-mean"],
                    check=True, capture_output=True)
     out = open(tmp_path / "d.out", encoding="latin-1").read()
-    cQ = float(re.search(r"Q\(\d+\)\s*=\s*([\d.]+),\s*p-value", out).group(1))
+    cQ, cdf = re.search(r"Q\((\d+)\)\s*=\s*([\d.]+),\s*p-value", out).group(2, 1)
     cJB = float(re.search(r"JB\(\d+\)\s*=\s*([\d.]+),\s*p-value", out).group(1))
     lag = int(re.search(r"Portmanteau Test \(lag (\d+)\)", out).group(1))
+    assert lag == 14                       # freq + 2, not floor(sqrt(n))
 
     s, _ = load(IPC3)
     mdl = Model(s, lam=0.0, d=1, D=0, scale=100.0, p=3, q=0, include_mean=True).fit()
-    d = mdl.diagnostics(lag=lag)
-    assert abs(d["hosking_Q"] - cQ) < 1e-3
-    assert abs(d["JB"] - cJB) < 1e-3
+    d = mdl.diagnostics()
+    assert d["hosking_lag"] == lag         # the default is the C's rule
+    assert abs(d["hosking_Q"] - float(cQ)) < 1e-3
+    assert d["hosking_df"] == int(cdf)     # m^2 s - k, as lib/diagmv
+    assert abs(d["JB"] - cJB) < 1e-3       # Lutkepohl, as lib/diagmv
 
 
 def test_jb_normal_residuals():

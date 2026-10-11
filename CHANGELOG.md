@@ -6,6 +6,23 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**The residual diagnosis and the line search follow the C (BUG-0016;
+BUG-0015 closed).** On 2026-10-11 atsw-gui moved the multivariate diagnosis
+of drvarma, drtran and drvec into one place, `lib/diagmv` (drvec BUG-42),
+and fixed `lnsrch` (BUG-41). The port does the same:
+- **Hosking's Q**: freq + 2 lags (10 for non-seasonal data) in the `.out`
+  too, where it was floor(sqrt(n)). Its df is m^2 s - k, and the `.out`
+  prints that line.
+- **Multivariate Jarque-Bera**: Lütkepohl's, on residuals standardised by
+  the symmetric square root of Sigma, with the skewness and kurtosis parts
+  printed. It was a sum of univariate JBs, which over-rejects when the
+  residuals are correlated.
+- **Per-series Ljung-Box**: subtracts p + q.
+- **`lnsrch`**, in `_qnewt.py` and in the wheel's C, returns the objective
+  at the point it returns when it gives up.
+The diagnosis block and the correlograms are byte-identical to the
+atsw-gui C (`tests/_cdiag.py`).
+
 **The MCP v1 says its limitations (BUG-0011, 0012, 0013).** sima supersedes
 the raw-series path, so they are documented rather than rebuilt:
 - `characterize_series` warns when the one-λ, d = max(dᵢ) consensus
