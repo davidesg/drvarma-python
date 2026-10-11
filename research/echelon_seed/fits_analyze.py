@@ -1,7 +1,7 @@
 """Summary of fits.csv (fits.py): per form, how the exact-ML search stops,
 and, since every form is nested in `full`, the LR of each against it.
 
-    python3 fits_analyze.py [fits.csv] > fits_summary.md
+    python3 fits_analyze.py [fits.csv [fits_echelon.csv ...]] > fits_summary.md
 """
 from __future__ import annotations
 
@@ -22,8 +22,8 @@ def pct(k, n):
     return f"{100.0 * k / n:5.1f}" if n else "  -  "
 
 
-def main(path):
-    rows = list(csv.DictReader(open(path)))
+def main(paths):
+    rows = [r for p in paths for r in csv.DictReader(open(p))]
     forms = list(dict.fromkeys(r["form"] for r in rows))
     by = defaultdict(dict)
     for r in rows:
@@ -83,7 +83,39 @@ def main(path):
                 print(f"| {design} | {n} | {form} | {len(lr)} | {'/'.join(map(str, sorted(dfs)))} "
                       f"| {lr[len(lr) // 2]:.2f} | {pct(rej, len(lr))} | {pct(neg, len(lr))} |")
     print()
+    if "truth" not in forms:
+        return
+    print("## Each fit against the truth: LR = 2 (logL_form - logL_truth)\n")
+    print("The echelon form evaluated at the true system (sigma2 concentrated).")
+    print("For a fit that reaches its maximum, LR >= 0 and ~ chi2(npar); LR < 0")
+    print("means the search stopped below the TRUE parameters.\n")
+    print("| design | indices | form | pairs | npar | median LR | LR < 0 % | above chi2 95 % |")
+    print("|---|---|---|---|---|---|---|---|")
+    for design in S.DESIGNS:
+        for n in S.INDICES:
+            key = "".join(map(str, n))
+            for form in forms:
+                if not form.startswith("echelon"):
+                    continue
+                lr, k, neg, hi = [], None, 0, 0
+                for (d, kk, _o, _r), g in by.items():
+                    if d != design or kk != key or "truth" not in g or form not in g:
+                        continue
+                    a, b = g[form], g["truth"]
+                    if a["error"] or b["error"]:
+                        continue
+                    x = 2.0 * (float(a["logL"]) - float(b["logL"]))
+                    k = int(a["npar"])
+                    lr.append(x)
+                    neg += x < -1e-3
+                    hi += x > chi2.ppf(0.95, k)
+                if not lr:
+                    continue
+                lr.sort()
+                print(f"| {design} | {n} | {form} | {len(lr)} | {k} | {lr[len(lr) // 2]:.2f} "
+                      f"| {pct(neg, len(lr))} | {pct(hi, len(lr))} |")
+    print()
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, "fits.csv"))
+    main(sys.argv[1:] or [os.path.join(HERE, "fits.csv")])

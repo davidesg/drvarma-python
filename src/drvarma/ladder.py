@@ -480,12 +480,21 @@ class Ladder:
         unequal row degrees of the echelon form, without its restriction
         table (docs/ECHELON_PLAN.md, stage 2): not identified on its own.
         ``links``, ``rows`` and ``zeros`` compose.
+    echelon : Kronecker indices ``(n_1, ..., n_m)``, in the series' order:
+        the reversed echelon form of Lutkepohl and Poskitt (1996, eq. 2.3)
+        (docs/ECHELON_PLAN.md, stage 3). Row r carries its own AR/MA (the
+        series' spec, of degree <= n_r), the cross AR at lags
+        n_r - n_rc + 1 .. n_r, the cross MA at lags 1..n_r and, for c < r
+        with n_c > n_r, the contemporaneous ``AR0[r<-c]``:
+        A_0 = M_0 = I - (the AR0 terms), lower triangular. p and q are
+        max n_r. ``links`` and ``zeros`` remove further coefficients (LP's
+        stage IV); ``rows`` and ``cross="residual"`` do not apply.
     """
 
     def __init__(self, series, p=0, q=0, diagcov=False, redet=False,
                  fixarma=False, method=1, estwin=None, hessian="fd", lik="elf",
                  links=None, start="zero", cross="additive", zeros=None,
-                 rows=None):
+                 rows=None, echelon=None):
         _warn_if_no_engine()
         if series and not isinstance(series[0], LadderSeries):
             series = load(series)
@@ -512,6 +521,10 @@ class Ladder:
         if cross not in ("additive", "residual"):
             raise ValueError("cross must be 'additive' or 'residual'")
         self.cross = cross
+        self.echelon = self._parse_echelon(echelon, p, q, rows)
+        if self.echelon is not None:
+            self.p = self.q = max(self.echelon)
+            rows = {s.name: (k, k) for s, k in zip(self.series, self.echelon)}
         self.rows = self._parse_rows(rows)
         if self.rows is not None:
             self.p = int(max(self.rows[:, 0]))
@@ -523,6 +536,7 @@ class Ladder:
         # the active set, and the diagonal system seeds the full one as is.
         self._cAR = np.zeros((max(self.p, 1), m, m))
         self._cMA = np.zeros((max(self.q, 1), m, m))
+        self._cA0 = np.zeros((m, m))      # the echelon form's contemporaneous terms
         self._lvar = np.zeros(m)
         self._qcov = np.zeros((m, m))
         self._set_structure(list(range(m)), self.p, self.q, self.diagcov)
@@ -591,6 +605,59 @@ class Ladder:
             R[names.index(a)] = (pr, qr)
         return R
 
+    def _parse_echelon(self, echelon, p, q, rows):
+        """None, or the tuple of Kronecker indices, checked against the
+        specs and the other options."""
+        if echelon is None:
+            return None
+        n = tuple(int(k) for k in echelon)
+        m = len(self.series)
+        if len(n) != m or min(n) < 0:
+            raise LadderError(f"echelon: give {m} indices >= 0, one per series")
+        if rows is not None:
+            raise LadderError("echelon: the indices give the rows; do not give rows")
+        if self.cross != "additive":
+            raise LadderError("echelon: the residual cross MA (Jenkins-Alavi 3.22) is "
+                              "not an echelon form; use cross='additive'")
+        if (int(p), int(q)) not in ((0, 0), (max(n), max(n))):
+            raise LadderError(f"echelon: p and q are max(n) = {max(n)}; give 0, 0")
+        for s, k in zip(self.series, n):
+            ar, ma = s.orders()
+            if ar > k or ma > k:
+                raise LadderError(
+                    f"echelon: {s.name}'s own ARMA has degrees ({ar}, {ma}) and its index "
+                    f"is {k}. An echelon row has degree n_r; a .pre with seasonal "
+                    f"factors is stage 4 (docs/ECHELON_PLAN.md), not this form")
+        return n
+
+    def _index_table(self):
+        n = self.echelon
+        return [[min(n[r] + 1, n[c]) if c < r else min(n[r], n[c])
+                 for c in range(len(n))] for r in range(len(n))]
+
+    def _allowed(self, kind, k, i, j):
+        """Is the cross slot (kind, lag k + 1, i <- j) in the model's
+        structure (before zeros)? k = -1 is the contemporaneous AR0."""
+        if self.echelon is None:
+            return 0 <= k < self._row_order(kind, i)
+        n, nt = self.echelon, self._index_table()
+        if kind == "MA":
+            return 0 <= k < n[i]
+        if k < 0:
+            return j < i and nt[i][j] == n[i] + 1
+        return n[i] - nt[i][j] + 1 <= k + 1 <= n[i]
+
+    def _get(self, kind, k, i, j):
+        if kind == "AR" and k < 0:
+            return self._cA0[i, j]
+        return (self._cAR if kind == "AR" else self._cMA)[k, i, j]
+
+    def _put(self, kind, k, i, j, v):
+        if kind == "AR" and k < 0:
+            self._cA0[i, j] = v
+        else:
+            (self._cAR if kind == "AR" else self._cMA)[k, i, j] = v
+
     def _row_order(self, kind, i):
         """The cross order of equation i (AR or MA), before any change of
         the active structure."""
@@ -617,10 +684,15 @@ class Ladder:
             if a not in names or b not in names or a == b:
                 raise LadderError(f"zeros: '{str(tok).strip()}' does not name two different series")
             i, j = names.index(a), names.index(b)
-            top = self._row_order(kind, i)
-            if not 1 <= k <= top:
-                where = "" if self.rows is None else f" of {a}"
-                raise LadderError(f"zeros: '{str(tok).strip()}': the cross {kind} order{where} is {top}")
+            if self.echelon is not None:
+                if not self._allowed(kind, k - 1, i, j):
+                    raise LadderError(f"zeros: '{str(tok).strip()}' is not a free coefficient "
+                                      f"of the echelon form {self.echelon}")
+            else:
+                top = self._row_order(kind, i)
+                if not 1 <= k <= top:
+                    where = "" if self.rows is None else f" of {a}"
+                    raise LadderError(f"zeros: '{str(tok).strip()}': the cross {kind} order{where} is {top}")
             if not self._linked(i, j):
                 raise LadderError(f"zeros: '{str(tok).strip()}' is not a linked pair")
             out.add((kind, k - 1, i, j))
@@ -628,13 +700,18 @@ class Ladder:
 
     def _slots(self):
         """The free cross coefficients, in the C's order (AR lag by lag, then
-        MA), without those fixed at zero or beyond their row's order."""
+        MA), without those fixed at zero or outside the structure (rows, the
+        echelon table). The echelon form's AR0 come first."""
         z = getattr(self, "zeros", frozenset())
+        a0 = []
+        if self.echelon is not None and (self._cp or self._cq):
+            a0 = [("AR", -1, i, j) for i, j in self._pairs()
+                  if self._allowed("AR", -1, i, j) and ("AR", -1, i, j) not in z]
         ar = [("AR", k, i, j) for k in range(self._cp) for i, j in self._pairs()
-              if k < self._row_order("AR", i) and ("AR", k, i, j) not in z]
+              if self._allowed("AR", k, i, j) and ("AR", k, i, j) not in z]
         ma = [("MA", k, i, j) for k in range(self._cq) for i, j in self._pairs()
-              if k < self._row_order("MA", i) and ("MA", k, i, j) not in z]
-        return ar + ma
+              if self._allowed("MA", k, i, j) and ("MA", k, i, j) not in z]
+        return a0 + ar + ma
 
     def _linked(self, i, j):
         return i != j and (self.links is None or bool(self.links[i, j]))
@@ -672,7 +749,7 @@ class Ladder:
             v.extend(self.series[i].x[mk])
         act = self._act
         for kind, k, i, j in self._slots():
-            v.append((self._cAR if kind == "AR" else self._cMA)[k, i, j])
+            v.append(self._get(kind, k, i, j))
         v.extend(self._lvar[i] for i in act[1:])
         if not self._cdiag:
             v.extend(self._qcov[act[a], act[b]] for a in range(1, len(act)) for b in range(a))
@@ -687,7 +764,7 @@ class Ladder:
             idx += k
         act = self._act
         for kind, k, i, j in self._slots():
-            (self._cAR if kind == "AR" else self._cMA)[k, i, j] = v[idx]; idx += 1
+            self._put(kind, k, i, j, v[idx]); idx += 1
         for i in act[1:]:
             self._lvar[i] = v[idx]; idx += 1
         if not self._cdiag:
@@ -760,6 +837,15 @@ class Ladder:
                             # in the I - SUM Theta_m B^m convention (3.22)
                             for l, t in enumerate(th_i, 1):
                                 THETA[k + l, a, b] -= t * U
+        if self.echelon is not None and (self._cp or self._cq):
+            # A_0 w_t = SUM PHI~_k w_t-k + A_0 a_t - SUM THETA~_k a_t-k, with
+            # A_0 = I - C_0 (C_0 the AR0 terms, strictly lower): elf wants the
+            # standard form, Phi_k = A_0^-1 PHI~_k and Theta_k = A_0^-1 THETA~_k
+            C0 = self._cA0[np.ix_(act, act)]
+            if np.any(C0):
+                Ainv = np.linalg.inv(np.eye(m) - C0)     # unit triangular
+                PHI = np.einsum("ab,kbc->kac", Ainv, PHI)
+                THETA = np.einsum("ab,kbc->kac", Ainv, THETA)
         QQ = np.zeros((m, m))
         QQ[0, 0] = 1.0
         for a in range(1, m):
@@ -938,7 +1024,7 @@ class Ladder:
         if self.p == 0 and self.q == 0 and self.diagcov:
             self.result = diag
         else:
-            self._cAR[:] = 0.0; self._cMA[:] = 0.0; self._qcov[:] = 0.0
+            self._cAR[:] = 0.0; self._cMA[:] = 0.0; self._cA0[:] = 0.0; self._qcov[:] = 0.0
             self._set_structure(list(range(m)), self.p, self.q, self.diagcov)
             self.start_used = "zero"
             if self.start == "preliminary":
@@ -962,8 +1048,8 @@ class Ladder:
         S = np.cov(res.T, bias=True)
         x0 = self.pack()
         for kind, k, i, j in self._slots():
-            (self._cAR if kind == "AR" else self._cMA)[k, i, j] = \
-                seeds["ar" if kind == "AR" else "ma"][k, i, j]
+            if k >= 0:                    # AR0 has no preliminary estimate: 0
+                self._put(kind, k, i, j, seeds["ar" if kind == "AR" else "ma"][k, i, j])
         if not self._cdiag:
             for a in range(1, m):
                 for b in range(a):
@@ -977,7 +1063,7 @@ class Ladder:
             self.start_used = "preliminary"
         else:
             self.unpack(x0)
-            self._cAR[:] = 0.0; self._cMA[:] = 0.0; self._qcov[:] = 0.0
+            self._cAR[:] = 0.0; self._cMA[:] = 0.0; self._cA0[:] = 0.0; self._qcov[:] = 0.0
             self.start_used = "zero (the preliminary start was not admissible)"
 
     def irf_fevd_bands(self, horizon, ndraws=800, alpha=0.05, seed=0):
@@ -1064,9 +1150,11 @@ class Ladder:
         m = len(self.series)
         # the free cross coefficients of the requested model: rows and zeros
         # count (BUG-0017), not (p + q) for every linked pair
-        nx = sum(self._row_order("AR", i) + self._row_order("MA", i)
-                 for i in range(m) for j in range(m) if self._linked(i, j))
-        df = nx - len(self.zeros) + (0 if self.diagcov else m * (m - 1) // 2)
+        saved = (self._act, self._cp, self._cq, self._cdiag)
+        self._set_structure(list(range(m)), self.p, self.q, self.diagcov)
+        nx = len(self._slots())          # rows, the echelon table and zeros
+        self._set_structure(*saved)
+        df = nx + (0 if self.diagcov else m * (m - 1) // 2)
         lr = 2.0 * (self.result.logL - self.logL_diag)
         return lr, df, (float(chi2.sf(max(lr, 0.0), df)) if df else float("nan"))
 
@@ -1286,6 +1374,10 @@ def write_report(L, path, forecasts=None, recursive=None):
                f"{L.series[i].name}<-{L.series[j].name}"
                for i in range(len(L.series)) for j in range(len(L.series))
                if i != j and L.links[i, j])] if L.links is not None else []),
+           *([f"Echelon form     : Kronecker indices ("
+               + ", ".join(f"{s.name} {k}" for s, k in zip(L.series, L.echelon))
+               + "), A0 lower triangular (Lutkepohl-Poskitt 1996)"]
+             if getattr(L, "echelon", None) is not None else []),
            *([f"Cross rows       : " + ", ".join(
                f"{s.name}({L.rows[i, 0]},{L.rows[i, 1]})" for i, s in enumerate(L.series))]
              if getattr(L, "rows", None) is not None else []),
