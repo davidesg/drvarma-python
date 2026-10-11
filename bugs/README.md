@@ -4,13 +4,14 @@ In-repo bug tracker for **drvarma-diag**.  One Markdown file per bug (`BUG-NNNN-
 
 New report: `art-bug new` (or copy `TEMPLATE.md`).  Validate: `art-bug check`.  A fix commit references the id, e.g. `fix(pipeline): BUG-0001 …`.
 
-**19 report(s), 3 open.**
+**20 report(s), 4 open.**
 
 | id | status | sev | component | title | fixed in |
 |----|--------|-----|-----------|-------|----------|
 | [BUG-0001](BUG-0001-deseason-phase-still-unpatched-in-the-c-engine.md) | open | high | deseason | The seasonal-adjustment phase off-by-one is fixed in the Python port but STILL LIVE in the C engine, which the standalone executable uses | — |
 | [BUG-0002](BUG-0002-c-sources-are-copies-and-have-already-drifted.md) | open | high | csrc | The C sources are three unsynchronised COPIES, and they have already drifted — the termcode fix lives in the embedded copy only | — |
 | [BUG-0003](BUG-0003-seasonal-adjustment-applied-in-levels-before-box-cox.md) | in-progress | medium | deseason | The seasonal component is estimated and subtracted in LEVELS, before the Box-Cox log, so a multiplicative pattern on a trending index is adjusted at the wrong scale | 0.2.0 (Python; the C pending) |
+| [BUG-0020](BUG-0020-la-puerta-falla-con-un-ma-en-la-pared.md) | open | low | ladder | The diagonal gate fails with NaN when a univariate optimum sits on the MA wall; the same polynomial is admissible alone and ifault 3 in the joint elf | — |
 | [BUG-0004](BUG-0004-el-docstring-dice-que-el-respaldo-en-python-solo-hace-q0.md) | fixed | low | engine | El docstring de `estimate_w` dice que el respaldo en Python sólo hace q=0, y hace VARMA completo desde junio | 0.2.0 |
 | [BUG-0005](BUG-0005-el-respaldo-en-python-puro-entra-sin-avisar.md) | fixed | medium | packaging | Donde no hay rueda binaria se instala la de Python puro y el motor C no se usa, sin ningún aviso | 0.2.0 |
 | [BUG-0006](BUG-0006-la-busqueda-lineal-no-vuelve-con-un-objetivo-no-finito.md) | fixed | high | optimizer | La búsqueda lineal no vuelve nunca si el objetivo es NaN o infinito — el optimizador (C y Python) se queda girando, sin error ni salida | 0.1.7 |
