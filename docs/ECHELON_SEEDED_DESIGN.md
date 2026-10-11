@@ -131,6 +131,12 @@ the AR and MA row degrees together, the natural seed is `p_i ≈ max(p_i^u,
 q_i^u)`. This is a *starting point for a search*, not a claim: the marginal
 orders of a component of a VARMA are not the Kronecker indices, and §8 says why.
 
+> **Measured, and dropped (2026-10-11).** The exact marginals of an echelon
+> system are ARMA(N, N), N = Σ n_i, for every component; on simulated systems
+> the seed hits n_i about half the time and drifts toward N as nobs grows.
+> The indices come from a multivariate search. See
+> [`STUDY-echelon-seed.md`](STUDY-echelon-seed.md).
+
 ### 3.2 Coefficients → pre-estimates
 
 `estimate_py` already seeds the optimiser with `_hannan_rissanen_diag` — a
@@ -396,8 +402,9 @@ Two of the seven are missing, and one of those is a table from a textbook.
    on their own terms is checking the adequacy of the simplification. Shipping
    the factorisation without the test would be taking the part of their
    qualification that suits us and dropping the condition attached to it.
-5. **Index search**: start from the univariate seed and test upward, the way
-   `identify_varma_order` searches (p, q) today.
+5. **Index search**: multivariate (Hannan–Kavalieris / Poskitt, or the
+   block-Hankel canonical correlations), not from the univariate seed — stage 0
+   ([`STUDY-echelon-seed.md`](STUDY-echelon-seed.md)) ruled that out.
 
 ## 8. What could sink this — read before starting
 
@@ -405,7 +412,8 @@ Two of the seven are missing, and one of those is a table from a textbook.
   the relationship between a component's univariate ARMA orders and its Kronecker
   index is not an identity. The seed may be systematically wrong in a direction
   nobody has measured. **This is the assumption to test first**, on simulated
-  systems with known indices, before any of §7 is built. Lütkepohl & Poskitt's
+  systems with known indices, before any of §7 is built. *Done 2026-10-11: it fails
+  ([`STUDY-echelon-seed.md`](STUDY-echelon-seed.md)).* Lütkepohl & Poskitt's
   own example is a warning: three flour-price series, all three methods they try
   return indices `(1,1,1)`, and the final models turn out to be a restricted
   VAR(1) and an MA(1) — "valid echelon forms with Kronecker indices (1,1,1) in
