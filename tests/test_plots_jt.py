@@ -47,7 +47,8 @@ def test_plot_residual_diagnostics_all(fitted):
     figs = plots.plot_residual_diagnostics_all(mdl)    # one per series (m=2)
     assert len(figs) == 2 and all(isinstance(f, Figure) for f in figs)
     # pyfug's native size: fug C's big canvas (fugplot.c), in points.
-    from pyfug.graphics.fugplot import LAYOUT_BIG as L
+    # pyfug.graphics.fugplot is newer than pyfug 2.0.1, the one on PyPI.
+    L = pytest.importorskip("pyfug.graphics.fugplot").LAYOUT_BIG
     size = (L["W"] / 72.0, L["H"] / 72.0)
     assert all(tuple(f.get_size_inches()) == pytest.approx(size) for f in figs)
 

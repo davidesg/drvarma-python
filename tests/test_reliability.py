@@ -228,17 +228,25 @@ def test_qccf_equals_hosking_q_on_pair():
 
 
 def test_jarque_bera_matches_formula():
+    """Lutkepohl's (2005, 4.5), as lib/diagmv: residuals standardised by the
+    SYMMETRIC square root of their covariance (BUG-0016)."""
+    from scipy.linalg import sqrtm
     rng = np.random.default_rng(1)
-    res = rng.standard_normal((400, 3))
-    JB, df, _ = diagnostics.jarque_bera_mv(res)
+    A = np.array([[1.0, 0.0, 0.0], [0.6, 1.0, 0.0], [0.3, -0.4, 1.0]])
+    res = rng.standard_t(6, (400, 3)) @ A.T          # correlated, fat-tailed
+    JB, df, _, sk, ku = diagnostics.jarque_bera_mv(res, parts=True)
     n, m = res.shape
     x = res - res.mean(axis=0)
-    sd = np.sqrt((x ** 2).mean(axis=0))
-    skew = (x ** 3).mean(axis=0) / sd ** 3
-    kurt = (x ** 4).mean(axis=0) / sd ** 4 - 3.0
-    JBm = float(np.sum(n * (skew ** 2 / 6.0 + kurt ** 2 / 24.0)))
+    v = x @ np.linalg.inv(np.real(sqrtm(x.T @ x / n)))
+    b1 = (v ** 3).mean(axis=0)
+    b2 = (v ** 4).mean(axis=0) - 3.0
     assert df == 2 * m
-    assert abs(JB - JBm) < 1e-9
+    assert abs(sk - n * np.sum(b1 ** 2) / 6.0) < 1e-9
+    assert abs(ku - n * np.sum(b2 ** 2) / 24.0) < 1e-9
+    assert abs(JB - (sk + ku)) < 1e-12
+    # the symmetric root makes it independent of the order of the series
+    JBp, _, _ = diagnostics.jarque_bera_mv(res[:, [2, 0, 1]])
+    assert abs(JB - JBp) < 1e-9
 
 
 # -- determinism and edge cases --------------------------------------------- #
