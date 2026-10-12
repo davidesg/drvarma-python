@@ -6,6 +6,28 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**The echelon index search and its start (`drvarma.echelon`)** are stage 3b
+of `docs/ECHELON_PLAN.md`: Lütkepohl and Poskitt's (1996) stages I–II.
+- `echelon.search(w, n_max=3)` fits a long VAR(h) (h by AIC), then least
+  squares on each candidate's echelon form, with one round of Hannan and
+  Kavalieris' residual correction. It chooses the indices by SC, over every
+  candidate while there are at most 256, by HK's two steps beyond. It
+  returns the criterion table (`Search.text()`) and every fit.
+- `Ladder(echelon=n)` now starts exact ML at the stage II estimates
+  (`start="echelon"`, the form's default): own and cross terms, A₀ and Q.
+  MA roots that least squares leaves outside the unit circle are pulled to
+  0.95 (`echelon.pull_inside`). The plain Ladder keeps the C's zero start.
+
+`docs/STUDY-echelon-search.md` measured it on stage 0's grid:
+- the true indices are found in 80–97 % of the generic replications on
+  average, rising with nobs (stage 0's univariate seed: 0–49 %);
+- SC beats HQ, which overfits;
+- the residual correction is what makes the search improve with the sample;
+- from the stage II start, no fit ends below the true parameters. From
+  zero, 20 % of (2,2,1)'s did.
+
+Tests: `tests/test_echelon_search.py`.
+
 **The echelon form (`Ladder(echelon=(n_1, …, n_m))`)** is stage 3a of
 `docs/ECHELON_PLAN.md`: Lütkepohl and Poskitt's (1996) reversed echelon form.
 The index table decides which cross coefficients are free:

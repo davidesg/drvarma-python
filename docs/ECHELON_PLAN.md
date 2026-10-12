@@ -101,15 +101,19 @@ stationary vector `w` (the same one route V's `identify_matrices` uses).
 2. **For each candidate n:** least squares row by row. Row r regresses
    `w_r,t` on the free lags of `w` and of `ε̂` that the table allows, with
    `A_0`'s terms as regressors on contemporaneous `w`. The criterion is
-   `log|Σ̃(n)| + c_T · dim(n) / T`, with `c_T = 2 log log T` (HQ, the
-   default) or `log T` (SC); LP report both.
+   `log|Σ̃(n)| + c_T · dim(n) / T`, with `c_T = 2 log log T` (HQ) or
+   `log T` (SC); LP report both. *Measured in 3b: SC is the default (HQ
+   overfits), and each candidate gets one round of Hannan and Kavalieris'
+   residual correction (without it the search does not improve with nobs).*
 3. **The search:** Hannan and Kavalieris' (1984) two steps, about m·n_max
    fits instead of (n_max+1)^m:
    - (a) all indices equal, 0..n_max;
    - (b) from the best, lower one index at a time while the criterion
      improves.
    - Full enumeration stays available for m ≤ 3, n_max ≤ 3, as the check of
-     (b).
+     (b). *Measured in 3b: full enumeration is the default while there are
+     at most 256 candidates (1.3 s for m = 3); (b) cannot raise an index,
+     and misses (1,2,1) at nobs 100.*
 4. **Output:** the chosen n, the criterion table (both criteria, every fit),
    and the stage II estimates. Those become stage III's start (`start="echelon"`,
    which goes into `Ladder.x_start`).
@@ -133,7 +137,7 @@ with fewer `termcode 3` stops and fewer MA-boundary optima.
 
 Two tools, on route V's session:
 
-- **`identify_echelon(max_index, criterion="HQ")`** prints the criterion
+- **`identify_echelon(max_index, criterion="SC")`** prints the criterion
   table and the chosen n, saying that the variables' order is part of it.
   It records a decision in the guion.
 - **`estimate(..., form="echelon", indices=…)`** writes each series' spec with
