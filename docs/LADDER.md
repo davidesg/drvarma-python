@@ -67,6 +67,12 @@ least-squares estimates (`start="echelon"`, the default for this form), and
 `docs/ECHELON_PLAN.md`, `docs/STUDY-echelon-search.md`,
 `tests/test_echelon.py` and `tests/test_echelon_search.py`.
 
+On route U's models (stage 4), a model's seasonal and fixed-frequency factors
+are its row's factor: F_r(B)[A(B)w]_r = G_r(B)[M(B)a]_r. `own="free"` gives
+each row a free AR(n_r)/MA(n_r) in place of the model's regular ARMA, and
+`factor_test()` checks the factor by an LR against the same rows unfactored.
+See `docs/ECHELON_PLAN.md` §4 and `tests/test_echelon_rowfactor.py`.
+
 Q is normalised with Q11 = 1 (the likelihood concentrates sigma2). Standard
 errors come from Mauricio's finite-difference Hessian (fdhess) at the optimum,
 with BFGS kept, and said, if that Hessian is not positive definite or the

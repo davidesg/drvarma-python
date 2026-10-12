@@ -27,6 +27,11 @@ Row r: a_rr at lags 1..n_r; a_rc (r != c) at lags n_r - n_rc + 1 .. n_r
   indices equal, 0..n_max; then, from the best, each index in turn lowered
   while the criterion improves.
 
+- **The row factor** (stage 4): a row r may carry scalar factors, AR
+  F_r(B) and MA G_r(B) (the series' seasonal and fixed-frequency factors):
+  F_r(B) [A(B) w]_r = G_r(B) [M(B) a]_r. Row r is then fitted on
+  (F_r/G_r)(B) w (``filters=``, ``row_filter``).
+
 A and M are in LP's convention (the Ladder's coefficients are -A, -M).
 The stage II estimates are the start of stage III, exact ML
 (``Ladder(echelon=n, start="echelon")``). docs/ECHELON_PLAN.md, stage 3b.

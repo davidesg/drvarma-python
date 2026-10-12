@@ -295,3 +295,18 @@ def test_a_fixed_frequency_factor_is_a_row_factor(tmp_path):
         L0 = Ladder(f, echelon=(0, 0), own="free")
         L0.fit()
         L0.factor_test()
+
+
+def test_the_search_in_passes(tmp_path):
+    """search_row_factors: the first pass with the univariate (gate) factors,
+    the next with the joint fit's; it stops when the choice repeats. On the
+    quarterly system it ends at (1, 0); without a factor, one plain search."""
+    from drvarma.ladder import search_row_factors
+    y = simulate(600, seed=5)
+    sr, hist = search_row_factors(system_specs(tmp_path, y), n_max=2)
+    assert sr.indices == (1, 0)
+    assert hist[0][1] == "univariate models" and hist[-1][0] == (1, 0)
+    assert len(hist) == 1 or hist[-1][1].startswith("joint fit of")
+    f = [spec(tmp_path / "p1.inp", "p1", y[:, 0], 1, 1), spec(tmp_path / "p2.inp", "p2", y[:, 1], 0, 0)]
+    _sr, hist = search_row_factors(f, n_max=1)
+    assert hist == []

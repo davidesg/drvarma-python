@@ -311,7 +311,17 @@ class LadderSeries:
             return [c + [0.0] * (k - len(c))] if k else []
         m2.ar, m2.ar_free = seed(phi), None
         m2.ma, m2.ma_free = seed(theta), None
-        return LadderSeries(self.path, self.ts, m2)
+        new = LadderSeries(self.path, self.ts, m2)
+        # the rest in its current state: the deterministic terms, the row
+        # factor and the mean
+        new.x[:self.n_det] = self.x[:self.n_det]
+        if self.has_row_factor():
+            new.x[new.n_det:][new._split_specs()[1]["fac"]] = \
+                self.x[self.n_det:][self._split_specs()[1]["fac"]]
+        elif self.has_mu:
+            new.x[-1] = self.x[-1]
+        new.nobs = self.nobs
+        return new
 
     def factor_support(self):
         """(AR lags, MA lags) where the row factor can be non-zero, lag 0
@@ -1612,6 +1622,48 @@ class Ladder:
 # --------------------------------------------------------------------------- #
 #  split: out of the multivariate .inp                                         #
 # --------------------------------------------------------------------------- #
+
+def search_row_factors(series, n_max=3, criterion="SC", passes=3):
+    """The echelon index search on route U's models (stage 4): each row
+    filtered by its factor (the model's seasonal and fixed-frequency
+    factors), in passes. The first takes the factors of the univariate
+    fits (the gate's); each next one, those of the exact-ML fit of the
+    previous choice (``own="free"``), where the cross terms no longer leak
+    into them. It stops when the choice repeats, or after ``passes``.
+    With no factor it is one plain search.
+
+    The univariate factors mislead the search when a series' marginal
+    mixes the other rows' factors: on simulated quarterly (2, 1) systems
+    with an annual AR on one row and an annual MA on the other, it found
+    the indices in 28 % of the replications with them, and with the second
+    pass's factors in most (docs/STUDY-echelon-rowfactor.md).
+
+    Returns (the last ``echelon.Search``, the passes: a list of
+    (indices, "univariate models" | "joint fit of (n...)"))."""
+    from . import echelon as E
+    if series and not isinstance(series[0], LadderSeries):
+        series = load(series)
+    m = len(series)
+    L = Ladder([s.copy() for s in series])
+    L.run_gate()
+    L._set_structure(list(range(m)), 0, 0, True)
+    W = L.cast(L.pack())[4]
+    filt = [tuple(s.split_polynomials()[2:4]) for s in L.series]
+    if not any(s.has_row_factor() for s in series):
+        return E.search(W, n_max=n_max, criterion=criterion), []
+    sr = E.search(W, n_max=n_max, criterion=criterion, filters=filt)
+    hist = [(sr.indices, "univariate models")]
+    for _ in range(int(passes) - 1):
+        n = sr.indices
+        F = Ladder([s.copy() for s in series], echelon=n, own="free")
+        F.fit()
+        filt = [tuple(s.split_polynomials()[2:4]) for s in F.series]
+        sr = E.search(W, n_max=n_max, criterion=criterion, filters=filt)
+        hist.append((sr.indices, f"joint fit of {n}"))
+        if sr.indices == n:
+            break
+    return sr, hist
+
 
 def split(path, mean=False, harmonics=False, ar=0, ma=0, scale=100.0, out_dir="."):
     """Convert a multivariate drvarma ``.inp`` (deprecated since 5.0) into one
