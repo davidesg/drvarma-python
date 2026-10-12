@@ -61,7 +61,11 @@ coefficients (`tests/test_zeros.py`, `tests/test_rows.py`).
 (1996) restriction table on route V's specifications. Each row's own ARMA has
 degree ≤ n_r, the cross terms follow the table, and the contemporaneous
 `AR0[r<-c]` makes A₀ lower triangular. The order of the series is part of
-the model. See `docs/ECHELON_PLAN.md` and `tests/test_echelon.py`.
+the model. Exact ML starts at Lütkepohl and Poskitt's stage II
+least-squares estimates (`start="echelon"`, the default for this form), and
+`drvarma.echelon.search` chooses the indices from the data. See
+`docs/ECHELON_PLAN.md`, `docs/STUDY-echelon-search.md`,
+`tests/test_echelon.py` and `tests/test_echelon_search.py`.
 
 Q is normalised with Q11 = 1 (the likelihood concentrates sigma2). Standard
 errors come from Mauricio's finite-difference Hessian (fdhess) at the optimum,

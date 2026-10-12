@@ -457,13 +457,18 @@ class Ladder:
         the univariate MA of series i TIMES row i of U*(B) = I - SUM U_k B^k.
         The two coincide when the univariate models have no MA factors. The
         cross AR is additive in both.
-    start : where the cross terms start: "zero" (default, as the C) or
+    start : where the cross terms start: "zero" (the default, as the C) or
         "preliminary" — Jenkins and Alavi's (1981) preliminary estimates: the
         cross MA from the cross covariances of the diagonal system's residuals
         (their prewhitened residuals), the cross AR from the multivariate
         Yule-Walker equations on the stationary series, the innovation
-        covariance from the residuals'. If that start is not admissible, zero
-        is used and ``start_used`` says so.
+        covariance from the residuals'. Or, with ``echelon``, "echelon" --
+        Lutkepohl and Poskitt's (1996) stage II least-squares estimates
+        (drvarma.echelon) for the own and cross terms, A_0 included, and Q:
+        the default with ``echelon`` (docs/STUDY-echelon-search.md: from
+        zero, exact ML stops below the true parameters in 20 % of a
+        5-dimensional system's fits; from here, in none). If that start is
+        not admissible, zero is used and ``start_used`` says so.
     links : the cross dynamics only on these pairs, as the C's -links:
         ``"A<-B,C<-A"`` or a list of ``("A", "B")`` (B enters the equation of
         A: AR and MA, every lag up to p and q), with the series' names.
@@ -493,7 +498,7 @@ class Ladder:
 
     def __init__(self, series, p=0, q=0, diagcov=False, redet=False,
                  fixarma=False, method=1, estwin=None, hessian="fd", lik="elf",
-                 links=None, start="zero", cross="additive", zeros=None,
+                 links=None, start=None, cross="additive", zeros=None,
                  rows=None, echelon=None):
         _warn_if_no_engine()
         if series and not isinstance(series[0], LadderSeries):
@@ -514,14 +519,18 @@ class Ladder:
                           "one_only": 0}
         m = len(self.series)
         self.links = self._parse_links(links)
-        if start not in ("zero", "preliminary"):
-            raise ValueError("start must be 'zero' or 'preliminary'")
+        if start is None:
+            start = "echelon" if echelon is not None else "zero"
+        if start not in ("zero", "preliminary", "echelon"):
+            raise ValueError("start must be 'zero', 'preliminary' or 'echelon'")
         self.start = start
         self.start_used = None
         if cross not in ("additive", "residual"):
             raise ValueError("cross must be 'additive' or 'residual'")
         self.cross = cross
         self.echelon = self._parse_echelon(echelon, p, q, rows)
+        if start == "echelon" and self.echelon is None:
+            raise LadderError("start='echelon' is the echelon form's: give echelon=")
         if self.echelon is not None:
             self.p = self.q = max(self.echelon)
             rows = {s.name: (k, k) for s, k in zip(self.series, self.echelon)}
@@ -1029,6 +1038,8 @@ class Ladder:
             self.start_used = "zero"
             if self.start == "preliminary":
                 self._preliminary(diag)
+            elif self.start == "echelon":
+                self._echelon_start()
             self.x_start = self.pack()    # where the requested fit starts
             self.result = self._fit()
         return self.result
@@ -1054,17 +1065,84 @@ class Ladder:
             for a in range(1, m):
                 for b in range(a):
                     self._qcov[a, b] = S[a, b] / S[0, 0]
+        self._take_start(x0, "preliminary")
+
+    def _admissible(self):
+        """Does elf accept the current state as a point of the likelihood?"""
         mu, phi, theta, qq, w, ifa = self.cast(self.pack())
-        ok = not ifa
-        if ok:
-            _l, f1, f2, _a, ifa2 = self._elf(mu, phi, theta, qq, w)
-            ok = not ifa2 and np.isfinite(f1) and f1 > 0 and f2 > 0
-        if ok:
-            self.start_used = "preliminary"
+        if ifa:
+            return False
+        _l, f1, f2, _a, ifa2 = self._elf(mu, phi, theta, qq, w)
+        return not ifa2 and bool(np.isfinite(f1)) and f1 > 0 and f2 > 0
+
+    def _take_start(self, x0, name):
+        """Keep the start just set, or go back to ``x0`` with the cross terms
+        and Q's covariances at zero if elf does not accept it."""
+        if self._admissible():
+            self.start_used = name
         else:
             self.unpack(x0)
             self._cAR[:] = 0.0; self._cMA[:] = 0.0; self._cA0[:] = 0.0; self._qcov[:] = 0.0
-            self.start_used = "zero (the preliminary start was not admissible)"
+            self.start_used = f"zero (the {name} start was not admissible)"
+
+    def _echelon_start(self):
+        """Lutkepohl and Poskitt's stage II estimates (see ``start``): a long
+        VAR on the stationary series, then least squares on the echelon
+        form's free positions -- those the Ladder holds free: links, zeros
+        and an own ARMA of degree below n_r stay at zero. The own AR/MA are
+        set where the spec writes them as one regular factor (route V's);
+        the mean stays the diagonal fit's. Least squares can leave an MA
+        root outside the unit circle: the roots are pulled inside
+        (``echelon.pull_inside``) and ``start_used`` says so."""
+        from . import echelon as E
+        m, n = len(self.series), self.echelon
+        _mu, _phi, _th, _qq, W, _ifa = self.cast(self.pack())   # no cross terms in it
+        h, e, _aic = E.long_var(W)
+        ex = set()
+        for r, s in enumerate(self.series):
+            ar, ma = s.orders()
+            ex |= {("A", k, r, r) for k in range(ar + 1, n[r] + 1)}
+            ex |= {("M", k, r, r) for k in range(ma + 1, n[r] + 1)}
+        free = set(self._slots())
+        for r in range(m):
+            for c in range(m):
+                if r == c:
+                    continue
+                for k in range(0, n[r] + 1):
+                    if ("AR", k - 1, r, c) not in free:
+                        ex.add(("A", k, r, c))
+                    if k and ("MA", k - 1, r, c) not in free:
+                        ex.add(("M", k, r, c))
+        fit = E.stage2(W, e, h, n, exclude=ex)
+        self.echelon_stage2 = fit
+        A, M, lam_a, lam_m = E.pull_inside(fit.A, fit.M)
+        x0 = self.pack()
+        val = {}
+        for r, s in enumerate(self.series):
+            for k in range(1, n[r] + 1):
+                val[f"phi_{s.name}[B^{k}]"] = -A[k, r, r]
+                val[f"theta_{s.name}[B^{k}]"] = -M[k, r, r]
+        names = self.names()
+        v = self.pack()
+        for a, nm in enumerate(names):
+            if nm in val:
+                v[a] = val[nm]
+        self.unpack(v)
+        for kind, k, i, j in self._slots():
+            self._put(kind, k, i, j, -(A if kind == "AR" else M)[k + 1, i, j])
+        S = fit.sigma
+        act = self._act
+        for i in act[1:]:
+            self._lvar[i] = math.log(S[i, i] / S[act[0], act[0]])
+        if not self._cdiag:
+            for a in range(1, len(act)):
+                for b in range(a):
+                    self._qcov[act[a], act[b]] = S[act[a], act[b]] / S[act[0], act[0]]
+        self._take_start(x0, "echelon")
+        if self.start_used == "echelon" and (lam_a < 1.0 or lam_m < 1.0):
+            pulled = [f"{w} x {lam:.3f}^k" for w, lam in (("AR", lam_a), ("MA", lam_m))
+                      if lam < 1.0]
+            self.start_used = f"echelon ({', '.join(pulled)}: inside the unit circle)"
 
     def irf_fevd_bands(self, horizon, ndraws=800, alpha=0.05, seed=0):
         """Monte-Carlo bands for the orthogonalised IRF and the FEVD of the fit.

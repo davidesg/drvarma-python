@@ -115,9 +115,10 @@ def test_the_cast_is_the_standard_form(tmp_path):
 
 
 def test_equal_indices_are_the_varma(tmp_path):
-    """Echelon (1,1) has A_0 = I and nothing restricted: the VARMA(1,1)."""
+    """Echelon (1,1) has A_0 = I and nothing restricted: the VARMA(1,1),
+    from the same start."""
     f = specs(tmp_path, noise(150, 2, seed=3), [(1, 1), (1, 1)])
-    a = Ladder(f, echelon=(1, 1)).fit()
+    a = Ladder(f, echelon=(1, 1), start="zero").fit()   # the same path as the VARMA
     b = Ladder(f, 1, 1).fit()
     assert a.names == b.names
     assert a.logL == pytest.approx(b.logL, abs=1e-8)
