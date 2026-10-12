@@ -109,6 +109,59 @@ def pull_inside(A, M, rho=0.95):
     return A, M, lam[0], lam[1]
 
 
+# -- the row factor (stage 4) ---------------------------------------------- #
+
+def times_row_factors(C, f):
+    """The rows of C(B) = C_0 + SUM C_k B^k (LP's convention, k x m x m)
+    times their scalar factors F_r(B) = 1 - SUM f_rj B^j: row r of the
+    product, C'_l = C_l - SUM_j f_rj C_l-j. ``f``: one coefficient array per
+    row (empty for none). The echelon form with a row factor
+    (docs/ECHELON_PLAN.md, stage 4) is F_r(B) [A(B) w]_r = G_r(B) [M(B) a]_r."""
+    C = np.asarray(C, float)
+    d = max([len(fr) for fr in f] + [0])
+    if d == 0:
+        return C
+    K, m = C.shape[0], C.shape[1]
+    out = np.zeros((K + d, m, m))
+    out[:K] = C
+    for r, fr in enumerate(f):
+        for j, fj in enumerate(fr, 1):
+            out[j:j + K, r] -= fj * C[:, r]
+    return out
+
+
+def row_filter(w, f, g):
+    """(F/G)(B) w, column by column: F(B) = 1 - SUM f_j B^j by its finite
+    sum, 1/G(B) by the recursion, zero pre-sample values. Row r of the
+    echelon form with a row factor is an ordinary echelon row on
+    z = (F_r/G_r)(B) w."""
+    w = np.asarray(w, float)
+    z = w.copy()
+    for j, fj in enumerate(f, 1):
+        z[j:] -= fj * w[:-j]
+    if len(g):
+        g = np.asarray(g, float)
+        for t in range(1, z.shape[0]):
+            k = min(t, g.size)
+            z[t] += g[:k] @ z[t - 1::-1][:k]
+    return z
+
+
+def _filters(filters, m):
+    """None or m pairs (f, g); a row without a factor gives empty arrays."""
+    if filters is None:
+        return None
+    out = [(np.asarray(f, float), np.asarray(g, float)) for f, g in filters]
+    if len(out) != m:
+        raise ValueError(f"filters: give {m} pairs (f, g), one per row")
+    return out if any(f.size or g.size for f, g in out) else None
+
+
+def _lag_of(filters):
+    """The pre-sample a row factor uses: its degrees."""
+    return max([max(f.size, g.size) for f, g in filters] + [0]) if filters else 0
+
+
 # -- stage I ---------------------------------------------------------------- #
 
 def _var_ls(w, h, t0):
@@ -160,20 +213,28 @@ class StageII:
         return self.logdet + cT * self.dim / self.T
 
 
-def stage2(w, e, h, n, t0=None, exclude=()):
+def stage2(w, e, h, n, t0=None, exclude=(), filters=None):
     """Stage II for indices n: row-by-row least squares on the demeaned w
     and the stage I residuals e (``long_var``'s: e[t - h] is the residual of
-    time t). ``t0`` is the first time used (default h + max n: pass the same
-    for every candidate to compare criteria). ``exclude``: positions
-    ("A", k, r, c) or ("M", k, r, c) held at zero (links, zeros)."""
+    time t). ``t0`` is the first time used (default h + max n, plus the row
+    factors' degree: pass the same for every candidate to compare criteria).
+    ``exclude``: positions ("A", k, r, c) or ("M", k, r, c) held at zero
+    (links, zeros). ``filters``: each row's factor (f_r, g_r), as in
+    ``times_row_factors``; row r is then fitted on (F_r/G_r)(B) w
+    (``row_filter``), with the same residuals: A and M are the echelon
+    part, the factors stay as given."""
     w = np.asarray(w, float)
     w = w - w.mean(0)
     T, m = w.shape
     n = tuple(int(k) for k in n)
     p = max(n) if n else 0
-    t0 = h + p if t0 is None else int(t0)
-    if t0 < h + p:
-        raise ValueError(f"t0 {t0} < h + max n = {h + p}")
+    filters = _filters(filters, m)
+    lo = h + p + _lag_of(filters)
+    t0 = lo if t0 is None else int(t0)
+    if t0 < lo:
+        raise ValueError(f"t0 {t0} < h + max n + the row factors' degree = {lo}")
+    wr = [row_filter(w, f, g) if (f.size or g.size) else w
+          for f, g in filters] if filters else [w] * m
     ex = set(exclude)
     pa, pm = free_positions(n)
     ts = np.arange(t0, T)
@@ -184,18 +245,19 @@ def stage2(w, e, h, n, t0=None, exclude=()):
     U = np.empty((ts.size, m))
     d = 0
     for r in range(m):
+        z = wr[r]
         cols, keys = [], []
         for (k, rr, c) in pa:
             if rr != r or ("A", k, r, c) in ex:
                 continue
-            cols.append(w[ts, c] - E[ts, c] if k == 0 else w[ts - k, c])
+            cols.append(z[ts, c] - E[ts, c] if k == 0 else z[ts - k, c])
             keys.append(("A", k, c))
         for (k, rr, c) in pm:
             if rr != r or ("M", k, r, c) in ex:
                 continue
             cols.append(E[ts - k, c])
             keys.append(("M", k, c))
-        y = w[ts, r]
+        y = z[ts, r]
         d += len(cols)
         if cols:
             X = np.column_stack(cols)
@@ -215,13 +277,21 @@ def stage2(w, e, h, n, t0=None, exclude=()):
     return StageII(n, A, M, S, ld if sign > 0 else -np.inf, d, int(ts.size))
 
 
-def residuals(w, A, M):
+def residuals(w, A, M, filters=None):
     """The innovations of the echelon model on the demeaned w, by the
     recursion A_0 e_t = A_0 w_t + SUM A_k w_t-k - SUM M_k e_t-k, with zero
-    pre-sample values (T x m)."""
+    pre-sample values (T x m). With ``filters``, A and M are the echelon
+    part and the rows are multiplied by their factors first."""
     w = np.asarray(w, float)
     w = w - w.mean(0)
     T, m = w.shape
+    filters = _filters(filters, m)
+    if filters:
+        A = times_row_factors(A, [f for f, _g in filters])
+        M = times_row_factors(M, [g for _f, g in filters])
+        K = max(len(A), len(M))
+        A = np.concatenate([A, np.zeros((K - len(A), m, m))])
+        M = np.concatenate([M, np.zeros((K - len(M), m, m))])
     p = len(A) - 1
     inv = np.linalg.inv(A[0])
     Ak = [inv @ A[k] for k in range(1, p + 1)]
@@ -235,15 +305,16 @@ def residuals(w, A, M):
     return e
 
 
-def stage2_refined(w, e, h, n, t0=None, exclude=(), iterate=1):
+def stage2_refined(w, e, h, n, t0=None, exclude=(), iterate=1, filters=None):
     """Stage II, then ``iterate`` rounds of Hannan and Kavalieris' (1984)
     correction: the residuals recomputed from the model just fitted (its
     roots pulled inside first, ``pull_inside``), and stage II again with
     them in place of the long VAR's. ``iterate=0`` is plain stage II."""
-    f = stage2(w, e, h, n, t0=t0, exclude=exclude)
+    f = stage2(w, e, h, n, t0=t0, exclude=exclude, filters=filters)
     for _ in range(int(iterate)):
         A, M, _la, _lm = pull_inside(f.A, f.M)
-        f = stage2(w, residuals(w, A, M)[h:], h, n, t0=t0, exclude=exclude)
+        f = stage2(w, residuals(w, A, M, filters)[h:], h, n, t0=t0, exclude=exclude,
+                   filters=filters)
     return f
 
 
@@ -287,14 +358,17 @@ class Search:
 FULL_MAX = 256          # candidates up to which the search enumerates them all
 
 
-def search(w, n_max=None, criterion="SC", h_max=None, full=None, iterate=1):
+def search(w, n_max=None, criterion="SC", h_max=None, full=None, iterate=1,
+           filters=None):
     """Choose the Kronecker indices of the stationary vector w (T x m).
 
     n_max defaults to 3 (LP's examples stop there). ``full`` enumerates
     every n in {0..n_max}^m ((n_max + 1)^m fits) instead of Hannan and
     Kavalieris' two steps; None (default) enumerates while that is at most
     FULL_MAX. ``iterate``: the rounds of the residual correction per
-    candidate (``stage2_refined``).
+    candidate (``stage2_refined``). ``filters``: each row's factor
+    (``stage2``), the seasonal and fixed-frequency factors of the series'
+    univariate models (stage 4).
 
     The defaults -- SC, one round, full enumeration -- are what
     docs/STUDY-echelon-search.md measured best: the only setting whose hit
@@ -305,7 +379,7 @@ def search(w, n_max=None, criterion="SC", h_max=None, full=None, iterate=1):
     T, m = w.shape
     n_max = 3 if n_max is None else int(n_max)
     h, e, aic = long_var(w, h_max)
-    t0 = h + n_max
+    t0 = h + n_max + _lag_of(_filters(filters, m))
     if T - t0 < 2 * dim((n_max,) * m) // m + 10:
         raise ValueError(f"{T} observations are too few for n_max {n_max} with a "
                          f"VAR({h}) first stage")
@@ -316,7 +390,8 @@ def search(w, n_max=None, criterion="SC", h_max=None, full=None, iterate=1):
     def fit(n, step):
         n = tuple(n)
         if n not in out.fits:
-            out.fits[n] = stage2_refined(w, e, h, n, t0=t0, iterate=iterate)
+            out.fits[n] = stage2_refined(w, e, h, n, t0=t0, iterate=iterate,
+                                         filters=filters)
             out.steps.append((step, n))
         return out.fits[n].criterion(criterion)
 

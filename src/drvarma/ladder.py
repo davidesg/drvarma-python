@@ -237,6 +237,88 @@ class LadderSeries:
         phi, theta, _mu, _if = self.polynomials()
         return len(phi), len(theta)
 
+    # -- the echelon form's row factor (docs/ECHELON_PLAN.md, stage 4) ------ #
+    def has_row_factor(self):
+        """Does the model carry seasonal or fixed-frequency factors? In the
+        echelon form they multiply the series' whole row."""
+        m = self.model
+        return bool(m.ar_s or m.ma_s or m.ar_f or m.ma_f)
+
+    def _split_specs(self):
+        """Two poly specs of the model, one with its regular factors only and
+        one with the rest (the row factor), and the masks that pick each
+        one's entries from x[n_det:] (fue's order: ar, ar_s, ma, ma_s, ar_f,
+        ma_f, mu)."""
+        if getattr(self, "_split", None) is not None:
+            return self._split
+        from fue.cast_us import build_est_spec
+        m = self.model
+
+        def nfree(factors, frees):
+            return sum(sum(1 for j in range(len(f))
+                           if frees is None or frees[i] is None or frees[i][j])
+                       for i, f in enumerate(factors))
+        sizes = [("reg", nfree(m.ar, m.ar_free)), ("fac", nfree(m.ar_s, m.ar_s_free)),
+                 ("reg", nfree(m.ma, m.ma_free)), ("fac", nfree(m.ma_s, m.ma_s_free)),
+                 ("fac", sum(1 for f in m.ar_f if f.free)),
+                 ("fac", sum(1 for f in m.ma_f if f.free)),
+                 ("both", int(self.has_mu))]
+        masks = {"reg": [], "fac": []}
+        for kind, k in sizes:
+            for part in ("reg", "fac"):
+                masks[part] += [kind in (part, "both")] * k
+        specs = {}
+        for part, drop in (("reg", ("ar_s", "ma_s", "ar_f", "ma_f")), ("fac", ("ar", "ma"))):
+            mm = _truncated(self.model, min(self.nobs_full, self.ornsop + 2))
+            mm.interventions = []
+            for a in drop:
+                setattr(mm, a, [])
+                if a in ("ar", "ma", "ar_s", "ma_s"):
+                    setattr(mm, a + "_free", None)
+            specs[part] = build_est_spec(mm)
+        self._split = (specs, {k: np.array(v, bool) for k, v in masks.items()})
+        return self._split
+
+    def split_polynomials(self):
+        """(phi, theta, fphi, ftheta, mu, ifault): the regular ARMA, the row
+        factor (the seasonal and fixed-frequency factors, expanded) and the
+        mean. phi * fphi and theta * ftheta are ``polynomials()``'s."""
+        from fue.cast_us import cast_us_py
+        if not self.has_row_factor():
+            phi, theta, mu, ifault = self.polynomials()
+            return phi, theta, np.zeros(0), np.zeros(0), mu, ifault
+        specs, masks = self._split_specs()
+        x = self.x[self.n_det:]
+        out = []
+        for part in ("reg", "fac"):
+            _p, _q, phi, theta, mu, _w, ifault = cast_us_py(x[masks[part]], specs[part])
+            if ifault:
+                return None, None, None, None, None, int(ifault)
+            out.append((np.asarray(phi, float), np.asarray(theta, float), float(mu)))
+        (phi, theta, mu), (fphi, ftheta, _mu) = out
+        return phi, theta, fphi, ftheta, mu, 0
+
+    def with_regular(self, k):
+        """A copy whose regular ARMA is a free AR(k)/MA(k), the echelon row's
+        own part, the rest of the model (the row factor, the deterministic
+        terms, the differences, the mean) as the file has it. It starts at
+        the file's regular polynomials when they fit in k, at zero if not."""
+        phi, theta, _f, _g, _mu, _if = self.split_polynomials()
+        m2 = copy.copy(self.model)
+
+        def seed(c):
+            c = list(map(float, c)) if len(c) <= k else []
+            return [c + [0.0] * (k - len(c))] if k else []
+        m2.ar, m2.ar_free = seed(phi), None
+        m2.ma, m2.ma_free = seed(theta), None
+        return LadderSeries(self.path, self.ts, m2)
+
+    def regular_orders(self):
+        """The degrees of the regular ARMA: in the echelon form, the series'
+        own part of its row, which the index bounds."""
+        phi, theta, _f, _g, _mu, _if = self.split_polynomials()
+        return len(phi), len(theta)
+
     # -- dates -------------------------------------------------------------- #
     def date_of(self, obs):
         """(year, period) of observation obs (1-based) of this series."""
@@ -494,15 +576,32 @@ class Ladder:
         A_0 = M_0 = I - (the AR0 terms), lower triangular. p and q are
         max n_r. ``links`` and ``zeros`` remove further coefficients (LP's
         stage IV); ``rows`` and ``cross="residual"`` do not apply.
+        A model's seasonal and fixed-frequency factors are its row's
+        FACTOR (stage 4): row r is F_r(B) [A(B) w]_r = G_r(B) [M(B) a]_r,
+        F_r and G_r the AR and MA factors, estimated with the rest. Only the
+        regular ARMA is the row's own part, of degree <= n_r.
+    own : with ``echelon``, the row's own part: "spec" (default), the
+        regular ARMA of the file, which must fit in n_r; or "free", a free
+        AR(n_r)/MA(n_r) in its place (``LadderSeries.with_regular``) --
+        Lutkepohl and Poskitt's row on a route-U model, whose univariate
+        orders are not the index.
     """
 
     def __init__(self, series, p=0, q=0, diagcov=False, redet=False,
                  fixarma=False, method=1, estwin=None, hessian="fd", lik="elf",
                  links=None, start=None, cross="additive", zeros=None,
-                 rows=None, echelon=None):
+                 rows=None, echelon=None, own="spec"):
         _warn_if_no_engine()
         if series and not isinstance(series[0], LadderSeries):
             series = load(series)
+        if own not in ("spec", "free"):
+            raise ValueError("own must be 'spec' or 'free'")
+        if own == "free":
+            if echelon is None or len(echelon) != len(series):
+                raise LadderError("own='free' is the echelon form's: give echelon=, "
+                                  "one index per series")
+            series = [s.with_regular(int(k)) for s, k in zip(series, echelon)]
+        self.own = own
         self.series = list(series)
         check_alignment(self.series)
         self.p, self.q = int(p), int(q)
@@ -631,12 +730,14 @@ class Ladder:
         if (int(p), int(q)) not in ((0, 0), (max(n), max(n))):
             raise LadderError(f"echelon: p and q are max(n) = {max(n)}; give 0, 0")
         for s, k in zip(self.series, n):
-            ar, ma = s.orders()
+            ar, ma = s.regular_orders()
             if ar > k or ma > k:
                 raise LadderError(
-                    f"echelon: {s.name}'s own ARMA has degrees ({ar}, {ma}) and its index "
-                    f"is {k}. An echelon row has degree n_r; a .pre with seasonal "
-                    f"factors is stage 4 (docs/ECHELON_PLAN.md), not this form")
+                    f"echelon: {s.name}'s regular ARMA has degrees ({ar}, {ma}) and its "
+                    f"index is {k}. The regular part is the row's own, of degree <= "
+                    f"n_r: give {s.name} an index of at least {max(ar, ma)}, or a "
+                    f"model whose regular part fits in {k}. Seasonal and "
+                    f"fixed-frequency factors are the row's factor, not its degree")
         return n
 
     def _index_table(self):
@@ -799,10 +900,15 @@ class Ladder:
         """vector -> (mu, phi, theta, qq, w, ifault) for ``elf``."""
         self.unpack(v)
         act, m = self._act, len(self._act)
-        polys, ws = [], []
+        polys, ws, facs = [], [], []
+        ech = self.echelon is not None and bool(self._cp or self._cq)
         for i in act:
             s = self.series[i]
-            phi, theta, mu, ifault = s.polynomials()
+            if ech:     # the regular part on the diagonal, the rest a row factor
+                phi, theta, fphi, ftheta, mu, ifault = s.split_polynomials()
+                facs.append((fphi, ftheta))
+            else:
+                phi, theta, mu, ifault = s.polynomials()
             if ifault:
                 return None, None, None, None, None, 6
             w = s.stationary()
@@ -846,13 +952,23 @@ class Ladder:
                             # in the I - SUM Theta_m B^m convention (3.22)
                             for l, t in enumerate(th_i, 1):
                                 THETA[k + l, a, b] -= t * U
-        if self.echelon is not None and (self._cp or self._cq):
+        if ech:
             # A_0 w_t = SUM PHI~_k w_t-k + A_0 a_t - SUM THETA~_k a_t-k, with
             # A_0 = I - C_0 (C_0 the AR0 terms, strictly lower): elf wants the
             # standard form, Phi_k = A_0^-1 PHI~_k and Theta_k = A_0^-1 THETA~_k
             C0 = self._cA0[np.ix_(act, act)]
+            A0 = np.eye(m) - C0
+            if any(f.size or g.size for f, g in facs):
+                # stage 4: row a times its factor F_a(B) (AR) or G_a(B) (MA),
+                # the series' seasonal and fixed-frequency factors
+                from .echelon import times_row_factors
+                # (LP's C(B) = A_0 - SUM PHI~_k B^k is -[-A_0, PHI~...])
+                PHI = times_row_factors(np.concatenate([-A0[None], PHI]),
+                                        [f for f, _g in facs])[1:]
+                THETA = times_row_factors(np.concatenate([-A0[None], THETA]),
+                                          [g for _f, g in facs])[1:]
             if np.any(C0):
-                Ainv = np.linalg.inv(np.eye(m) - C0)     # unit triangular
+                Ainv = np.linalg.inv(A0)                 # unit triangular
                 PHI = np.einsum("ab,kbc->kac", Ainv, PHI)
                 THETA = np.einsum("ab,kbc->kac", Ainv, THETA)
         QQ = np.zeros((m, m))
@@ -1091,7 +1207,9 @@ class Ladder:
         form's free positions -- those the Ladder holds free: links, zeros
         and an own ARMA of degree below n_r stay at zero. The own AR/MA are
         set where the spec writes them as one regular factor (route V's);
-        the mean stays the diagonal fit's. Least squares can leave an MA
+        the mean stays the diagonal fit's. A row with a factor (stage 4: the
+        series' seasonal and fixed-frequency factors, at the file's values)
+        is fitted on the data filtered by it (``echelon.row_filter``). Least squares can leave an MA
         root outside the unit circle: the roots are pulled inside
         (``echelon.pull_inside``) and ``start_used`` says so."""
         from . import echelon as E
@@ -1099,8 +1217,11 @@ class Ladder:
         _mu, _phi, _th, _qq, W, _ifa = self.cast(self.pack())   # no cross terms in it
         h, e, _aic = E.long_var(W)
         ex = set()
+        filters = []
         for r, s in enumerate(self.series):
-            ar, ma = s.orders()
+            ar, ma = s.regular_orders()
+            _p, _t, fphi, ftheta, _mu, _if = s.split_polynomials()
+            filters.append((fphi, ftheta))
             ex |= {("A", k, r, r) for k in range(ar + 1, n[r] + 1)}
             ex |= {("M", k, r, r) for k in range(ma + 1, n[r] + 1)}
         free = set(self._slots())
@@ -1113,7 +1234,7 @@ class Ladder:
                         ex.add(("A", k, r, c))
                     if k and ("MA", k - 1, r, c) not in free:
                         ex.add(("M", k, r, c))
-        fit = E.stage2(W, e, h, n, exclude=ex)
+        fit = E.stage2(W, e, h, n, exclude=ex, filters=filters)
         self.echelon_stage2 = fit
         A, M, lam_a, lam_m = E.pull_inside(fit.A, fit.M)
         x0 = self.pack()
