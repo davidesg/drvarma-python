@@ -239,3 +239,36 @@ def test_own_free_gives_the_row_its_own_part(tmp_path):
         Ladder(f, own="free")
     with pytest.raises(ValueError, match="own must be"):
         Ladder(f, echelon=(1, 0), own="other")
+
+
+# -- the factor's LR test (stage 4, ECHELON_SEEDED_DESIGN.md §5.4) ---------------- #
+
+def test_factor_test_frees_the_product_and_starts_at_the_optimum(tmp_path):
+    """The alternative frees every position the factored rows reach: row 1's
+    own AR at lags 1, 4, 5 (AR(1) x annual AR), row 2's MA at lag 4 on y1
+    (its annual MA times A_0's term). It starts where the factored fit
+    ended, with the same likelihood; on data from the factored system the
+    LR is small."""
+    y = simulate(400, seed=3)
+    L = Ladder(system_specs(tmp_path, y), echelon=(1, 0))
+    L.fit()
+    t = L.factor_test()
+    assert t["logL_start"] == pytest.approx(t["logL"], abs=1e-6)
+    assert t["logL_free"] >= t["logL"] - 1e-6
+    assert t["df"] == 2
+    nm = t["free"].names()
+    assert {"phi_y1[B^1]", "phi_y1[B^4]", "phi_y1[B^5]", "MA4[y2<-y1]",
+            "theta_y2[B^4]", "AR0[y2<-y1]"} <= set(nm)
+    assert not any(n.startswith(("Phi", "Theta")) for n in nm)
+    assert t["p"] > 0.05
+
+
+def test_factor_test_needs_a_factor(tmp_path):
+    y = noise(150, 2, seed=8)
+    f = [spec(tmp_path / "a.inp", "a", y[:, 0], 1, 0), spec(tmp_path / "b.inp", "b", y[:, 1], 0, 0)]
+    L = Ladder(f, echelon=(1, 0), start="zero")
+    with pytest.raises(LadderError, match="needs a previous fit"):
+        L.factor_test()
+    L.fit()
+    with pytest.raises(LadderError, match="no row factor"):
+        L.factor_test()
