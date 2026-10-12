@@ -17,9 +17,10 @@ from drvarma.ladder import Ladder, LadderError
 from test_echelon import _operator
 
 
-def spec(path, name, y, p, q, P=0, Q=0, freq=4, ar=None, sar=None):
+def spec(path, name, y, p, q, P=0, Q=0, freq=4, ar=None, sar=None, maf=None):
     """A fue .inp: lambda 1, d = 0, the mean free, a free regular AR(p)/MA(q)
-    and annual AR(P)/MA(Q) (``ar``, ``sar``: their starting values)."""
+    and annual AR(P)/MA(Q) (``ar``, ``sar``: their starting values), and
+    ``maf`` = (frequency, value), a fixed-frequency MA(2)."""
     def op(title, order, vals=None):
         if order <= 0:
             return [f"** {title}:", "0"]
@@ -35,8 +36,9 @@ def spec(path, name, y, p, q, P=0, Q=0, freq=4, ar=None, sar=None):
     L += op("Number and orders of regular MA operators", q)
     L += op("Number and orders of anual MA operators", Q)
     L += ["** Number and frequencies of regular AR(2) operators with fixed frequency:", "0",
-          "** Number and frequencies of regular MA(2) operators with fixed frequency:", "0",
-          "** Mean parameter (mu):", f"{float(np.mean(y)):.6f} 1",
+          "** Number and frequencies of regular MA(2) operators with fixed frequency:"]
+    L += [f"1 {maf[0]:.6f}", "**", f"{maf[1]:.4f} 1"] if maf else ["0"]
+    L += ["** Mean parameter (mu):", f"{float(np.mean(y)):.6f} 1",
           "** Box-Cox lambda, regular differences and complete annual differences:",
           " 1  0  0",
           "** Individual factors of the annual difference (starting at freq 0.0):", " 0",
@@ -272,3 +274,24 @@ def test_factor_test_needs_a_factor(tmp_path):
     L.fit()
     with pytest.raises(LadderError, match="no row factor"):
         L.factor_test()
+
+
+def test_a_fixed_frequency_factor_is_a_row_factor(tmp_path):
+    """A fixed-frequency MA(2) at frequency 1 of a quarterly series (1 +
+    c^2 B^2: lag 1 is zero by structure, and c must be negative): the row
+    factor's support is {0, 2}, and factor_test's alternative nests the fit
+    (it starts at its likelihood)."""
+    y = noise(160, 2, seed=9)
+    f = [spec(tmp_path / "f1.inp", "f1", y[:, 0], 1, 1, maf=(1.0, -0.5)),
+         spec(tmp_path / "f2.inp", "f2", y[:, 1], 1, 1)]
+    L = Ladder(f, echelon=(1, 1))
+    s = L.series[0]
+    assert s.has_row_factor() and s.factor_support() == ({0}, {0, 2})
+    L.fit()
+    t = L.factor_test()
+    assert t["logL_start"] == pytest.approx(t["logL"], abs=1e-6)
+    assert t["df"] > 0
+    with pytest.raises(LadderError, match="indices all 0"):
+        L0 = Ladder(f, echelon=(0, 0), own="free")
+        L0.fit()
+        L0.factor_test()

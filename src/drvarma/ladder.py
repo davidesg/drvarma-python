@@ -320,12 +320,25 @@ class LadderSeries:
         if not self.has_row_factor():
             return {0}, {0}
         specs, masks = self._split_specs()
-        x = self.x[self.n_det:][masks["fac"]].copy()
-        x[:x.size - int(self.has_mu)] = np.random.default_rng(0).uniform(
-            0.2, 0.4, x.size - int(self.has_mu))
-        _p, _q, fphi, ftheta, _mu, _w, _ifault = cast_us_py(x, specs["fac"])
-        return ({0} | {k + 1 for k, c in enumerate(fphi) if abs(c) > 1e-12},
-                {0} | {k + 1 for k, c in enumerate(ftheta) if abs(c) > 1e-12})
+        x0 = self.x[self.n_det:][masks["fac"]].copy()
+        k = x0.size - int(self.has_mu)
+        rng = np.random.default_rng(0)
+        ar, ma, good = {0}, {0}, 0
+        # admissible draws of either sign (a fixed-frequency MA needs c < 0);
+        # the union of three: a lag that is zero by structure stays out
+        for _ in range(200):
+            x = x0.copy()
+            x[:k] = rng.uniform(0.15, 0.45, k) * rng.choice([-1.0, 1.0], k)
+            _p, _q, fphi, ftheta, _mu, _w, ifault = cast_us_py(x, specs["fac"])
+            if ifault:
+                continue
+            ar |= {j + 1 for j, c in enumerate(fphi) if abs(c) > 1e-12}
+            ma |= {j + 1 for j, c in enumerate(ftheta) if abs(c) > 1e-12}
+            good += 1
+            if good == 3:
+                return ar, ma
+        raise LadderError(f"{self.name}: no admissible values to read its row factor's "
+                          "structure")
 
     def copy(self):
         """An independent copy, in the current state."""
@@ -1429,6 +1442,9 @@ class Ladder:
         if self.echelon is None or not any(s.has_row_factor() for s in self.series):
             raise LadderError("factor_test: the echelon form has no row factor "
                               "(seasonal or fixed-frequency factors) to test")
+        if self.p == 0 and self.q == 0:
+            raise LadderError("factor_test: indices all 0, no cross terms: each factor "
+                              "is its univariate model's, to check there (art)")
         m = len(self.series)
         self._set_structure(list(range(m)), self.p, self.q, self.diagcov)
         self.unpack(self.result.x)
