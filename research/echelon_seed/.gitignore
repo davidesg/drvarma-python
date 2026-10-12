@@ -8,3 +8,9 @@ fits_echelon.csv
 fits_echelon.log
 fits_more.csv
 fits_more.log
+search.csv
+search.log
+search_it*.csv
+search_it*.log
+fits_ls.csv
+fits_ls.log

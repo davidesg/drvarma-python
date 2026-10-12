@@ -7,6 +7,8 @@ does exact ML behave on each parametrisation of the same true system?
   echelon : own AR(n_i)/MA(n_i), Ladder(echelon=n): the index table and A_0
   echelon_pre : the same, from Jenkins and Alavi's preliminary start
             (Ladder start="preliminary") instead of zero
+  echelon_ls  : the same, from Lutkepohl and Poskitt's stage II estimates
+            (Ladder start="echelon", stage 3b)
   truth   : the echelon form EVALUATED at the true system (mean 10, Sigma's
             ratios; sigma2 concentrated): 2 (logL_echelon - logL_truth) is
             chi2(npar) if the fit reaches its maximum
@@ -93,11 +95,13 @@ def fit_form(form, n, y, tmp):
     elif form == "rows":
         own = [(k, k) for k in n]
         kw = dict(p=N, q=N, rows={nm: (k, k) for nm, k in zip(names, n)})
-    elif form in ("echelon", "echelon_pre", "truth"):
+    elif form in ("echelon", "echelon_pre", "echelon_ls", "truth"):
         own = [(k, k) for k in n]
         kw = dict(echelon=n)
         if form == "echelon_pre":
             kw["start"] = "preliminary"
+        elif form == "echelon_ls":
+            kw["start"] = "echelon"
     else:
         raise ValueError(form)
     files = [write_spec(os.path.join(tmp, f"{form}_{nm}.inp"), nm, y[:, i], *own[i])
