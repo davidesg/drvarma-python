@@ -57,6 +57,12 @@ degrees of the echelon form (`docs/ECHELON_PLAN.md`, stage 2).
 The three compose. The LR against the diagonal counts only the free
 coefficients (`tests/test_zeros.py`, `tests/test_rows.py`).
 
+**The echelon form** (`echelon=(n_1, …, n_m)`) is Lütkepohl and Poskitt's
+(1996) restriction table on route V's specifications. Each row's own ARMA has
+degree ≤ n_r, the cross terms follow the table, and the contemporaneous
+`AR0[r<-c]` makes A₀ lower triangular. The order of the series is part of
+the model. See `docs/ECHELON_PLAN.md` and `tests/test_echelon.py`.
+
 Q is normalised with Q11 = 1 (the likelihood concentrates sigma2). Standard
 errors come from Mauricio's finite-difference Hessian (fdhess) at the optimum,
 with BFGS kept, and said, if that Hessian is not positive definite or the

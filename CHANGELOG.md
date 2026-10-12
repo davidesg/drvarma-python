@@ -6,6 +6,24 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**The echelon form (`Ladder(echelon=(n_1, …, n_m))`)** is stage 3a of
+`docs/ECHELON_PLAN.md`: Lütkepohl and Poskitt's (1996) reversed echelon form.
+The index table decides which cross coefficients are free:
+- the cross AR sits at the high lags n_r − n_rc + 1..n_r;
+- the cross MA at lags 1..n_r;
+- for c < r with n_c > n_r, a contemporaneous `AR0[r<-c]`.
+
+A₀ = M₀ = I − (the AR0 terms) is lower triangular, and the cast hands elf
+the standard form A₀⁻¹(·). Each series' own ARMA comes from its spec (route
+V) and must have degree ≤ its index; a `.pre` with seasonal factors is
+refused, because that combination is stage 4. `zeros` and `links` restrict
+the form further, while `rows` and `cross="residual"` do not apply. The
+`.out` says the indices. Tests (`tests/test_echelon.py`):
+- LP's (1,2,1) table;
+- the cast against −A₀⁻¹A_k;
+- equal indices are the VARMA(n, n);
+- a simulated (1,0) system is recovered within 3 SE, AR0 included.
+
 **Cross orders per equation (`Ladder(rows=)`)** are stage 2 of the echelon form
 (`docs/ECHELON_PLAN.md`): `rows="A(2,1), B(0,1)"` or a dict. Equation A's
 cross AR runs to lag 2 and its cross MA to lag 1, on every linked pair. Rows

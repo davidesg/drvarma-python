@@ -4,11 +4,17 @@ does exact ML behave on each parametrisation of the same true system?
   full : VARMA(N, N) with N = max n_i, every series and every pair
   rows : each series' own AR(n_i)/MA(n_i), cross orders (n_i, n_i) per row
          (Ladder rows=): the row degrees, not yet the echelon table
+  echelon : own AR(n_i)/MA(n_i), Ladder(echelon=n): the index table and A_0
+  echelon_pre : the same, from Jenkins and Alavi's preliminary start
+            (Ladder start="preliminary") instead of zero
+  truth   : the echelon form EVALUATED at the true system (mean 10, Sigma's
+            ratios; sigma2 concentrated): 2 (logL_echelon - logL_truth) is
+            chi2(npar) if the fit reaches its maximum
 
 Both go through the Ladder on route V's specifications (each series a fue
 .inp with its mean and free own ARMA), as sima's route V does. For each fit:
 termcode, MA inverse roots on the wall, logL, parameters, iterations,
-seconds. Stage 3 adds "echelon".
+seconds.
 
     python3 fits.py [--reps 50] [--nobs 200] [--workers 4] [--forms full,rows]
 """
@@ -87,18 +93,63 @@ def fit_form(form, n, y, tmp):
     elif form == "rows":
         own = [(k, k) for k in n]
         kw = dict(p=N, q=N, rows={nm: (k, k) for nm, k in zip(names, n)})
+    elif form in ("echelon", "echelon_pre", "truth"):
+        own = [(k, k) for k in n]
+        kw = dict(echelon=n)
+        if form == "echelon_pre":
+            kw["start"] = "preliminary"
     else:
         raise ValueError(form)
     files = [write_spec(os.path.join(tmp, f"{form}_{nm}.inp"), nm, y[:, i], *own[i])
              for i, nm in enumerate(names)]
     L = Ladder(files, **kw)
-    return L.fit()
+    if form != "truth":
+        return L.fit()
+    L._set_structure(list(range(m)), L.p, L.q, L.diagcov)
+    v = L.pack()
+    val = true_values(n, design_of[0], names)
+    nm = L.names()
+    missing = [x for x in nm if x not in val]
+    if missing:
+        raise RuntimeError(f"no true value for {missing}")
+    L.unpack(np.array([val[x] for x in nm]))
+    return L._fit(optimize=False)
+
+
+design_of = [None]          # set by one(): the design of the task in hand
+
+
+def true_values(n, design, names):
+    """The Ladder's parameters at the true system: own phi/theta and cross
+    AR/MA/AR0 from the LP-convention A, M (signs flipped), the mean 10, Q's
+    log-ratios and covariances relative to Sigma_11."""
+    A, M, sigma = S.system(n, design)
+    m = len(n)
+    v = {}
+    for i, a in enumerate(names):
+        v[f"mu_{a}"] = 10.0
+        for k in range(1, n[i] + 1):
+            v[f"phi_{a}[B^{k}]"] = -A[k, i, i]
+            v[f"theta_{a}[B^{k}]"] = -M[k, i, i]
+        for j, b in enumerate(names):
+            if i == j:
+                continue
+            v[f"AR0[{a}<-{b}]"] = -A[0, i, j]
+            for k in range(1, A.shape[0]):
+                v[f"AR{k}[{a}<-{b}]"] = -A[k, i, j]
+                v[f"MA{k}[{a}<-{b}]"] = -M[k, i, j]
+    for i in range(1, m):
+        v[f"log(Q[{names[i]}]/Q[{names[0]}])"] = float(np.log(sigma[i, i] / sigma[0, 0]))
+        for j in range(i):
+            v[f"Q[{names[i]},{names[j]}]"] = sigma[i, j] / sigma[0, 0]
+    return v
 
 
 def one(task):
     n, design, nobs, rep, forms = task
     warnings.simplefilter("ignore")
     y = data(n, design, nobs, rep)
+    design_of[0] = design
     rows = []
     with tempfile.TemporaryDirectory() as tmp:
         for form in forms:

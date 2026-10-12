@@ -78,6 +78,11 @@ The study ran 1,800 fits through the Ladder and turned up three defects:
 - **`rows=` ships as a tool, not as a form to fit.** It is what `zeros`
   already was, per equation, and stage 3 builds on it.
 - **Stage 3 must add A₀** (plan §2.1, unchanged). Measure 2 is the evidence.
+- *Corrected in [`STUDY-echelon-form.md`](STUDY-echelon-form.md):* the LR
+  against `full` is not a valid test. `full` holds the truth where some of
+  its parameters are not identified, so the LR is not χ². The yardstick is
+  the LR against the true parameters. The ranking above stands, but the
+  rejection rates are not test sizes.
 - **Stage 3's yardstick is this table.** For each system, the echelon form
   is fitted on the same data and compared with `full` and `rows` on four
   things:
