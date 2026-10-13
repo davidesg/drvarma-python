@@ -1,38 +1,45 @@
-"""Stage 4: the search with the gate's factors, then again with the factors
-of the exact-ML fit of its choice (two passes). On the cells where the
-gate's factors misled it."""
-import sys, tempfile, warnings, csv
+"""Stage 4: ladder.search_row_factors -- the search in passes, the first
+with the univariate (gate) factors, the next with those of the exact-ML
+fit of the previous choice -- on rowfactor_study.py's systems and data.
+
+    python3 rowfactor_twopass.py [--reps 50] [--workers 3]
+"""
+import argparse, csv, tempfile, warnings
 from multiprocessing import Pool
-import numpy as np
 import rowfactor_study as R
+import study as S
+
 
 def one(task):
     n, pattern, rep = task
     warnings.simplefilter("ignore")
-    from drvarma import echelon as E
-    from drvarma.ladder import Ladder
+    from drvarma.ladder import search_row_factors
     y = R.data(n, pattern, 200, rep)
     with tempfile.TemporaryDirectory() as tmp:
-        fs = R.files(n, pattern, y, tmp)
-        L = Ladder(fs, echelon=n, start="zero"); L.run_gate()
-        m = len(n); L._set_structure(list(range(m)), 0, 0, True)
-        W = L.cast(L.pack())[4]
-        f1 = [tuple(s.split_polynomials()[2:4]) for s in L.series]
-        n1 = E.search(W, n_max=3, filters=f1).indices
         try:
-            L2 = Ladder(fs, echelon=n1, own="free"); L2.fit()
-            f2 = [tuple(s.split_polynomials()[2:4]) for s in L2.series]
-            n2 = E.search(W, n_max=3, filters=f2).indices
-        except Exception as e:
-            n2 = ("err",)
-    return dict(indices="".join(map(str,n)), pattern=pattern, rep=rep,
-                pass1="".join(map(str,n1)), pass2="".join(map(str,n2)))
+            sr, hist = search_row_factors(R.files(n, pattern, y, tmp), n_max=3)
+            ps = [("".join(map(str, h[0]))) for h in hist]
+            err = ""
+        except Exception as e:                                # noqa: BLE001
+            ps, err = [], f"{type(e).__name__}: {e}"[:200]
+    return dict(indices="".join(map(str, n)), pattern=pattern, rep=rep,
+                pass1=ps[0] if ps else "", final=ps[-1] if ps else "",
+                passes=len(ps), error=err)
+
 
 if __name__ == "__main__":
-    cells = [((2,1),"mixed"), ((1,2),"sar"), ((1,0),"mixed")]
-    tasks = [(n,p,r) for n,p in cells for r in range(50)]
-    with Pool(1) as pool, open("rowfactor_twopass.csv","w",newline="") as fh:
-        w = csv.DictWriter(fh, fieldnames=["indices","pattern","rep","pass1","pass2"]); w.writeheader()
-        for row in pool.imap_unordered(one, tasks):
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--reps", type=int, default=50)
+    ap.add_argument("--workers", type=int, default=3)
+    ap.add_argument("--out", default="rowfactor_twopass.csv")
+    a = ap.parse_args()
+    tasks = [(n, p, r) for n in S.INDICES for p in ("sar", "mixed") for r in range(a.reps)]
+    with Pool(a.workers) as pool, open(a.out, "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=["indices", "pattern", "rep", "pass1", "final",
+                                           "passes", "error"])
+        w.writeheader()
+        for k, row in enumerate(pool.imap_unordered(one, tasks)):
             w.writerow(row); fh.flush()
-    print("rc=0")
+            if k % 50 == 0:
+                print(f"{k}/{len(tasks)}", flush=True)
+    print("rc=0", flush=True)

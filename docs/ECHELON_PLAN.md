@@ -235,4 +235,18 @@ filtered search finds both.
 | 4a | drvarma | the row factor in the cast, `own="free"`, `filters=` in stage II and the search, tests |
 | 4b | drvarma | `factor_test`, tests |
 | 4s | drvarma | `research/echelon_seed/rowfactor_study.py` and `STUDY-echelon-rowfactor.md`: §8's question on simulated systems |
+
+### 4.5 What the study found
+
+`STUDY-echelon-rowfactor.md` covers 18 cells × 50 replications.
+- **The factored form behaves as identified.** From the stage II start, no
+  fit ends below the true parameters. From zero, in (2,2,1), 22–42 % do.
+- **The univariate factors mislead the search when rows differ:** with
+  them it finds (2,1) mixed in only 28 %. Hence decision 6.
+
+6. **The search on route U runs in passes** (`ladder.search_row_factors`).
+   The first pass uses the univariate factors. Each next pass uses the
+   factors of the exact-ML fit of the previous choice. It stops when the
+   choice repeats. The final choice is right in 84–100 % of 16 of the 18
+   cells; (2,2,1) sar, a hard cell even with the true factors, reaches 36 %.
 | 4c | sima | route U in `identify_echelon` and `estimate`, the factor check, the manual |

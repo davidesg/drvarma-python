@@ -6,7 +6,10 @@
   search : the share of replications where the search finds the indices,
            with the true factors, the gate's, and none
 
-    python3 rowfactor_analyze.py rowfactor.csv
+  passes : with rowfactor_twopass.py's csv, ladder.search_row_factors --
+           the first pass (the univariate factors) and the last
+
+    python3 rowfactor_analyze.py rowfactor.csv [rowfactor_twopass.csv]
 """
 import csv
 import sys
@@ -80,5 +83,23 @@ def main(path):
         print(f"| ({','.join(c[0])}) | {c[1]} | {c[2]} | " + " | ".join(out) + " |")
 
 
+def passes(path):
+    rows = list(csv.DictReader(open(path)))
+    cells = sorted({(r["indices"], r["pattern"]) for r in rows},
+                   key=lambda c: (len(c[0]), c[0], c[1]))
+    print("\n## The search in passes (ladder.search_row_factors, SC, n_max 3)\n")
+    print("| system | pattern | n | pass 1 (univariate factors) | final | mean passes |")
+    print("|---|---|---|---|---|---|")
+    for c in cells:
+        rs = [r for r in rows if (r["indices"], r["pattern"]) == c and not r["error"]]
+        err = sum(1 for r in rows if (r["indices"], r["pattern"]) == c and r["error"])
+        print(f"| ({','.join(c[0])}) | {c[1]} | {len(rs)}" + (f" ({err} err)" if err else "")
+              + f" | {100 * np.mean([r['pass1'] == c[0] for r in rs]):.0f} % "
+              f"| {100 * np.mean([r['final'] == c[0] for r in rs]):.0f} % "
+              f"| {np.mean([int(r['passes']) for r in rs]):.1f} |")
+
+
 if __name__ == "__main__":
     main(sys.argv[1])
+    if len(sys.argv) > 2:
+        passes(sys.argv[2])

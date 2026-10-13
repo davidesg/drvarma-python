@@ -20,12 +20,21 @@ regular ARMA is the row's own part, of degree ≤ n_r.
 - `Ladder.factor_test()` is the factor's LR test: against the same rows with
   every position the factored product reaches free, started at this fit's
   likelihood.
+- `ladder.search_row_factors(series)` is the index search on route U, in
+  passes. The first uses the univariate factors and the next ones those of
+  the exact-ML fit of the previous choice, until the choice repeats.
 - `LadderSeries.split_polynomials()`, `regular_orders()`, `has_row_factor()`,
   `factor_support()`, `with_regular(k)`, `without_row_factor()`.
 
 Why the factor and not the univariate model on the diagonal: with the
 operator on the diagonal, the table's high cross lags lose their meaning and
 the forms stop nesting. On muskrat and mink, (3,1) ended below (2,1).
+
+`docs/STUDY-echelon-rowfactor.md` measured it on stage 0's systems, quarterly,
+with annual factors (18 cells × 50 replications):
+- from the stage II start, no fit ends below the truth (design note §8's
+  identification worry is not borne out);
+- the search in passes finds the indices in 84–100 % of 16 of the 18 cells.
 
 Tests: `tests/test_echelon_rowfactor.py`:
 - the split;
