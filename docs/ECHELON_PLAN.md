@@ -162,3 +162,91 @@ All of it goes on `ladder`, before the v0.2.0 tag: sima 0.1.0 needs 3a–3b
 published in drvarma. §7's stage 5, the index search, is now 3b. What is
 left to review afterwards is stage 4: multiplicative row factors with their LR
 test, which is what would let a route-U diagonal into the echelon form.
+
+## 4. Stage 4 — the row factor (route U)
+
+*2026-10-12. Decided with the user after the probe below.*
+
+### 4.1 The probe that decided it
+
+Lifting stage 3's refusal and putting each `.pre` on the diagonal as it is,
+with the cross terms by the table, works on the IPC (three monthly series,
+AR(3) × annual AR(1), AR(1), annual AR(1)): equal indices reproduce the
+route-U VARMA(1,1), −85.665. It fails on Jenkins and Alavi's muskrat and
+mink (AR(6)/MA(1), AR(4)):
+- (3,1) reaches −548.44 and (2,1) −543.51: the larger form below the smaller;
+- (2,2) ends below (1,1), with termcode 3 and two MA roots on the wall;
+- the stage II start overwrites lags 1–3 of the AR(6) and is not admissible.
+
+The cause is the table itself. It puts the cross AR at the high lags
+n_r − n_rc + 1..n_r, which assumes the row's degree is n_r. With the
+univariate operator on the diagonal the row's degree is that operator's,
+the lags lose their meaning and the forms stop nesting.
+
+### 4.2 Decisions
+
+1. **A model's seasonal and fixed-frequency factors are its row's FACTOR.**
+   They multiply the whole row, the cross terms included:
+
+       F_r(B) [A(B) w]_r = G_r(B) [M(B) a]_r,
+
+   with F_r, G_r the AR and MA factors, estimated with the rest. This is
+   design note §3.3's row operator. The table keeps LP's meaning, because
+   the echelon part of each row is still of degree n_r.
+2. **Only the regular ARMA is the row's own part**, and its degree is
+   bounded by n_r. On route U the univariate orders are not the indices
+   (stage 0), so `Ladder(own="free")` replaces each model's regular ARMA by
+   a free AR(n_r)/MA(n_r). It starts at the file's polynomials when they
+   fit in n_r, at zero otherwise. `own="spec"` (the default) keeps the
+   file's and refuses one that does not fit.
+3. **Stage II and the search filter each row by its factor.** Divided by
+   G_r, row r is an ordinary echelon row on z⁽ʳ⁾ = (F_r/G_r)(B) w, with the
+   same innovations: `echelon.stage2`, `residuals` and `search` take
+   `filters=`. The start uses the factors as the gate left them (the
+   univariate fits).
+4. **The factor is checked, in the same step** (design note §5.4, §7.4).
+   `Ladder.factor_test()` refits the same rows with every position the
+   product F_r·[A]_r (and G_r·[M]_r) can reach free, own and cross: that is
+   the unrestricted row of the same support. It starts at the expansion of
+   the factored optimum, with the same likelihood, so the LR is ≥ 0 and is a
+   lower bound if the alternative stops early. The support is read from the
+   factor's structure, so a lag that is zero by construction stays out (a
+   fixed-frequency MA at ω = π/2 has support {0, 2}).
+5. **sima** opens `identify_echelon` and `estimate(indices=)` to route U
+   with `own="free"`, and `estimate` reports the factor's check.
+
+### 4.3 What the examples say
+
+| data | search (SC) | fit | factor check |
+|---|---|---|---|
+| flour, route U (Tiao and Box's tools) | (1,0,0); in log levels (1,1,1), LP's own result | 11 par, −670.78, termcode 1, white residuals; VAR(1) 14 par, −671.34 | no factor |
+| IPC, route U | (0,1,1); HQ (0,3,1) | MA wall; residuals not white (SC underfits) | p 0.16 |
+| muskrat and mink | (3,1) | MA wall, termcode 3 | no factor |
+| M6 (EA with a fixed-frequency MA) | (0,0,1) | termcode 1 | (1,0,0): p 0.008; (1,1,1): p 0.15 |
+
+Unfiltered, the search on seasonal rows misses: on simulated quarterly
+systems it returns (2,3) for (1,0) and (3,3,2) for (2,1,0), and the
+filtered search finds both.
+
+### 4.4 Order of work
+
+| step | repo | content |
+|---|---|---|
+| 4a | drvarma | the row factor in the cast, `own="free"`, `filters=` in stage II and the search, tests |
+| 4b | drvarma | `factor_test`, tests |
+| 4s | drvarma | `research/echelon_seed/rowfactor_study.py` and `STUDY-echelon-rowfactor.md`: §8's question on simulated systems |
+
+### 4.5 What the study found
+
+`STUDY-echelon-rowfactor.md` covers 18 cells × 50 replications.
+- **The factored form behaves as identified.** From the stage II start, no
+  fit ends below the true parameters. From zero, in (2,2,1), 22–42 % do.
+- **The univariate factors mislead the search when rows differ:** with
+  them it finds (2,1) mixed in only 28 %. Hence decision 6.
+
+6. **The search on route U runs in passes** (`ladder.search_row_factors`).
+   The first pass uses the univariate factors. Each next pass uses the
+   factors of the exact-ML fit of the previous choice. It stops when the
+   choice repeats. The final choice is right in 84–100 % of 16 of the 18
+   cells; (2,2,1) sar, a hard cell even with the true factors, reaches 36 %.
+| 4c | sima | route U in `identify_echelon` and `estimate`, the factor check, the manual |

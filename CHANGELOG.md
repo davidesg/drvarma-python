@@ -6,6 +6,45 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**The echelon form on route U: the row factor** is stage 4 of
+`docs/ECHELON_PLAN.md` (§4). A model's seasonal and fixed-frequency factors
+now multiply its whole row, F_r(B)[A(B)w]_r = G_r(B)[M(B)a]_r, and only its
+regular ARMA is the row's own part, of degree ≤ n_r.
+- `Ladder(echelon=n, own="free")` replaces each model's regular ARMA by a free
+  AR(n_r)/MA(n_r): the univariate orders of a route-U `.pre` are not its
+  index. `own="spec"` (default) keeps the file's and refuses one that does
+  not fit, now naming the index it needs.
+- `echelon.stage2`, `residuals` and `search` take `filters=`, each row's
+  factor: row r is fitted on (F_r/G_r)(B) w (`echelon.row_filter`). The
+  stage II start uses them.
+- `Ladder.factor_test()` is the factor's LR test: against the same rows with
+  every position the factored product reaches free, started at this fit's
+  likelihood.
+- `ladder.search_row_factors(series)` is the index search on route U, in
+  passes. The first uses the univariate factors and the next ones those of
+  the exact-ML fit of the previous choice, until the choice repeats.
+- `LadderSeries.split_polynomials()`, `regular_orders()`, `has_row_factor()`,
+  `factor_support()`, `with_regular(k)`, `without_row_factor()`.
+
+Why the factor and not the univariate model on the diagonal: with the
+operator on the diagonal, the table's high cross lags lose their meaning and
+the forms stop nesting. On muskrat and mink, (3,1) ended below (2,1).
+
+`docs/STUDY-echelon-rowfactor.md` measured it on stage 0's systems, quarterly,
+with annual factors (18 cells × 50 replications):
+- from the stage II start, no fit ends below the truth (design note §8's
+  identification worry is not borne out);
+- the search in passes finds the indices in 84–100 % of 16 of the 18 cells.
+
+Tests: `tests/test_echelon_rowfactor.py`:
+- the split;
+- the cast against the product by `np.convolve`;
+- the row filter;
+- a quarterly system recovered within 3 SE, the factors included;
+- the filtered search;
+- `own="free"`;
+- `factor_test`, a fixed-frequency factor included.
+
 **The echelon index search and its start (`drvarma.echelon`)** are stage 3b
 of `docs/ECHELON_PLAN.md`: Lütkepohl and Poskitt's (1996) stages I–II.
 - `echelon.search(w, n_max=3)` fits a long VAR(h) (h by AIC), then least
@@ -37,8 +76,8 @@ The index table decides which cross coefficients are free:
 
 A₀ = M₀ = I − (the AR0 terms) is lower triangular, and the cast hands elf
 the standard form A₀⁻¹(·). Each series' own ARMA comes from its spec (route
-V) and must have degree ≤ its index; a `.pre` with seasonal factors is
-refused, because that combination is stage 4. `zeros` and `links` restrict
+V) and must have degree ≤ its index. A `.pre` with seasonal factors was
+refused here; stage 4 (above) takes it. `zeros` and `links` restrict
 the form further, while `rows` and `cross="residual"` do not apply. The
 `.out` says the indices. Tests (`tests/test_echelon.py`):
 - LP's (1,2,1) table;
