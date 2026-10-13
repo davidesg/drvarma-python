@@ -30,6 +30,23 @@ def _cffi_extension():
     return ext
 
 
+def _sync_material():
+    """Copy bugs/ into the package (tools/sync_material.py) when building from
+    a checkout. The copy is generated and ignored by git, so without this an
+    install from git, or a wheel built without running the tool first, carries
+    no register (BUG-0021). An sdist carries the copy already and no bugs/."""
+    if not os.path.isdir(os.path.join(_HERE, "bugs")):
+        return
+    path = os.path.join(_HERE, "tools", "sync_material.py")
+    spec = importlib.util.spec_from_file_location("_drvarma_sync_material", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    n, c = mod.sync()
+    print("drvarma: bug register, %d files (%d copied) into the package." % (n, c))
+
+
+_sync_material()
+
 ext_modules = []
 if os.environ.get("DRVARMA_NO_ENGINE"):
     # Force a pure-Python build (e.g. to produce a py3-none-any wheel for PyPI).

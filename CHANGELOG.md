@@ -6,6 +6,10 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**An install from git carries the bug register** (BUG-0021): `setup.py` runs
+`tools/sync_material.py` on any build from a checkout. sima serves the register
+as `sima://engine-defects`; installed from git it had none.
+
 **The echelon form on route U: the row factor** is stage 4 of
 `docs/ECHELON_PLAN.md` (§4). A model's seasonal and fixed-frequency factors
 now multiply its whole row, F_r(B)[A(B)w]_r = G_r(B)[M(B)a]_r, and only its
