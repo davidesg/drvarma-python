@@ -4,7 +4,15 @@ Exact maximum-likelihood estimation, forecasting and diagnostics of multivariate
 VARMA models (Mauricio 1995 JASA / 1997 AS 311), pure-Python with an optional
 compiled C engine.
 
-## 0.2.0 — unreleased
+## 0.2.0 — 2026-10-15
+
+**The Windows wheels carry the compiled engine** (BUG-0022). Every
+`win_amd64` wheel up to 0.1.7 shipped without `_drvarma_engine`: the Windows
+build installed no GSL, the optional extension failed in silence, and the
+smoke test skipped. On Windows drvarma computed with the pure-Python port,
+20–250x slower. Now GSL comes from vcpkg, as fue's, and a binary wheel
+without its engine fails the smoke test instead of skipping it. Found by the
+atsw install preflight on every wheel platform.
 
 **No MCP server.** The old sima on raw series (`drvarma.mcp_server`, the
 `sima` command, `sima-legacy` since the assistant moved out) is gone, with

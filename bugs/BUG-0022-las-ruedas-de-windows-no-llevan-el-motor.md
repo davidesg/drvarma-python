@@ -1,11 +1,11 @@
 ---
 id: BUG-0022
 title: The Windows wheels carry no compiled engine — GSL is never installed for the Windows build, the optional extension fails in silence, and the smoke test skips
-status: open
+status: fixed
 severity: high
 component: packaging
 found_in: 0.1.7
-fixed_in:
+fixed_in: 0.2.0
 reported: 2026-10-14
 reporter: David / Claude — atsw 2.0.0 install preflight on every wheel platform
 tags: [packaging, windows, wheels, engine]
