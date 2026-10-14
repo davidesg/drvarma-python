@@ -234,8 +234,24 @@ class LadderSeries:
         return np.asarray(phi, float), np.asarray(theta, float), float(mu), int(ifault)
 
     def orders(self):
+        """(p, q) of the expanded ARMA. A side whose factors are all fixed at
+        zero has no order: it is fue's placeholder, the AR(1) fixed at 0.0
+        that a model without ARMA carries (sima BUG-0001), not an estimated
+        operator."""
         phi, theta, _mu, _if = self.polynomials()
-        return len(phi), len(theta)
+        m = self.model
+
+        def inert(factors, frees):
+            # a flag list of None, or a None factor, means free (as _split_specs)
+            free = lambda i, j: frees is None or frees[i] is None or frees[i][j]
+            return all(not free(i, j) and float(c) == 0.0
+                       for i, f in enumerate(factors) for j, c in enumerate(f))
+
+        p = 0 if inert(m.ar, m.ar_free) and inert(m.ar_s, m.ar_s_free) \
+            and not m.ar_f else len(phi)
+        q = 0 if inert(m.ma, m.ma_free) and inert(m.ma_s, m.ma_s_free) \
+            and not m.ma_f else len(theta)
+        return p, q
 
     # -- the echelon form's row factor (docs/ECHELON_PLAN.md, stage 4) ------ #
     def has_row_factor(self):

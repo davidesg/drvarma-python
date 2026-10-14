@@ -104,48 +104,6 @@ def test_deseason_start_sub_1_unchanged():
     assert np.isfinite(adj).all()
 
 
-# ── BUG 1 — load_data must not drop observations or lose column names ─────────
-def test_load_data_headerless_csv_keeps_every_row(tmp_path):
-    from drvarma import mcp_server as M
-
-    p = tmp_path / "noheader.csv"
-    rows = np.column_stack([np.arange(1.0, 25.0), np.arange(101.0, 125.0)])
-    np.savetxt(p, rows, delimiter=",")
-    M.load_data(name="_t1", path=str(p), freq=12, start_year=2002, start_period=2,
-                series_names="a,b")
-    got = M._DATA["_t1"]
-    assert got.nobs == rows.shape[0], "first observation was dropped"
-    assert np.allclose(got.data[0], rows[0])
-
-
-def test_load_data_csv_header_supplies_names(tmp_path):
-    from drvarma import mcp_server as M
-
-    p = tmp_path / "header.csv"
-    with open(p, "w") as fh:
-        fh.write("WTI,CPI\n")
-        for r in np.column_stack([np.arange(1.0, 25.0), np.arange(101.0, 125.0)]):
-            fh.write(f"{r[0]},{r[1]}\n")
-    M.load_data(name="_t2", path=str(p), freq=12, start_year=2002, start_period=1)
-    got = M._DATA["_t2"]
-    assert got.nobs == 24
-    assert list(got.names) == ["WTI", "CPI"]
-
-
-# ── BUG 2 — the order search must not rank/recommend non-converged fits ───────
-@pytest.mark.slow
-def test_order_search_excludes_nonfinite_and_faulted_fits():
-    from drvarma import mcp_server as M
-
-    raw, _ = seasonal_series(2, n=180)
-    M.load_data(name="_t3", values_json=_json(raw),
-                freq=12, start_year=2002, start_period=2, series_names="a,b")
-    M.characterize_series("_t3")
-    out = M.identify_varma_order("_t3", p_max=2, q_max=2)
-    assert "inf" not in out.split("Recomendación")[0].replace("-inf", "X"), out
-    assert "-inf" not in out, "non-finite criteria leaked into the ranking"
-
-
 # ── BUG 3 — the exact likelihood must be monotone in p (nesting) ──────────────
 @pytest.mark.slow
 @pytest.mark.parametrize("start_sub", [1, 2])
@@ -176,115 +134,21 @@ def test_transform_routes_agree():
     assert np.allclose(np.asarray(a.phi)[0], np.asarray(b.phi)[0], atol=1e-4)
 
 
-def _loaded(tmp_path, n=180, m=3):
-    """Load a small multivariate dataset into the MCP session."""
-    from drvarma import mcp_server as M
-
-    rng = np.random.default_rng(3)
-    raw, _ = seasonal_series(1, n=n)
-    third = raw[:, 0] * 0.5 + rng.normal(0, 0.4, n).cumsum() * 0.2 + 30
-    data = np.column_stack([raw[:, 0], raw[:, 1], third])[:, :m]
-    M.load_data(name="_plt", values_json=_json(data),
-                freq=12, start_year=2002, start_period=1,
-                series_names=",".join(f"s{i}" for i in range(m)))
-    M.characterize_series("_plt")
-    return M
-
-
-@pytest.mark.parametrize("tool,kind", [
-    ("plot_cross_correlation_matrices", "ccm"),
-    ("plot_cross_correlation_functions", "ccf"),
-    ("plot_partial_autoregression_matrices", "tiaobox"),
-])
-def test_identification_plot_tools_write_a_file(tmp_path, tool, kind):
-    M = _loaded(tmp_path)
-    out = tmp_path / f"{kind}.png"
-    msg = getattr(M, tool)("_plt", path=str(out))
-    assert out.exists() and out.stat().st_size > 1000, msg
-    assert str(out) in msg
-
-
-def test_ccm_plot_and_table_use_the_same_statistic(tmp_path):
-    """The plot must never disagree with the table: both go through _ccm_values."""
-    M = _loaded(tmp_path)
-    w = M._prepared_w(M._DATA["_plt"], 0.0, 1, 0, "auto")
-    R, bound, n, m = M._ccm_values(w)
-    table = M.cross_correlation_matrices("_plt", n_lags=4)
-    # rebuild the table's symbols from the shared helper and compare
-    rows = [ln.strip() for ln in table.split("\n") if ln.startswith("  ")]
-    rebuilt = []
-    for k in range(1, 5):
-        Rk = R(k)
-        for i in range(m):
-            rebuilt.append(" ".join(
-                "+" if Rk[i, j] > bound else "-" if Rk[i, j] < -bound else "."
-                for j in range(m)))
-    assert rows == rebuilt
-
-
-def test_tiaobox_plot_and_table_use_the_same_statistic(tmp_path):
-    M = _loaded(tmp_path)
-    w = M._prepared_w(M._DATA["_plt"], 0.0, 1, 0, "auto")
-    tt = M._tiaobox_tratios(w, 4)
-    m = w.shape[1]
-    table = M.partial_autoregression_matrices("_plt", max_order=4)
-    rows = [ln.strip() for ln in table.split("\n") if ln.startswith("  ")]
-    rebuilt = [" ".join("+" if tt[k][i, j] > 1.96 else
-                        "-" if tt[k][i, j] < -1.96 else "."
-                        for j in range(m))
-               for k in sorted(tt) for i in range(m)]
-    assert rows == rebuilt
-
-
-def test_ccf_summary_reports_which_lags_not_just_how_many(tmp_path):
-    """A spike at the seasonal lag is not the same evidence as one at lag 1, so the
-    summary must name the lags."""
-    M = _loaded(tmp_path)
-    msg = M.plot_cross_correlation_functions("_plt", n_lags=14,
-                                             path=str(tmp_path / "c.png"))
-    assert "k>0" in msg and "k<0" in msg
-    assert "ρ(0)=" in msg
-    # at least one pair line must carry an explicit lag list or an em dash
-    assert any(("[" in ln or "—" in ln) for ln in msg.split("\n") if ln.startswith("- "))
-
-
-def test_tiaobox_plot_does_not_clip_t_ratios(tmp_path):
-    """The t-ratio panels must show the ±1.96 band and the tallest bar.
-
-    `plots._snap_cmax` caps at 1.0 because it is built for correlations; reusing it
-    for t-ratios clipped every bar and pushed the ±1.96 band off-axis, so the plot
-    looked empty of significance while the table reported 5/9 significant.
-    """
-    import math
-
-    M = _loaded(tmp_path)
-    w = M._prepared_w(M._DATA["_plt"], 0.0, 1, 0, "auto")
-    tt = M._tiaobox_tratios(w, 5)
-    tmax = max(float(np.abs(v).max()) for v in tt.values())
-    M.plot_partial_autoregression_matrices("_plt", max_order=5,
-                                           path=str(tmp_path / "t.png"))
-    cmax = max(math.ceil(tmax), 3.0)
-    assert cmax >= 1.96, "the significance band must fit on the axis"
-    assert cmax >= tmax, "the tallest t-ratio must fit on the axis"
-
-
-def test_ccf_uses_the_dot_out_orientation_convention(tmp_path):
+def test_ccf_uses_the_dot_out_orientation_convention():
     """In the pair titled "A - B", k>0 must mean A → B, as the .out report prints
     ("nj --> ni IF k > 0") and as plots.plot_residual_ccf already does.
 
-    The first version of this tool used `ccf(w_i, w_j)` directly, whose k>0 means
-    the SECOND name leads — the opposite convention under a near-identical title.
-    Anyone used to the .out would have read the plot backwards.
+    The first CCF plot used `ccf(w_i, w_j)` directly, whose k>0 means the SECOND
+    name leads — the opposite convention under a near-identical title. Anyone
+    used to the .out would have read the plot backwards.
     """
-    from drvarma import mcp_server as M0
     from drvarma.diagnostics import ccf as _ccf
 
-    M = _loaded(tmp_path, n=200, m=2)
-    w = M._prepared_w(M._DATA["_plt"], 0.0, 1, 0, "auto")
+    w = np.random.default_rng(3).normal(size=200)
     # build a lead-lag on purpose: s1 copies s0 shifted forward by 2 periods
-    lead = np.zeros_like(w[:, 0])
-    lead[2:] = w[:-2, 0]
-    rho = _ccf(lead, w[:, 0], 6)          # canonical: title "s0 - s1", k>0 = s0→s1
+    lead = np.zeros_like(w)
+    lead[2:] = w[:-2]
+    rho = _ccf(lead, w, 6)                # canonical: title "s0 - s1", k>0 = s0→s1
     k_pos = float(np.abs(rho[6 + 1:]).max())
     k_neg = float(np.abs(rho[:6]).max())
     assert k_pos > k_neg, ("with s0 leading s1 the mass must sit at k>0 under the "
@@ -397,27 +261,6 @@ def test_optimizer_not_run_is_reported_as_such():
     assert "STARTING values" in banner
 
 
-def test_characterize_d_stable_to_one_extra_observation():
-    """`d` must not flip when one leading observation is added or removed.
-
-    ART decides d BEFORE handling seasonality, and ADF/KPSS have low power on a
-    seasonal series: uncapped, IPC_ES returns d=2 from January (n=216) and d=1 from
-    February (n=215). d=2 over-differences an I(1) series and injects a spurious MA
-    unit root. The search is capped at d=1 so the seasonality step handles the rest.
-    """
-    from drvarma import mcp_server as M
-
-    raw, _ = seasonal_series(1, n=216)
-    ds = []
-    for cut, sub in ((0, 1), (1, 2)):
-        M.load_data(name="_dstab", values_json=_json(raw[cut:]),
-                    freq=12, start_year=2002, start_period=sub, series_names="a,b")
-        M.characterize_series("_dstab")
-        ds.append(M._SEED["_dstab"]["consensus"]["d"])
-    assert ds[0] == ds[1], f"d flipped with one observation: {ds}"
-    assert ds[0] <= 1, f"d escalated above 1: {ds}"
-
-
 @pytest.mark.parametrize("drop", [1, 2, 5])
 def test_seasonal_pattern_invariant_to_dropping_leading_observations(drop):
     """Dropping the first few observations (and declaring the new start_sub) must
@@ -432,26 +275,6 @@ def test_seasonal_pattern_invariant_to_dropping_leading_observations(drop):
                                     mode="force")
     amplitude = d_full[0].max() - d_full[0].min()
     assert np.abs(d_full[0] - d_cut[0]).max() < 0.05 * amplitude
-
-
-@pytest.mark.parametrize("deseason", [None, "auto"])
-@pytest.mark.parametrize("start_sub", [1, 2, 7])
-def test_identification_series_equals_estimation_series(deseason, start_sub):
-    """The series CCM/Tiao-Box identify on MUST be the series the Model estimates on.
-
-    multiart used to replay deseason+transform itself, keeping the two pipelines in
-    sync only by hand. This pins the invariant so a change to Model.prepare() can
-    never silently desynchronise identification from estimation.
-    """
-    from drvarma import mcp_server as M
-
-    raw, _ = seasonal_series(start_sub, n=180)
-    ms = MultiSeries(raw, freq=12, start=(2002, start_sub), names=["a", "b"])
-    fit = Model(ms, lam=0.0, d=1, p=1, q=0, deseason=deseason,
-                include_mean=True).fit()
-    w_estimated = np.asarray(fit._w) / fit.scale
-    w_identified = np.asarray(M._prepared_w(ms, 0.0, 1, 0, deseason))
-    assert np.allclose(w_estimated, w_identified, atol=1e-10)
 
 
 def test_deseason_then_transform_kills_seasonal_acf():

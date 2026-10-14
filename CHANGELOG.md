@@ -6,6 +6,18 @@ compiled C engine.
 
 ## 0.2.0 — unreleased
 
+**No MCP server.** The old sima on raw series (`drvarma.mcp_server`, the
+`sima` command, `sima-legacy` since the assistant moved out) is gone, with
+the `mcp` extra, `docs/DESIGN_MCP.md`, `docs/TOOLS.md` and its tests. The
+assistant is its own package, `sima-tseries`, built on the ladder; drvarma
+is the engine and delivers numbers. Whoever installed `drvarma[mcp]` for
+sima installs `sima-tseries` now (atsw-suite must depend on it before this
+release reaches PyPI).
+
+**`LadderSeries.orders()` does not count fue's placeholder** (sima BUG-0001):
+a side whose factors are all fixed at zero has order 0. A random walk is no
+longer «AR 1».
+
 **An install from git carries the bug register** (BUG-0021): `setup.py` runs
 `tools/sync_material.py` on any build from a checkout. sima serves the register
 as `sima://engine-defects`; installed from git it had none.
