@@ -78,7 +78,12 @@ def test_a_binary_wheel_can_actually_load_its_engine():
     build with no extension (the pure wheel) is fine and skips.
     """
     import importlib.util
+    import os
     if importlib.util.find_spec("drvarma._drvarma_engine") is None:
         import pytest
+        # BUG-0022: a binary wheel built without its extension used to skip
+        # here, and every Windows wheel shipped without the engine.
+        if os.environ.get("DRVARMA_REQUIRE_ENGINE"):
+            pytest.fail("this build must carry the compiled engine and has none")
         pytest.skip("pure-Python build: no extension to load")
     import drvarma._drvarma_engine  # noqa: F401  — must not raise
