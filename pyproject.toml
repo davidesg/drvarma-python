@@ -101,8 +101,10 @@ skip  = "*-win32 *-manylinux_i686 pp*"
 test-requires = ["pytest"]
 test-command  = "pytest {project}/tests/test_smoke.py -q"
 # A binary wheel must carry its engine (BUG-0022): the smoke test fails, not
-# skips, when the extension is missing from a cibuildwheel build.
-test-environment = { DRVARMA_REQUIRE_ENGINE = "1" }
+# skips, when the extension is missing from a cibuildwheel build. In
+# cibuildwheel 2.x `environment` reaches the test step too (test-environment
+# is 3.x); the Windows table below repeats it next to GSL_ROOT.
+environment = { DRVARMA_REQUIRE_ENGINE = "1" }
 
 [tool.cibuildwheel.linux]
 # manylinux_2_28 = AlmaLinux 8. auditwheel then bundles libgsl/libgslcblas into
@@ -126,4 +128,4 @@ archs = ["AMD64"]
 # static libs + /MD runtime, compatible with Python. `environment` values are
 # evaluated in a shell: bash-style `$VAR` and forward slashes.
 before-all = "vcpkg install gsl:x64-windows-static-md"
-environment = { GSL_ROOT = "$VCPKG_INSTALLATION_ROOT/installed/x64-windows-static-md" }
+environment = { GSL_ROOT = "$VCPKG_INSTALLATION_ROOT/installed/x64-windows-static-md", DRVARMA_REQUIRE_ENGINE = "1" }

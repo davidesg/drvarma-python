@@ -49,7 +49,7 @@ Three things together:
   gsl:x64-windows-static-md"` and `GSL_ROOT`, as fue.
 - `_build_cffi.py`: on win32 the GSL dirs come from `GSL_ROOT` or the vcpkg
   default.
-- `test-environment = { DRVARMA_REQUIRE_ENGINE = "1" }` for cibuildwheel, and
+- `DRVARMA_REQUIRE_ENGINE = "1"` in cibuildwheel's `environment` (2.x applies it to the test step), and
   the smoke test FAILS instead of skipping when it is set and the extension is
   missing. A binary wheel without its engine cannot pass again.
 
