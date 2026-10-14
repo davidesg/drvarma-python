@@ -243,6 +243,32 @@ def test_own_free_gives_the_row_its_own_part(tmp_path):
         Ladder(f, echelon=(1, 0), own="other")
 
 
+
+def test_own_zeros_hold_the_free_own_lags_at_zero(tmp_path):
+    """own_zeros: the free own part simplified (sima BUG-0003). The fixed
+    lags leave the parameters and the least-squares start, and stay at 0;
+    the annual factor is untouched. Lags outside 1..n_r, unknown series
+    and own_zeros without own="free" are refused."""
+    y = noise(150, 2, seed=6)
+    f = [spec(tmp_path / "u1.inp", "u1", y[:, 0], 2, 0, P=1, ar=[0.3, 0.1], sar=[0.4]),
+         spec(tmp_path / "u2.inp", "u2", y[:, 1], 0, 0)]
+    L = Ladder(f, echelon=(1, 1), own="free", own_zeros={"u1": {"ma": {1}},
+                                                         "u2": {"ar": {1}}})
+    nm = L.names()
+    assert "theta_u1[B^1]" not in nm and "phi_u2[B^1]" not in nm
+    assert "phi_u1[B^1]" in nm and "theta_u2[B^1]" in nm and "Phi_u1[B^4]" in nm
+    L.fit()
+    phi, theta, *_ = L.series[0].split_polynomials()
+    assert all(float(v) == 0.0 for v in theta)
+    phi2, *_ = L.series[1].split_polynomials()
+    assert all(float(v) == 0.0 for v in phi2)
+    with pytest.raises(LadderError, match="outside 1..1"):
+        Ladder(f, echelon=(1, 1), own="free", own_zeros={"u1": {"ar": {2}}})
+    with pytest.raises(LadderError, match="no series nope"):
+        Ladder(f, echelon=(1, 1), own="free", own_zeros={"nope": {"ar": {1}}})
+    with pytest.raises(LadderError, match="own_zeros is the free own part's"):
+        Ladder(f, echelon=(1, 1), own_zeros={"u1": {"ar": {1}}})
+
 # -- the factor's LR test (stage 4, ECHELON_SEEDED_DESIGN.md §5.4) ---------------- #
 
 def test_factor_test_frees_the_product_and_starts_at_the_optimum(tmp_path):
