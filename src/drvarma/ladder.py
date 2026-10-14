@@ -298,19 +298,33 @@ class LadderSeries:
         (phi, theta, mu), (fphi, ftheta, _mu) = out
         return phi, theta, fphi, ftheta, mu, 0
 
-    def with_regular(self, k):
+    def with_regular(self, k, zeros=None):
         """A copy whose regular ARMA is a free AR(k)/MA(k), the echelon row's
         own part, the rest of the model (the row factor, the deterministic
         terms, the differences, the mean) as the file has it. It starts at
-        the file's regular polynomials when they fit in k, at zero if not."""
+        the file's regular polynomials when they fit in k, at zero if not.
+
+        ``zeros``: ``{"ar": {lags}, "ma": {lags}}``, own lags (1..k) held at
+        zero -- Tiao and Box's simplification on the row's own part, which
+        on route U is no longer the univariate model's."""
         phi, theta, _f, _g, _mu, _if = self.split_polynomials()
         m2 = copy.copy(self.model)
+        zeros = zeros or {}
+        for kind in ("ar", "ma"):
+            bad = [lag for lag in zeros.get(kind, ()) if not 1 <= int(lag) <= k]
+            if bad:
+                raise LadderError(f"{self.name}: own {kind.upper()} lag {bad[0]} is "
+                                  f"outside 1..{k}")
 
-        def seed(c):
+        def seed(c, kind):
             c = list(map(float, c)) if len(c) <= k else []
-            return [c + [0.0] * (k - len(c))] if k else []
-        m2.ar, m2.ar_free = seed(phi), None
-        m2.ma, m2.ma_free = seed(theta), None
+            z = {int(lag) for lag in zeros.get(kind, ())}
+            c = [0.0 if lag in z else v
+                 for lag, v in enumerate(c + [0.0] * (k - len(c)), 1)]
+            free = [[lag not in z for lag in range(1, k + 1)]] if (k and z) else None
+            return ([c] if k else []), free
+        m2.ar, m2.ar_free = seed(phi, "ar")
+        m2.ma, m2.ma_free = seed(theta, "ma")
         new = LadderSeries(self.path, self.ts, m2)
         # the rest in its current state: the deterministic terms, the row
         # factor and the mean
@@ -652,12 +666,16 @@ class Ladder:
         AR(n_r)/MA(n_r) in its place (``LadderSeries.with_regular``) --
         Lutkepohl and Poskitt's row on a route-U model, whose univariate
         orders are not the index.
+    own_zeros : with ``own="free"``, own lags held at zero, by series:
+        ``{"A": {"ar": {2}, "ma": {1}}}`` -- the simplification of the free
+        own part (``LadderSeries.with_regular``).
     """
 
     def __init__(self, series, p=0, q=0, diagcov=False, redet=False,
                  fixarma=False, method=1, estwin=None, hessian="fd", lik="elf",
                  links=None, start=None, cross="additive", zeros=None,
-                 rows=None, echelon=None, own="spec", support=None):
+                 rows=None, echelon=None, own="spec", support=None,
+                 own_zeros=None):
         _warn_if_no_engine()
         if series and not isinstance(series[0], LadderSeries):
             series = load(series)
@@ -667,7 +685,15 @@ class Ladder:
             if echelon is None or len(echelon) != len(series):
                 raise LadderError("own='free' is the echelon form's: give echelon=, "
                                   "one index per series")
-            series = [s.with_regular(int(k)) for s, k in zip(series, echelon)]
+            oz = dict(own_zeros or {})
+            unknown = set(oz) - {s.name for s in series}
+            if unknown:
+                raise LadderError(f"own_zeros: no series {sorted(unknown)[0]}")
+            series = [s.with_regular(int(k), oz.get(s.name))
+                      for s, k in zip(series, echelon)]
+        elif own_zeros:
+            raise LadderError("own_zeros is the free own part's: give own='free' "
+                              "(with own='spec' the zeros go in the files)")
         self.own = own
         self.series = list(series)
         check_alignment(self.series)
@@ -1302,6 +1328,15 @@ class Ladder:
             filters.append((fphi, ftheta))
             ex |= {("A", k, r, r) for k in range(ar + 1, n[r] + 1)}
             ex |= {("M", k, r, r) for k in range(ma + 1, n[r] + 1)}
+        if self.own == "free":
+            # own lags held at zero (own_zeros) stay out of the least squares
+            nm = set(self.names())
+            for r, s in enumerate(self.series):
+                for k in range(1, n[r] + 1):
+                    if f"phi_{s.name}[B^{k}]" not in nm:
+                        ex.add(("A", k, r, r))
+                    if f"theta_{s.name}[B^{k}]" not in nm:
+                        ex.add(("M", k, r, r))
         free = set(self._slots())
         for r in range(m):
             for c in range(m):
