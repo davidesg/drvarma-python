@@ -115,6 +115,14 @@ _SOURCES = [
 if sys.platform == "win32":
     _libs = ["gsl", "gslcblas"]
     _cargs = ["/O2"]
+    # BUG-0022: GSL via vcpkg (x64-windows-static-md), as fue's build script.
+    # Without these dirs the optional extension failed to compile and every
+    # Windows wheel shipped without its engine, in silence. GSL_ROOT overrides.
+    _gsl_root = os.environ.get("GSL_ROOT", os.path.join(
+        os.environ.get("VCPKG_INSTALLATION_ROOT", r"C:\vcpkg"),
+        "installed", "x64-windows-static-md"))
+    _GSL_INC = [os.path.join(_gsl_root, "include")] + _GSL_INC
+    _GSL_LIB = [os.path.join(_gsl_root, "lib")] + _GSL_LIB
 else:
     _libs = ["gsl", "gslcblas", "m"]
     _cargs = ["-O2", "-std=c99", "-w"]
