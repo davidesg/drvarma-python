@@ -532,7 +532,11 @@ these is a reason a wrong result went unnoticed.
       `cffi` added to build-system requires; `MANIFEST.in` ships `csrc/` in the
       sdist. (Entry point `drvarma = drvarma.cli:main` already wired.)
       Remaining: real pure-Python *compute* fallback needs P3; binary wheels/CI.
-- [ ] **Binary (compiled-engine) wheels — cibuildwheel, next release.** Today PyPI
+- [x] **Binary (compiled-engine) wheels** — done: PyPI ships cibuildwheel wheels
+      with the engine (cp310-313 × Win/macOS-arm64/Linux manylinux+musllinux
+      x86_64+aarch64); Windows since 0.2.0 (BUG-0022). Verified from PyPI on
+      every platform, 2026-10-15 (art's *Preflight atsw*, `origen=pypi`).
+      Original note: Today PyPI
       ships only the `py3-none-any` pure-Python wheel + sdist, so `pip install
       drvarma` installs cleanly everywhere (Windows too) but runs the **slow**
       pure-Python path; the ~10-100× C engine needs GSL + a compiler
