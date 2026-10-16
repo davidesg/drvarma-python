@@ -4,6 +4,17 @@ Exact maximum-likelihood estimation, forecasting and diagnostics of multivariate
 VARMA models (Mauricio 1995 JASA / 1997 AS 311), pure-Python with an optional
 compiled C engine.
 
+## 0.2.1 — unreleased
+
+**The PyPI page says what the package is.** 0.2.0's summary still read
+"Ships `sima`, an MCP server for LLM-driven VARMA analysis", and its keywords
+"MCP", "sima", "MCP server", although 0.2.0 removed the server: sima is its
+own package, `sima-tseries`. The README and the USER_GUIDE's install section
+said "pure-Python" and sent the reader to build the C engine with GSL, when the
+binary wheels carry it on every platform since 0.2.0. The README's relative
+links (`docs/...`, `COPYING`) were broken on PyPI; they are absolute now.
+No code changes.
+
 ## 0.2.0 — 2026-10-15
 
 **The Windows wheels carry the compiled engine** (BUG-0022). Every
