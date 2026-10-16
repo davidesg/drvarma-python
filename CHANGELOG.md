@@ -4,7 +4,144 @@ Exact maximum-likelihood estimation, forecasting and diagnostics of multivariate
 VARMA models (Mauricio 1995 JASA / 1997 AS 311), pure-Python with an optional
 compiled C engine.
 
-## 0.2.0 — unreleased
+## 0.2.1 — unreleased
+
+**The PyPI page says what the package is.** 0.2.0's summary still read
+"Ships `sima`, an MCP server for LLM-driven VARMA analysis", and its keywords
+"MCP", "sima", "MCP server", although 0.2.0 removed the server: sima is its
+own package, `sima-tseries`. The README and the USER_GUIDE's install section
+said "pure-Python" and sent the reader to build the C engine with GSL, when the
+binary wheels carry it on every platform since 0.2.0. The README's relative
+links (`docs/...`, `COPYING`) were broken on PyPI; they are absolute now.
+No code changes.
+
+## 0.2.0 — 2026-10-15
+
+**The Windows wheels carry the compiled engine** (BUG-0022). Every
+`win_amd64` wheel up to 0.1.7 shipped without `_drvarma_engine`: the Windows
+build installed no GSL, the optional extension failed in silence, and the
+smoke test skipped. On Windows drvarma computed with the pure-Python port,
+20–250x slower. Now GSL comes from vcpkg, as fue's, and a binary wheel
+without its engine fails the smoke test instead of skipping it. Found by the
+atsw install preflight on every wheel platform.
+
+**No MCP server.** The old sima on raw series (`drvarma.mcp_server`, the
+`sima` command, `sima-legacy` since the assistant moved out) is gone, with
+the `mcp` extra, `docs/DESIGN_MCP.md`, `docs/TOOLS.md` and its tests. The
+assistant is its own package, `sima-tseries`, built on the ladder; drvarma
+is the engine and delivers numbers. Whoever installed `drvarma[mcp]` for
+sima installs `sima-tseries` now (atsw-suite must depend on it before this
+release reaches PyPI).
+
+**`LadderSeries.orders()` does not count fue's placeholder** (sima BUG-0001):
+a side whose factors are all fixed at zero has order 0. A random walk is no
+longer «AR 1».
+
+**An install from git carries the bug register** (BUG-0021): `setup.py` runs
+`tools/sync_material.py` on any build from a checkout. sima serves the register
+as `sima://engine-defects`; installed from git it had none.
+
+**The echelon form on route U: the row factor** is stage 4 of
+`docs/ECHELON_PLAN.md` (§4). A model's seasonal and fixed-frequency factors
+now multiply its whole row, F_r(B)[A(B)w]_r = G_r(B)[M(B)a]_r, and only its
+regular ARMA is the row's own part, of degree ≤ n_r.
+- `Ladder(echelon=n, own="free")` replaces each model's regular ARMA by a free
+  AR(n_r)/MA(n_r): the univariate orders of a route-U `.pre` are not its
+  index. `own="spec"` (default) keeps the file's and refuses one that does
+  not fit, now naming the index it needs.
+- `echelon.stage2`, `residuals` and `search` take `filters=`, each row's
+  factor: row r is fitted on (F_r/G_r)(B) w (`echelon.row_filter`). The
+  stage II start uses them.
+- `Ladder.factor_test()` is the factor's LR test: against the same rows with
+  every position the factored product reaches free, started at this fit's
+  likelihood.
+- `ladder.search_row_factors(series)` is the index search on route U, in
+  passes. The first uses the univariate factors and the next ones those of
+  the exact-ML fit of the previous choice, until the choice repeats.
+- `LadderSeries.split_polynomials()`, `regular_orders()`, `has_row_factor()`,
+  `factor_support()`, `with_regular(k)`, `without_row_factor()`.
+
+Why the factor and not the univariate model on the diagonal: with the
+operator on the diagonal, the table's high cross lags lose their meaning and
+the forms stop nesting. On muskrat and mink, (3,1) ended below (2,1).
+
+`docs/STUDY-echelon-rowfactor.md` measured it on stage 0's systems, quarterly,
+with annual factors (18 cells × 50 replications):
+- from the stage II start, no fit ends below the truth (design note §8's
+  identification worry is not borne out);
+- the search in passes finds the indices in 84–100 % of 16 of the 18 cells.
+
+Tests: `tests/test_echelon_rowfactor.py`:
+- the split;
+- the cast against the product by `np.convolve`;
+- the row filter;
+- a quarterly system recovered within 3 SE, the factors included;
+- the filtered search;
+- `own="free"`;
+- `factor_test`, a fixed-frequency factor included.
+
+**The echelon index search and its start (`drvarma.echelon`)** are stage 3b
+of `docs/ECHELON_PLAN.md`: Lütkepohl and Poskitt's (1996) stages I–II.
+- `echelon.search(w, n_max=3)` fits a long VAR(h) (h by AIC), then least
+  squares on each candidate's echelon form, with one round of Hannan and
+  Kavalieris' residual correction. It chooses the indices by SC, over every
+  candidate while there are at most 256, by HK's two steps beyond. It
+  returns the criterion table (`Search.text()`) and every fit.
+- `Ladder(echelon=n)` now starts exact ML at the stage II estimates
+  (`start="echelon"`, the form's default): own and cross terms, A₀ and Q.
+  MA roots that least squares leaves outside the unit circle are pulled to
+  0.95 (`echelon.pull_inside`). The plain Ladder keeps the C's zero start.
+
+`docs/STUDY-echelon-search.md` measured it on stage 0's grid:
+- the true indices are found in 80–97 % of the generic replications on
+  average, rising with nobs (stage 0's univariate seed: 0–49 %);
+- SC beats HQ, which overfits;
+- the residual correction is what makes the search improve with the sample;
+- from the stage II start, no fit ends below the true parameters. From
+  zero, 20 % of (2,2,1)'s did.
+
+Tests: `tests/test_echelon_search.py`.
+
+**The echelon form (`Ladder(echelon=(n_1, …, n_m))`)** is stage 3a of
+`docs/ECHELON_PLAN.md`: Lütkepohl and Poskitt's (1996) reversed echelon form.
+The index table decides which cross coefficients are free:
+- the cross AR sits at the high lags n_r − n_rc + 1..n_r;
+- the cross MA at lags 1..n_r;
+- for c < r with n_c > n_r, a contemporaneous `AR0[r<-c]`.
+
+A₀ = M₀ = I − (the AR0 terms) is lower triangular, and the cast hands elf
+the standard form A₀⁻¹(·). Each series' own ARMA comes from its spec (route
+V) and must have degree ≤ its index. A `.pre` with seasonal factors was
+refused here; stage 4 (above) takes it. `zeros` and `links` restrict
+the form further, while `rows` and `cross="residual"` do not apply. The
+`.out` says the indices. Tests (`tests/test_echelon.py`):
+- LP's (1,2,1) table;
+- the cast against −A₀⁻¹A_k;
+- equal indices are the VARMA(n, n);
+- a simulated (1,0) system is recovered within 3 SE, AR0 included.
+
+**Cross orders per equation (`Ladder(rows=)`)** are stage 2 of the echelon form
+(`docs/ECHELON_PLAN.md`): `rows="A(2,1), B(0,1)"` or a dict. Equation A's
+cross AR runs to lag 2 and its cross MA to lag 1, on every linked pair. Rows
+not named take (p, q), and p, q become the largest orders. `links`, `rows`
+and `zeros` compose, and the `.out` lists rows and zeros. These are the row
+degrees of the echelon form without its restriction table, so the model is
+not identified on its own. Tests: `tests/test_rows.py`. The C has no row
+orders: the parity is by equivalence with `zeros` and `-links`.
+
+**The LR against the diagonal counts what is free (BUG-0017).** Its df was
+(p + q) per linked pair even with `zeros`. It now counts the free cross
+coefficients, and so matches the `npar` difference.
+
+**An overflowing log-variance no longer aborts a fit (BUG-0018).** A
+line-search step with log(Q_ii/Q_11) > 709 raised `OverflowError`. The point
+is now inadmissible, as in the C.
+
+**A singular Hessian falls back to BFGS (BUG-0019).** An fdhess Hessian with a
+zero eigenvalue, i.e. an unidentified coefficient, passed the Cholesky check
+and then raised `LinAlgError` out of the fit. It now falls back to BFGS, and
+the reason given is "the Hessian is singular: some coefficients are not
+identified".
 
 **The residual diagnosis and the line search follow the C (BUG-0016;
 BUG-0015 closed).** On 2026-10-11 atsw-gui moved the multivariate diagnosis

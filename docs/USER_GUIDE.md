@@ -23,19 +23,21 @@ tool. For internals, performance and the engine-vs-pure-Python trade-offs, see
 ## 1. Install
 
 ```sh
-pip install drvarma                 # pure-Python (NumPy/SciPy only)
+pip install drvarma
 ```
 
-That gives full functionality with no compiled code. For the **optional C engine**
-(10–100× faster — see the developer guide) install the GSL headers first:
+The binary wheels carry the compiled C engine (CPython 3.10–3.13 on Linux
+x86_64/aarch64, glibc and musl, macOS arm64 and Windows x86_64): nothing to
+build. Check it with
 
 ```sh
-sudo apt-get install libgsl-dev     # Debian/Ubuntu
-pip install "drvarma[c-engine]"
+python -c "import drvarma._engine as E; print(E.engine_backend())"   # c
 ```
 
-If the engine can't be built the install still succeeds and drvarma runs in
-pure-Python mode automatically. Optional plotting: `pip install "drvarma[plots]"`.
+Where no wheel fits, pip builds the sdist, which needs a C compiler and the GSL
+headers (`sudo apt-get install libgsl-dev` on Debian/Ubuntu). If the build or
+the load fails, the install still succeeds and drvarma warns and runs in
+pure-Python mode: the same results, 20–250× slower. Optional plotting: `pip install "drvarma[plots]"`.
 
 ---
 

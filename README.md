@@ -1,8 +1,8 @@
 # drvarma
 
 **Exact maximum-likelihood estimation, forecasting and diagnostics of
-multivariate VARMA (vector ARMA) models** — in pure Python, with an optional
-compiled C engine for speed.
+multivariate VARMA (vector ARMA) models** — in Python, with the compiled C
+likelihood engine in the binary wheels.
 
 ```python
 import numpy as np
@@ -36,12 +36,23 @@ impulse responses, variance decompositions, residual diagnostics and volatility.
 ## Install
 
 ```sh
-pip install drvarma                       # pure-Python (numpy + scipy)
+pip install drvarma
 ```
 
+The binary wheels carry the compiled engine (CPython 3.10–3.13 on Linux
+x86_64/aarch64, glibc and musl, macOS arm64 and Windows x86_64);
+`drvarma._engine.engine_backend()` says `"c"`. Where no wheel fits, pip builds
+the sdist, which needs a C compiler and the GSL headers; if the build or the
+load fails, drvarma warns and runs the pure-Python path: the same results,
+20–250× slower.
+
 Optional extras: `drvarma[plots]` (matplotlib + pyfug charts),
-`drvarma[forecast-report]` (HTML forecast reports), `drvarma[c-engine]` (build the
-CFFI C engine — needs GSL dev headers, ~10–100× faster but optional).
+`drvarma[forecast-report]` (HTML forecast reports). `drvarma[c-engine]` is kept
+for old install lines and adds nothing: cffi is a dependency.
+
+drvarma is the engine and has no assistant of its own. The MCP assistant for
+VARMA systems is [sima](https://pypi.org/project/sima-tseries/)
+(`pip install sima-tseries`), built on drvarma's ladder.
 
 ## Features
 
@@ -62,11 +73,11 @@ CFFI C engine — needs GSL dev headers, ~10–100× faster but optional).
   `.recursive` text reports, an HTML forecast report per series, and matplotlib
   charts.
 
-Everything runs with **no compiled code**. The optional CFFI engine wraps the
-validated drvarma C core and is bit-compatible with the
+Everything also runs with **no compiled code**. The CFFI engine of the binary
+wheels wraps the validated drvarma C core and is bit-compatible with the
 pure-Python path on well-conditioned problems — an accelerator only. The
 numerical methods are tabulated [below](#numerical-methods); see
-[`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) for the complexity discussion
+[`docs/DEVELOPER_GUIDE.md`](https://github.com/davidesg/drvarma-python/blob/master/docs/DEVELOPER_GUIDE.md) for the complexity discussion
 and a pure-Python vs hybrid vs C performance study.
 
 ## Command line
@@ -83,7 +94,7 @@ Each series keeps its fue model (Box-Cox, deterministic terms, differencing,
 mean, ARMA factors) on the diagonal; `p q` are the cross orders. A diagonal
 gate checks that the joint model reproduces the univariate ones and stops the
 program if it does not. In Python: `drvarma.ladder.Ladder(files, p, q).fit()`.
-See [`docs/LADDER.md`](docs/LADDER.md).
+See [`docs/LADDER.md`](https://github.com/davidesg/drvarma-python/blob/master/docs/LADDER.md).
 
 ### The multivariate `.inp` (deprecated since 0.2 / C 5.0)
 
@@ -100,12 +111,12 @@ drvarma IPC3 3 0 -mean -volexp 0.05 20 -volmov 20        # volatility (.volexp/.
 
 ## Documentation
 
-- [`docs/LADDER.md`](docs/LADDER.md) — the ladder: fue's models as input, the gate,
+- [`docs/LADDER.md`](https://github.com/davidesg/drvarma-python/blob/master/docs/LADDER.md) — the ladder: fue's models as input, the gate,
   forecasting, one format, and the parity with the C.
-- [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — install, API, CLI, worked examples.
-- [`docs/INP_FORMAT.md`](docs/INP_FORMAT.md) — the `.inp` input format (a precise,
+- [`docs/USER_GUIDE.md`](https://github.com/davidesg/drvarma-python/blob/master/docs/USER_GUIDE.md) — install, API, CLI, worked examples.
+- [`docs/INP_FORMAT.md`](https://github.com/davidesg/drvarma-python/blob/master/docs/INP_FORMAT.md) — the `.inp` input format (a precise,
   assistant-friendly spec for preparing inputs).
-- [`docs/DEVELOPER_GUIDE.md`](docs/DEVELOPER_GUIDE.md) — internals, algorithmic
+- [`docs/DEVELOPER_GUIDE.md`](https://github.com/davidesg/drvarma-python/blob/master/docs/DEVELOPER_GUIDE.md) — internals, algorithmic
   complexity from the literature, and the performance study.
 
 ## Numerical methods
@@ -130,4 +141,4 @@ other efficient exact-likelihood methods compared in the literature.
 the exact-likelihood algorithms designed and coded by **José Alberto Mauricio**.
 
 Released under the **GNU General Public License v2.0 or later**
-(GPL-2.0-or-later) — see [`COPYING`](COPYING).
+(GPL-2.0-or-later) — see [`COPYING`](https://github.com/davidesg/drvarma-python/blob/master/COPYING).

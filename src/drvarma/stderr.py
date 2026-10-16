@@ -101,8 +101,17 @@ def fd_covariance(objective, x_hat, n, fixed=None):
     except np.linalg.LinAlgError:
         info["positive_definite"] = False
         return None, None, info
+    try:
+        Hinv = np.linalg.inv(H)
+    except np.linalg.LinAlgError:
+        # Cholesky passes a min eigenvalue of ~1e-16, inv does not: an exactly
+        # unidentified direction (two coefficients with the same effect), not
+        # a covariance to report (BUG-0019).
+        info["positive_definite"] = False
+        info["singular"] = True
+        return None, None, info
     info["positive_definite"] = True
-    cov_red = 2.0 * F * np.linalg.inv(H) / n
+    cov_red = 2.0 * F * Hinv / n
     cov = np.full((x_hat.size, x_hat.size), np.nan)
     cov[np.ix_(idx, idx)] = cov_red
     std = np.full(x_hat.size, np.nan)

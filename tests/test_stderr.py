@@ -50,6 +50,20 @@ def test_not_positive_definite_is_refused():
     assert cov is None and std is None and info["positive_definite"] is False
 
 
+def test_a_singular_hessian_is_refused_not_raised(monkeypatch):
+    """BUG-0019: an unidentified direction gives a Hessian whose least
+    eigenvalue is ~1e-16. Cholesky passes it and inv() raised LinAlgError out
+    of the fit (the rows= fit of an echelon (1,0) system: AR1 and MA1 of a
+    white-noise regressor are the same coefficient). Simulated here by an inv
+    that refuses."""
+    def refuse(a):
+        raise np.linalg.LinAlgError("Singular matrix")
+    monkeypatch.setattr(np.linalg, "inv", refuse)
+    cov, std, info = fd_covariance(lambda x: 1.0 + x @ x, np.zeros(2), n=1)
+    assert cov is None and std is None
+    assert info["positive_definite"] is False and info["singular"] is True
+
+
 def test_boundary_is_detected():
     """A neighbour the objective rejects (sentinel 1e300) = optimum on the edge."""
     f = lambda x: 1.0e300 if x[0] > 0 else 1.0 + x[0] ** 2 + x[1] ** 2

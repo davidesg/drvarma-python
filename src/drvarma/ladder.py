@@ -117,6 +117,10 @@ def _warn_if_no_engine():
             "the ladder will run the pure-Python likelihood", stacklevel=4)
 
 
+# log(Q_ii/Q_11) beyond this overflows exp(): the point is inadmissible
+_LVAR_MAX = 700.0
+
+
 class LadderError(ValueError):
     """The input cannot be crossed, or the gate failed."""
 
@@ -230,7 +234,186 @@ class LadderSeries:
         return np.asarray(phi, float), np.asarray(theta, float), float(mu), int(ifault)
 
     def orders(self):
+        """(p, q) of the expanded ARMA. A side whose factors are all fixed at
+        zero has no order: it is fue's placeholder, the AR(1) fixed at 0.0
+        that a model without ARMA carries (sima BUG-0001), not an estimated
+        operator."""
         phi, theta, _mu, _if = self.polynomials()
+        m = self.model
+
+        def inert(factors, frees):
+            # a flag list of None, or a None factor, means free (as _split_specs)
+            free = lambda i, j: frees is None or frees[i] is None or frees[i][j]
+            return all(not free(i, j) and float(c) == 0.0
+                       for i, f in enumerate(factors) for j, c in enumerate(f))
+
+        p = 0 if inert(m.ar, m.ar_free) and inert(m.ar_s, m.ar_s_free) \
+            and not m.ar_f else len(phi)
+        q = 0 if inert(m.ma, m.ma_free) and inert(m.ma_s, m.ma_s_free) \
+            and not m.ma_f else len(theta)
+        return p, q
+
+    # -- the echelon form's row factor (docs/ECHELON_PLAN.md, stage 4) ------ #
+    def has_row_factor(self):
+        """Does the model carry seasonal or fixed-frequency factors? In the
+        echelon form they multiply the series' whole row."""
+        m = self.model
+        return bool(m.ar_s or m.ma_s or m.ar_f or m.ma_f)
+
+    def _split_specs(self):
+        """Two poly specs of the model, one with its regular factors only and
+        one with the rest (the row factor), and the masks that pick each
+        one's entries from x[n_det:] (fue's order: ar, ar_s, ma, ma_s, ar_f,
+        ma_f, mu)."""
+        if getattr(self, "_split", None) is not None:
+            return self._split
+        from fue.cast_us import build_est_spec
+        m = self.model
+
+        def nfree(factors, frees):
+            return sum(sum(1 for j in range(len(f))
+                           if frees is None or frees[i] is None or frees[i][j])
+                       for i, f in enumerate(factors))
+        sizes = [("reg", nfree(m.ar, m.ar_free)), ("fac", nfree(m.ar_s, m.ar_s_free)),
+                 ("reg", nfree(m.ma, m.ma_free)), ("fac", nfree(m.ma_s, m.ma_s_free)),
+                 ("fac", sum(1 for f in m.ar_f if f.free)),
+                 ("fac", sum(1 for f in m.ma_f if f.free)),
+                 ("both", int(self.has_mu))]
+        masks = {"reg": [], "fac": []}
+        for kind, k in sizes:
+            for part in ("reg", "fac"):
+                masks[part] += [kind in (part, "both")] * k
+        specs = {}
+        for part, drop in (("reg", ("ar_s", "ma_s", "ar_f", "ma_f")), ("fac", ("ar", "ma"))):
+            mm = _truncated(self.model, min(self.nobs_full, self.ornsop + 2))
+            mm.interventions = []
+            for a in drop:
+                setattr(mm, a, [])
+                if a in ("ar", "ma", "ar_s", "ma_s"):
+                    setattr(mm, a + "_free", None)
+            specs[part] = build_est_spec(mm)
+        self._split = (specs, {k: np.array(v, bool) for k, v in masks.items()})
+        return self._split
+
+    def split_polynomials(self):
+        """(phi, theta, fphi, ftheta, mu, ifault): the regular ARMA, the row
+        factor (the seasonal and fixed-frequency factors, expanded) and the
+        mean. phi * fphi and theta * ftheta are ``polynomials()``'s."""
+        from fue.cast_us import cast_us_py
+        if not self.has_row_factor():
+            phi, theta, mu, ifault = self.polynomials()
+            return phi, theta, np.zeros(0), np.zeros(0), mu, ifault
+        specs, masks = self._split_specs()
+        x = self.x[self.n_det:]
+        out = []
+        for part in ("reg", "fac"):
+            _p, _q, phi, theta, mu, _w, ifault = cast_us_py(x[masks[part]], specs[part])
+            if ifault:
+                return None, None, None, None, None, int(ifault)
+            out.append((np.asarray(phi, float), np.asarray(theta, float), float(mu)))
+        (phi, theta, mu), (fphi, ftheta, _mu) = out
+        return phi, theta, fphi, ftheta, mu, 0
+
+    def with_regular(self, k, zeros=None):
+        """A copy whose regular ARMA is a free AR(k)/MA(k), the echelon row's
+        own part, the rest of the model (the row factor, the deterministic
+        terms, the differences, the mean) as the file has it. It starts at
+        the file's regular polynomials when they fit in k, at zero if not.
+
+        ``zeros``: ``{"ar": {lags}, "ma": {lags}}``, own lags (1..k) held at
+        zero -- Tiao and Box's simplification on the row's own part, which
+        on route U is no longer the univariate model's."""
+        phi, theta, _f, _g, _mu, _if = self.split_polynomials()
+        m2 = copy.copy(self.model)
+        zeros = zeros or {}
+        for kind in ("ar", "ma"):
+            bad = [lag for lag in zeros.get(kind, ()) if not 1 <= int(lag) <= k]
+            if bad:
+                raise LadderError(f"{self.name}: own {kind.upper()} lag {bad[0]} is "
+                                  f"outside 1..{k}")
+
+        def seed(c, kind):
+            c = list(map(float, c)) if len(c) <= k else []
+            z = {int(lag) for lag in zeros.get(kind, ())}
+            c = [0.0 if lag in z else v
+                 for lag, v in enumerate(c + [0.0] * (k - len(c)), 1)]
+            free = [[lag not in z for lag in range(1, k + 1)]] if (k and z) else None
+            return ([c] if k else []), free
+        m2.ar, m2.ar_free = seed(phi, "ar")
+        m2.ma, m2.ma_free = seed(theta, "ma")
+        new = LadderSeries(self.path, self.ts, m2)
+        # the rest in its current state: the deterministic terms, the row
+        # factor and the mean
+        new.x[:self.n_det] = self.x[:self.n_det]
+        if self.has_row_factor():
+            new.x[new.n_det:][new._split_specs()[1]["fac"]] = \
+                self.x[self.n_det:][self._split_specs()[1]["fac"]]
+        elif self.has_mu:
+            new.x[-1] = self.x[-1]
+        new.nobs = self.nobs
+        return new
+
+    def factor_support(self):
+        """(AR lags, MA lags) where the row factor can be non-zero, lag 0
+        included: its structure, read by expanding it at arbitrary values."""
+        from fue.cast_us import cast_us_py
+        if not self.has_row_factor():
+            return {0}, {0}
+        specs, masks = self._split_specs()
+        x0 = self.x[self.n_det:][masks["fac"]].copy()
+        k = x0.size - int(self.has_mu)
+        rng = np.random.default_rng(0)
+        ar, ma, good = {0}, {0}, 0
+        # admissible draws of either sign (a fixed-frequency MA needs c < 0);
+        # the union of three: a lag that is zero by structure stays out
+        for _ in range(200):
+            x = x0.copy()
+            x[:k] = rng.uniform(0.15, 0.45, k) * rng.choice([-1.0, 1.0], k)
+            _p, _q, fphi, ftheta, _mu, _w, ifault = cast_us_py(x, specs["fac"])
+            if ifault:
+                continue
+            ar |= {j + 1 for j, c in enumerate(fphi) if abs(c) > 1e-12}
+            ma |= {j + 1 for j, c in enumerate(ftheta) if abs(c) > 1e-12}
+            good += 1
+            if good == 3:
+                return ar, ma
+        raise LadderError(f"{self.name}: no admissible values to read its row factor's "
+                          "structure")
+
+    def copy(self):
+        """An independent copy, in the current state."""
+        new = LadderSeries(self.path, self.ts, copy.copy(self.model))
+        new.x, new.nobs = self.x.copy(), self.nobs
+        return new
+
+    def without_row_factor(self, ar_lags, ma_lags):
+        """A copy whose ARMA is ONE regular AR and ONE regular MA, free at
+        ``ar_lags`` and ``ma_lags`` and zero elsewhere, at the current
+        expanded values (``polynomials()``): the row factor's restriction
+        dropped, the alternative of ``Ladder.factor_test``."""
+        phi, theta, _mu, _if = self.polynomials()
+        m2 = copy.copy(self.model)
+
+        def op(c, lags):
+            D = max(lags, default=0)
+            c = list(map(float, c)) + [0.0] * max(0, D - len(c))
+            vals = [c[k] if k + 1 in lags else 0.0 for k in range(D)]
+            return ([vals], [[k + 1 in lags for k in range(D)]]) if D else ([], None)
+        m2.ar, m2.ar_free = op(phi, set(ar_lags))
+        m2.ma, m2.ma_free = op(theta, set(ma_lags))
+        m2.ar_s, m2.ma_s, m2.ar_s_free, m2.ma_s_free = [], [], None, None
+        m2.ar_f, m2.ma_f = [], []
+        new = LadderSeries(self.path, self.ts, m2)
+        new.x[:self.n_det] = self.x[:self.n_det]
+        if self.has_mu:
+            new.x[-1] = self.x[-1]
+        new.nobs = self.nobs
+        return new
+
+    def regular_orders(self):
+        """The degrees of the regular ARMA: in the echelon form, the series'
+        own part of its row, which the index bounds."""
+        phi, theta, _f, _g, _mu, _if = self.split_polynomials()
         return len(phi), len(theta)
 
     # -- dates -------------------------------------------------------------- #
@@ -453,13 +636,18 @@ class Ladder:
         the univariate MA of series i TIMES row i of U*(B) = I - SUM U_k B^k.
         The two coincide when the univariate models have no MA factors. The
         cross AR is additive in both.
-    start : where the cross terms start: "zero" (default, as the C) or
+    start : where the cross terms start: "zero" (the default, as the C) or
         "preliminary" — Jenkins and Alavi's (1981) preliminary estimates: the
         cross MA from the cross covariances of the diagonal system's residuals
         (their prewhitened residuals), the cross AR from the multivariate
         Yule-Walker equations on the stationary series, the innovation
-        covariance from the residuals'. If that start is not admissible, zero
-        is used and ``start_used`` says so.
+        covariance from the residuals'. Or, with ``echelon``, "echelon" --
+        Lutkepohl and Poskitt's (1996) stage II least-squares estimates
+        (drvarma.echelon) for the own and cross terms, A_0 included, and Q:
+        the default with ``echelon`` (docs/STUDY-echelon-search.md: from
+        zero, exact ML stops below the true parameters in 20 % of a
+        5-dimensional system's fits; from here, in none). If that start is
+        not admissible, zero is used and ``start_used`` says so.
     links : the cross dynamics only on these pairs, as the C's -links:
         ``"A<-B,C<-A"`` or a list of ``("A", "B")`` (B enters the equation of
         A: AR and MA, every lag up to p and q), with the series' names.
@@ -469,14 +657,60 @@ class Ladder:
         simplification by coefficient (1981, §4): the restricted model is
         refitted and compared by an LR test. Finer than ``links``, which
         removes a whole pair.
+    rows : cross orders per equation, ``{"A": (p_A, q_A), ...}`` or
+        ``"A(1,0), B(2,1)"``: equation A's cross AR runs up to lag p_A and
+        its cross MA up to q_A, on every linked pair. A row not named takes
+        (p, q); ``p`` and ``q`` then become the largest orders. The
+        unequal row degrees of the echelon form, without its restriction
+        table (docs/ECHELON_PLAN.md, stage 2): not identified on its own.
+        ``links``, ``rows`` and ``zeros`` compose.
+    echelon : Kronecker indices ``(n_1, ..., n_m)``, in the series' order:
+        the reversed echelon form of Lutkepohl and Poskitt (1996, eq. 2.3)
+        (docs/ECHELON_PLAN.md, stage 3). Row r carries its own AR/MA (the
+        series' spec, of degree <= n_r), the cross AR at lags
+        n_r - n_rc + 1 .. n_r, the cross MA at lags 1..n_r and, for c < r
+        with n_c > n_r, the contemporaneous ``AR0[r<-c]``:
+        A_0 = M_0 = I - (the AR0 terms), lower triangular. p and q are
+        max n_r. ``links`` and ``zeros`` remove further coefficients (LP's
+        stage IV); ``rows`` and ``cross="residual"`` do not apply.
+        A model's seasonal and fixed-frequency factors are its row's
+        FACTOR (stage 4): row r is F_r(B) [A(B) w]_r = G_r(B) [M(B) a]_r,
+        F_r and G_r the AR and MA factors, estimated with the rest. Only the
+        regular ARMA is the row's own part, of degree <= n_r.
+    own : with ``echelon``, the row's own part: "spec" (default), the
+        regular ARMA of the file, which must fit in n_r; or "free", a free
+        AR(n_r)/MA(n_r) in its place (``LadderSeries.with_regular``) --
+        Lutkepohl and Poskitt's row on a route-U model, whose univariate
+        orders are not the index.
+    own_zeros : with ``own="free"``, own lags held at zero, by series:
+        ``{"A": {"ar": {2}, "ma": {1}}}`` -- the simplification of the free
+        own part (``LadderSeries.with_regular``).
     """
 
     def __init__(self, series, p=0, q=0, diagcov=False, redet=False,
                  fixarma=False, method=1, estwin=None, hessian="fd", lik="elf",
-                 links=None, start="zero", cross="additive", zeros=None):
+                 links=None, start=None, cross="additive", zeros=None,
+                 rows=None, echelon=None, own="spec", support=None,
+                 own_zeros=None):
         _warn_if_no_engine()
         if series and not isinstance(series[0], LadderSeries):
             series = load(series)
+        if own not in ("spec", "free"):
+            raise ValueError("own must be 'spec' or 'free'")
+        if own == "free":
+            if echelon is None or len(echelon) != len(series):
+                raise LadderError("own='free' is the echelon form's: give echelon=, "
+                                  "one index per series")
+            oz = dict(own_zeros or {})
+            unknown = set(oz) - {s.name for s in series}
+            if unknown:
+                raise LadderError(f"own_zeros: no series {sorted(unknown)[0]}")
+            series = [s.with_regular(int(k), oz.get(s.name))
+                      for s, k in zip(series, echelon)]
+        elif own_zeros:
+            raise LadderError("own_zeros is the free own part's: give own='free' "
+                              "(with own='spec' the zeros go in the files)")
+        self.own = own
         self.series = list(series)
         check_alignment(self.series)
         self.p, self.q = int(p), int(q)
@@ -493,13 +727,33 @@ class Ladder:
                           "one_only": 0}
         m = len(self.series)
         self.links = self._parse_links(links)
-        if start not in ("zero", "preliminary"):
-            raise ValueError("start must be 'zero' or 'preliminary'")
+        if start is None:
+            start = "echelon" if echelon is not None else "zero"
+        if start not in ("zero", "preliminary", "echelon"):
+            raise ValueError("start must be 'zero', 'preliminary' or 'echelon'")
         self.start = start
         self.start_used = None
         if cross not in ("additive", "residual"):
             raise ValueError("cross must be 'additive' or 'residual'")
         self.cross = cross
+        # factor_test's alternative: the echelon form's free positions given
+        # one by one, (kind, k, i, j) with k = -1 for AR0
+        self._support = None if support is None else frozenset(support)
+        self.echelon = self._parse_echelon(echelon, p, q, rows)
+        if start == "echelon" and self.echelon is None:
+            raise LadderError("start='echelon' is the echelon form's: give echelon=")
+        if self.echelon is not None:
+            self.p = self.q = max(self.echelon)
+            rows = {s.name: (k, k) for s, k in zip(self.series, self.echelon)}
+            if self._support is not None:
+                rows = {s.name: tuple(max([k + 1 for kd, k, i, _j in self._support
+                                           if kd == kind and i == r] + [0])
+                                      for kind in ("AR", "MA"))
+                        for r, s in enumerate(self.series)}
+        self.rows = self._parse_rows(rows)
+        if self.rows is not None:
+            self.p = int(max(self.rows[:, 0]))
+            self.q = int(max(self.rows[:, 1]))
         if self.links is not None and self.p == 0 and self.q == 0:
             raise LadderError("links needs cross dynamics: give p or q > 0")
         self.zeros = self._parse_zeros(zeros)
@@ -507,6 +761,7 @@ class Ladder:
         # the active set, and the diagonal system seeds the full one as is.
         self._cAR = np.zeros((max(self.p, 1), m, m))
         self._cMA = np.zeros((max(self.q, 1), m, m))
+        self._cA0 = np.zeros((m, m))      # the echelon form's contemporaneous terms
         self._lvar = np.zeros(m)
         self._qcov = np.zeros((m, m))
         self._set_structure(list(range(m)), self.p, self.q, self.diagcov)
@@ -544,6 +799,101 @@ class Ladder:
             L[names.index(a), names.index(b)] = True
         return L
 
+    _ROW = re.compile(r"\s*([^(,]+?)\s*\(\s*(\d+)\s*,\s*(\d+)\s*\)\s*")
+
+    def _parse_rows(self, rows):
+        """None, or the m x 2 array of (p_i, q_i), the cross orders of each
+        equation."""
+        if rows is None:
+            return None
+        names = [s.name for s in self.series]
+        if isinstance(rows, str):
+            items = []
+            for tok in re.findall(r"[^,()]+\([^)]*\)|[^,\s]+", rows):
+                mm = self._ROW.fullmatch(tok)
+                if not mm:
+                    raise LadderError(f"rows: '{tok.strip()}' is not of the form A(p,q)")
+                items.append((mm.group(1), (int(mm.group(2)), int(mm.group(3)))))
+        else:
+            items = list(dict(rows).items())
+        R = np.tile([self.p, self.q], (len(names), 1))
+        seen = set()
+        for a, pq in items:
+            if a not in names:
+                raise LadderError(f"rows: '{a}' is not a series")
+            if a in seen:
+                raise LadderError(f"rows: '{a}' is given twice")
+            seen.add(a)
+            pr, qr = (int(x) for x in pq)
+            if pr < 0 or qr < 0:
+                raise LadderError(f"rows: the orders of '{a}' must be >= 0")
+            R[names.index(a)] = (pr, qr)
+        return R
+
+    def _parse_echelon(self, echelon, p, q, rows):
+        """None, or the tuple of Kronecker indices, checked against the
+        specs and the other options."""
+        if echelon is None:
+            return None
+        n = tuple(int(k) for k in echelon)
+        m = len(self.series)
+        if len(n) != m or min(n) < 0:
+            raise LadderError(f"echelon: give {m} indices >= 0, one per series")
+        if rows is not None:
+            raise LadderError("echelon: the indices give the rows; do not give rows")
+        if self.cross != "additive":
+            raise LadderError("echelon: the residual cross MA (Jenkins-Alavi 3.22) is "
+                              "not an echelon form; use cross='additive'")
+        if (int(p), int(q)) not in ((0, 0), (max(n), max(n))):
+            raise LadderError(f"echelon: p and q are max(n) = {max(n)}; give 0, 0")
+        for s, k in zip(self.series, n):
+            ar, ma = s.regular_orders()
+            if self._support is None and (ar > k or ma > k):
+                raise LadderError(
+                    f"echelon: {s.name}'s regular ARMA has degrees ({ar}, {ma}) and its "
+                    f"index is {k}. The regular part is the row's own, of degree <= "
+                    f"n_r: give {s.name} an index of at least {max(ar, ma)}, or a "
+                    f"model whose regular part fits in {k}. Seasonal and "
+                    f"fixed-frequency factors are the row's factor, not its degree")
+        return n
+
+    def _index_table(self):
+        n = self.echelon
+        return [[min(n[r] + 1, n[c]) if c < r else min(n[r], n[c])
+                 for c in range(len(n))] for r in range(len(n))]
+
+    def _allowed(self, kind, k, i, j):
+        """Is the cross slot (kind, lag k + 1, i <- j) in the model's
+        structure (before zeros)? k = -1 is the contemporaneous AR0."""
+        if self.echelon is None:
+            return 0 <= k < self._row_order(kind, i)
+        if self._support is not None:
+            return (kind, k, i, j) in self._support
+        n, nt = self.echelon, self._index_table()
+        if kind == "MA":
+            return 0 <= k < n[i]
+        if k < 0:
+            return j < i and nt[i][j] == n[i] + 1
+        return n[i] - nt[i][j] + 1 <= k + 1 <= n[i]
+
+    def _get(self, kind, k, i, j):
+        if kind == "AR" and k < 0:
+            return self._cA0[i, j]
+        return (self._cAR if kind == "AR" else self._cMA)[k, i, j]
+
+    def _put(self, kind, k, i, j, v):
+        if kind == "AR" and k < 0:
+            self._cA0[i, j] = v
+        else:
+            (self._cAR if kind == "AR" else self._cMA)[k, i, j] = v
+
+    def _row_order(self, kind, i):
+        """The cross order of equation i (AR or MA), before any change of
+        the active structure."""
+        if self.rows is None:
+            return self.p if kind == "AR" else self.q
+        return int(self.rows[i, 0 if kind == "AR" else 1])
+
     _ZERO = re.compile(r"\s*(AR|MA)(\d+)\[([^<\]]+)<-([^\]]+)\]\s*")
 
     def _parse_zeros(self, zeros):
@@ -562,10 +912,16 @@ class Ladder:
             kind, k, a, b = mm.group(1), int(mm.group(2)), mm.group(3).strip(), mm.group(4).strip()
             if a not in names or b not in names or a == b:
                 raise LadderError(f"zeros: '{str(tok).strip()}' does not name two different series")
-            top = self.p if kind == "AR" else self.q
-            if not 1 <= k <= top:
-                raise LadderError(f"zeros: '{str(tok).strip()}': the cross {kind} order is {top}")
             i, j = names.index(a), names.index(b)
+            if self.echelon is not None:
+                if not self._allowed(kind, k - 1, i, j):
+                    raise LadderError(f"zeros: '{str(tok).strip()}' is not a free coefficient "
+                                      f"of the echelon form {self.echelon}")
+            else:
+                top = self._row_order(kind, i)
+                if not 1 <= k <= top:
+                    where = "" if self.rows is None else f" of {a}"
+                    raise LadderError(f"zeros: '{str(tok).strip()}': the cross {kind} order{where} is {top}")
             if not self._linked(i, j):
                 raise LadderError(f"zeros: '{str(tok).strip()}' is not a linked pair")
             out.add((kind, k - 1, i, j))
@@ -573,13 +929,18 @@ class Ladder:
 
     def _slots(self):
         """The free cross coefficients, in the C's order (AR lag by lag, then
-        MA), without those fixed at zero."""
+        MA), without those fixed at zero or outside the structure (rows, the
+        echelon table). The echelon form's AR0 come first."""
         z = getattr(self, "zeros", frozenset())
+        a0 = []
+        if self.echelon is not None and (self._cp or self._cq):
+            a0 = [("AR", -1, i, j) for i, j in self._pairs()
+                  if self._allowed("AR", -1, i, j) and ("AR", -1, i, j) not in z]
         ar = [("AR", k, i, j) for k in range(self._cp) for i, j in self._pairs()
-              if ("AR", k, i, j) not in z]
+              if self._allowed("AR", k, i, j) and ("AR", k, i, j) not in z]
         ma = [("MA", k, i, j) for k in range(self._cq) for i, j in self._pairs()
-              if ("MA", k, i, j) not in z]
-        return ar + ma
+              if self._allowed("MA", k, i, j) and ("MA", k, i, j) not in z]
+        return a0 + ar + ma
 
     def _linked(self, i, j):
         return i != j and (self.links is None or bool(self.links[i, j]))
@@ -617,7 +978,7 @@ class Ladder:
             v.extend(self.series[i].x[mk])
         act = self._act
         for kind, k, i, j in self._slots():
-            v.append((self._cAR if kind == "AR" else self._cMA)[k, i, j])
+            v.append(self._get(kind, k, i, j))
         v.extend(self._lvar[i] for i in act[1:])
         if not self._cdiag:
             v.extend(self._qcov[act[a], act[b]] for a in range(1, len(act)) for b in range(a))
@@ -632,7 +993,7 @@ class Ladder:
             idx += k
         act = self._act
         for kind, k, i, j in self._slots():
-            (self._cAR if kind == "AR" else self._cMA)[k, i, j] = v[idx]; idx += 1
+            self._put(kind, k, i, j, v[idx]); idx += 1
         for i in act[1:]:
             self._lvar[i] = v[idx]; idx += 1
         if not self._cdiag:
@@ -658,10 +1019,15 @@ class Ladder:
         """vector -> (mu, phi, theta, qq, w, ifault) for ``elf``."""
         self.unpack(v)
         act, m = self._act, len(self._act)
-        polys, ws = [], []
+        polys, ws, facs = [], [], []
+        ech = self.echelon is not None and bool(self._cp or self._cq)
         for i in act:
             s = self.series[i]
-            phi, theta, mu, ifault = s.polynomials()
+            if ech:     # the regular part on the diagonal, the rest a row factor
+                phi, theta, fphi, ftheta, mu, ifault = s.split_polynomials()
+                facs.append((fphi, ftheta))
+            else:
+                phi, theta, mu, ifault = s.polynomials()
             if ifault:
                 return None, None, None, None, None, 6
             w = s.stationary()
@@ -705,10 +1071,33 @@ class Ladder:
                             # in the I - SUM Theta_m B^m convention (3.22)
                             for l, t in enumerate(th_i, 1):
                                 THETA[k + l, a, b] -= t * U
+        if ech:
+            # A_0 w_t = SUM PHI~_k w_t-k + A_0 a_t - SUM THETA~_k a_t-k, with
+            # A_0 = I - C_0 (C_0 the AR0 terms, strictly lower): elf wants the
+            # standard form, Phi_k = A_0^-1 PHI~_k and Theta_k = A_0^-1 THETA~_k
+            C0 = self._cA0[np.ix_(act, act)]
+            A0 = np.eye(m) - C0
+            if any(f.size or g.size for f, g in facs):
+                # stage 4: row a times its factor F_a(B) (AR) or G_a(B) (MA),
+                # the series' seasonal and fixed-frequency factors
+                from .echelon import times_row_factors
+                # (LP's C(B) = A_0 - SUM PHI~_k B^k is -[-A_0, PHI~...])
+                PHI = times_row_factors(np.concatenate([-A0[None], PHI]),
+                                        [f for f, _g in facs])[1:]
+                THETA = times_row_factors(np.concatenate([-A0[None], THETA]),
+                                          [g for _f, g in facs])[1:]
+            self._rows = (C0, PHI, THETA)    # LP's rows, for factor_test
+            if np.any(C0):
+                Ainv = np.linalg.inv(A0)                 # unit triangular
+                PHI = np.einsum("ab,kbc->kac", Ainv, PHI)
+                THETA = np.einsum("ab,kbc->kac", Ainv, THETA)
         QQ = np.zeros((m, m))
         QQ[0, 0] = 1.0
         for a in range(1, m):
-            QQ[a, a] = math.exp(self._lvar[act[a]])
+            lv = self._lvar[act[a]]
+            if not lv < _LVAR_MAX:      # exp overflows: the C gets inf and
+                return None, None, None, None, None, 6   # rejects it (BUG-0018)
+            QQ[a, a] = math.exp(lv)
         if not self._cdiag:
             for a in range(1, m):
                 for b in range(a):
@@ -809,7 +1198,9 @@ class Ladder:
             if cov is not None:
                 return std, "fdhess", cov
             why = ("the optimum is on the boundary of the admissible region"
-                   if info.get("boundary") else "the Hessian is not positive definite")
+                   if info.get("boundary") else
+                   "the Hessian is singular: some coefficients are not identified"
+                   if info.get("singular") else "the Hessian is not positive definite")
             if not nit:
                 # raxopt starts b at the identity: no iteration, no BFGS Hessian.
                 return (np.full(xhat.size, np.nan),
@@ -878,11 +1269,13 @@ class Ladder:
         if self.p == 0 and self.q == 0 and self.diagcov:
             self.result = diag
         else:
-            self._cAR[:] = 0.0; self._cMA[:] = 0.0; self._qcov[:] = 0.0
+            self._cAR[:] = 0.0; self._cMA[:] = 0.0; self._cA0[:] = 0.0; self._qcov[:] = 0.0
             self._set_structure(list(range(m)), self.p, self.q, self.diagcov)
             self.start_used = "zero"
             if self.start == "preliminary":
                 self._preliminary(diag)
+            elif self.start == "echelon":
+                self._echelon_start()
             self.x_start = self.pack()    # where the requested fit starts
             self.result = self._fit()
         return self.result
@@ -902,23 +1295,104 @@ class Ladder:
         S = np.cov(res.T, bias=True)
         x0 = self.pack()
         for kind, k, i, j in self._slots():
-            (self._cAR if kind == "AR" else self._cMA)[k, i, j] = \
-                seeds["ar" if kind == "AR" else "ma"][k, i, j]
+            if k >= 0:                    # AR0 has no preliminary estimate: 0
+                self._put(kind, k, i, j, seeds["ar" if kind == "AR" else "ma"][k, i, j])
         if not self._cdiag:
             for a in range(1, m):
                 for b in range(a):
                     self._qcov[a, b] = S[a, b] / S[0, 0]
+        self._take_start(x0, "preliminary")
+
+    def _admissible(self):
+        """Does elf accept the current state as a point of the likelihood?"""
         mu, phi, theta, qq, w, ifa = self.cast(self.pack())
-        ok = not ifa
-        if ok:
-            _l, f1, f2, _a, ifa2 = self._elf(mu, phi, theta, qq, w)
-            ok = not ifa2 and np.isfinite(f1) and f1 > 0 and f2 > 0
-        if ok:
-            self.start_used = "preliminary"
+        if ifa:
+            return False
+        _l, f1, f2, _a, ifa2 = self._elf(mu, phi, theta, qq, w)
+        return not ifa2 and bool(np.isfinite(f1)) and f1 > 0 and f2 > 0
+
+    def _take_start(self, x0, name):
+        """Keep the start just set, or go back to ``x0`` with the cross terms
+        and Q's covariances at zero if elf does not accept it."""
+        if self._admissible():
+            self.start_used = name
         else:
             self.unpack(x0)
-            self._cAR[:] = 0.0; self._cMA[:] = 0.0; self._qcov[:] = 0.0
-            self.start_used = "zero (the preliminary start was not admissible)"
+            self._cAR[:] = 0.0; self._cMA[:] = 0.0; self._cA0[:] = 0.0; self._qcov[:] = 0.0
+            self.start_used = f"zero (the {name} start was not admissible)"
+
+    def _echelon_start(self):
+        """Lutkepohl and Poskitt's stage II estimates (see ``start``): a long
+        VAR on the stationary series, then least squares on the echelon
+        form's free positions -- those the Ladder holds free: links, zeros
+        and an own ARMA of degree below n_r stay at zero. The own AR/MA are
+        set where the spec writes them as one regular factor (route V's);
+        the mean stays the diagonal fit's. A row with a factor (stage 4: the
+        series' seasonal and fixed-frequency factors, at the file's values)
+        is fitted on the data filtered by it (``echelon.row_filter``). Least squares can leave an MA
+        root outside the unit circle: the roots are pulled inside
+        (``echelon.pull_inside``) and ``start_used`` says so."""
+        from . import echelon as E
+        m, n = len(self.series), self.echelon
+        _mu, _phi, _th, _qq, W, _ifa = self.cast(self.pack())   # no cross terms in it
+        h, e, _aic = E.long_var(W)
+        ex = set()
+        filters = []
+        for r, s in enumerate(self.series):
+            ar, ma = s.regular_orders()
+            _p, _t, fphi, ftheta, _mu, _if = s.split_polynomials()
+            filters.append((fphi, ftheta))
+            ex |= {("A", k, r, r) for k in range(ar + 1, n[r] + 1)}
+            ex |= {("M", k, r, r) for k in range(ma + 1, n[r] + 1)}
+        if self.own == "free":
+            # own lags held at zero (own_zeros) stay out of the least squares
+            nm = set(self.names())
+            for r, s in enumerate(self.series):
+                for k in range(1, n[r] + 1):
+                    if f"phi_{s.name}[B^{k}]" not in nm:
+                        ex.add(("A", k, r, r))
+                    if f"theta_{s.name}[B^{k}]" not in nm:
+                        ex.add(("M", k, r, r))
+        free = set(self._slots())
+        for r in range(m):
+            for c in range(m):
+                if r == c:
+                    continue
+                for k in range(0, n[r] + 1):
+                    if ("AR", k - 1, r, c) not in free:
+                        ex.add(("A", k, r, c))
+                    if k and ("MA", k - 1, r, c) not in free:
+                        ex.add(("M", k, r, c))
+        fit = E.stage2(W, e, h, n, exclude=ex, filters=filters)
+        self.echelon_stage2 = fit
+        A, M, lam_a, lam_m = E.pull_inside(fit.A, fit.M)
+        x0 = self.pack()
+        val = {}
+        for r, s in enumerate(self.series):
+            for k in range(1, n[r] + 1):
+                val[f"phi_{s.name}[B^{k}]"] = -A[k, r, r]
+                val[f"theta_{s.name}[B^{k}]"] = -M[k, r, r]
+        names = self.names()
+        v = self.pack()
+        for a, nm in enumerate(names):
+            if nm in val:
+                v[a] = val[nm]
+        self.unpack(v)
+        for kind, k, i, j in self._slots():
+            self._put(kind, k, i, j, -(A if kind == "AR" else M)[k + 1, i, j])
+        S = fit.sigma
+        act = self._act
+        for i in act[1:]:
+            self._lvar[i] = math.log(S[i, i] / S[act[0], act[0]])
+        if not self._cdiag:
+            for a in range(1, len(act)):
+                for b in range(a):
+                    self._qcov[act[a], act[b]] = S[act[a], act[b]] / S[act[0], act[0]]
+        self._take_start(x0, "echelon")
+        if self.start_used == "echelon" and (lam_a < 1.0 or lam_m < 1.0):
+            pulled = [f"{w} x {lam:.3f}^k" for w, lam in (("AR", lam_a), ("MA", lam_m))
+                      if lam < 1.0]
+            self.start_used = f"echelon ({', '.join(pulled)}: inside the unit circle)"
 
     def irf_fevd_bands(self, horizon, ndraws=800, alpha=0.05, seed=0):
         """Monte-Carlo bands for the orthogonalised IRF and the FEVD of the fit.
@@ -1002,10 +1476,80 @@ class Ladder:
         """LR of the cross dynamics (and covariances) against the diagonal."""
         from scipy.stats import chi2
         m = len(self.series)
-        nl = sum(self._linked(i, j) for i in range(m) for j in range(m))
-        df = (self.p + self.q) * nl + (0 if self.diagcov else m * (m - 1) // 2)
+        # the free cross coefficients of the requested model: rows and zeros
+        # count (BUG-0017), not (p + q) for every linked pair
+        saved = (self._act, self._cp, self._cq, self._cdiag)
+        self._set_structure(list(range(m)), self.p, self.q, self.diagcov)
+        nx = len(self._slots())          # rows, the echelon table and zeros
+        self._set_structure(*saved)
+        df = nx + (0 if self.diagcov else m * (m - 1) // 2)
         lr = 2.0 * (self.result.logL - self.logL_diag)
         return lr, df, (float(chi2.sf(max(lr, 0.0), df)) if df else float("nan"))
+
+    def factor_test(self):
+        """The check of the row factor (docs/ECHELON_SEEDED_DESIGN.md §5.4,
+        §7 stage 4): the LR of the fitted form against the same rows with
+        the factor's restriction dropped -- every position the product
+        F_r(B) [A(B)]_r (and G_r(B) [M(B)]_r) can reach, own and cross, free.
+        The alternative starts at the expansion of this optimum, where its
+        likelihood is the same, so the LR is >= 0 by construction.
+
+        Returns a dict: lr, df, p, logL (this fit's), logL_free,
+        logL_start (the alternative at the start: equal to logL), and the
+        alternative Ladder (``free``)."""
+        from scipy.stats import chi2
+        if self.result is None:
+            raise LadderError("factor_test needs a previous fit()")
+        if self.echelon is None or not any(s.has_row_factor() for s in self.series):
+            raise LadderError("factor_test: the echelon form has no row factor "
+                              "(seasonal or fixed-frequency factors) to test")
+        if self.p == 0 and self.q == 0:
+            raise LadderError("factor_test: indices all 0, no cross terms: each factor "
+                              "is its univariate model's, to check there (art)")
+        m = len(self.series)
+        self._set_structure(list(range(m)), self.p, self.q, self.diagcov)
+        self.unpack(self.result.x)
+        self.cast(self.result.x)
+        C0, PHI, THETA = self._rows
+        sup = [s.factor_support() for s in self.series]
+        support = set()
+        for kind, k, i, j in self._slots():
+            fa, fm = sup[i]
+            base = k + 1                               # AR0: lag 0
+            for jj in (fa if kind == "AR" else fm):
+                lag = base + jj
+                support.add((kind, -1, i, j) if lag == 0 else (kind, lag - 1, i, j))
+            if kind == "AR" and k < 0:                 # M_0 = A_0, times G_i
+                support |= {("MA", jj - 1, i, j) for jj in fm if jj}
+        series = []
+        for s, (fa, fm) in zip(self.series, sup):
+            if not s.has_row_factor():
+                series.append(s.copy())
+                continue
+            ar, ma = s.regular_orders()
+            series.append(s.without_row_factor(
+                {l + jj for l in range(ar + 1) for jj in fa} - {0},
+                {l + jj for l in range(ma + 1) for jj in fm} - {0}))
+        free = Ladder(series, echelon=self.echelon, support=support,
+                      diagcov=self.diagcov, redet=self.redet, fixarma=self.fixarma,
+                      method=2 if self.xitol < 0 else 1, hessian=self.hessian,
+                      lik=self.lik, start="zero")
+        free._set_structure(list(range(m)), free.p, free.q, free.diagcov)
+        for kind, k, i, j in free._slots():
+            v = C0[i, j] if k < 0 else (PHI if kind == "AR" else THETA)[k, i, j]
+            free._put(kind, k, i, j, v)
+        free._lvar[:] = self._lvar
+        free._qcov[:] = self._qcov
+        free.x_start = free.pack()
+        start = free._fit(optimize=False)
+        free.result = free._fit()
+        free.logL_diag = self.logL_diag
+        df = free.npar() - self.npar()
+        lr = 2.0 * (free.result.logL - self.result.logL)
+        return {"lr": lr, "df": df,
+                "p": float(chi2.sf(max(lr, 0.0), df)) if df > 0 else float("nan"),
+                "logL": self.result.logL, "logL_free": free.result.logL,
+                "logL_start": start.logL, "free": free}
 
     # -- forecasting ------------------------------------------------------- #
     def set_origin(self, k):
@@ -1130,6 +1674,48 @@ class Ladder:
 #  split: out of the multivariate .inp                                         #
 # --------------------------------------------------------------------------- #
 
+def search_row_factors(series, n_max=3, criterion="SC", passes=3):
+    """The echelon index search on route U's models (stage 4): each row
+    filtered by its factor (the model's seasonal and fixed-frequency
+    factors), in passes. The first takes the factors of the univariate
+    fits (the gate's); each next one, those of the exact-ML fit of the
+    previous choice (``own="free"``), where the cross terms no longer leak
+    into them. It stops when the choice repeats, or after ``passes``.
+    With no factor it is one plain search.
+
+    The univariate factors mislead the search when a series' marginal
+    mixes the other rows' factors: on simulated quarterly (2, 1) systems
+    with an annual AR on one row and an annual MA on the other, it found
+    the indices in 28 % of the replications with them, and with the second
+    pass's factors in most (docs/STUDY-echelon-rowfactor.md).
+
+    Returns (the last ``echelon.Search``, the passes: a list of
+    (indices, "univariate models" | "joint fit of (n...)"))."""
+    from . import echelon as E
+    if series and not isinstance(series[0], LadderSeries):
+        series = load(series)
+    m = len(series)
+    L = Ladder([s.copy() for s in series])
+    L.run_gate()
+    L._set_structure(list(range(m)), 0, 0, True)
+    W = L.cast(L.pack())[4]
+    filt = [tuple(s.split_polynomials()[2:4]) for s in L.series]
+    if not any(s.has_row_factor() for s in series):
+        return E.search(W, n_max=n_max, criterion=criterion), []
+    sr = E.search(W, n_max=n_max, criterion=criterion, filters=filt)
+    hist = [(sr.indices, "univariate models")]
+    for _ in range(int(passes) - 1):
+        n = sr.indices
+        F = Ladder([s.copy() for s in series], echelon=n, own="free")
+        F.fit()
+        filt = [tuple(s.split_polynomials()[2:4]) for s in F.series]
+        sr = E.search(W, n_max=n_max, criterion=criterion, filters=filt)
+        hist.append((sr.indices, f"joint fit of {n}"))
+        if sr.indices == n:
+            break
+    return sr, hist
+
+
 def split(path, mean=False, harmonics=False, ar=0, ma=0, scale=100.0, out_dir="."):
     """Convert a multivariate drvarma ``.inp`` (deprecated since 5.0) into one
     univariate ``.inp`` of fue per series, ``out_dir/<name>.inp``.
@@ -1223,6 +1809,16 @@ def write_report(L, path, forecasts=None, recursive=None):
                f"{L.series[i].name}<-{L.series[j].name}"
                for i in range(len(L.series)) for j in range(len(L.series))
                if i != j and L.links[i, j])] if L.links is not None else []),
+           *([f"Echelon form     : Kronecker indices ("
+               + ", ".join(f"{s.name} {k}" for s, k in zip(L.series, L.echelon))
+               + "), A0 lower triangular (Lutkepohl-Poskitt 1996)"]
+             if getattr(L, "echelon", None) is not None else []),
+           *([f"Cross rows       : " + ", ".join(
+               f"{s.name}({L.rows[i, 0]},{L.rows[i, 1]})" for i, s in enumerate(L.series))]
+             if getattr(L, "rows", None) is not None else []),
+           *([f"Fixed at zero    : " + ", ".join(sorted(
+               f"{kind}{k + 1}[{L.series[i].name}<-{L.series[j].name}]"
+               for kind, k, i, j in L.zeros))] if getattr(L, "zeros", None) else []),
            f"Innovation cov.  : {'diagonal' if L.diagcov else 'full'}",
            f"Deterministics   : {'re-estimated' if L.redet else 'fixed at the file'}",
            f"Univariate ARMA  : {'fixed at the file' if L.fixarma else 're-estimated jointly'}",

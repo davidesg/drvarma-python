@@ -6,6 +6,16 @@ per-series diagnostics, base plots) are done and validated against the C engine
 pure-Python fallback with no compiled engine. Remaining: the graphics finish
 (pyfug JT formats, deferred to last) and P5 docs/CI.
 
+## Next release — expose GSL's generalized eigensolver for drvec (decided 2026-10-15)
+
+- [ ] drvec-python's Johansen start needs `gsl_eigen_gensymmv` and
+      `gsl_eigen_gensymmv_sort` bit for bit with the C oracle (scipy's `eigh`
+      is a few ulps off and moves that start's optimum on Lutkepohl's E1).
+      The compiled engine already links GSL on every wheel platform: export
+      the two through cffi (e.g. `drvarma._engine.gensymmv(A, B)`), with a test
+      against GSL's documented example, and drvec drops its ctypes lookup of a
+      system libgsl.
+
 ## ~~BUG (C, HEREDADO) — `chisq()` invierte la cola con `df >= 30`~~ — RESUELTO en esta copia 2026-09-26
 
 > Arreglado en `csrc/internal/nlatools.c` (quitado el segundo `if (z < 0)`), que
@@ -108,31 +118,19 @@ Decided by `docs/STUDY-standard-errors.md`. Open:
   2026-09-27 (fue c8860e5, atsw-gui 18404d6).
 - The one S3 seed at scale ratio 300 with fd/OLS = 1.88.
 
-## PRIORIDAD — Separar el asistente del motor (sima fuera de drvarma)
+## ~~PRIORIDAD — Separar el asistente del motor (sima fuera de drvarma)~~ HECHO
 
-**Plan maestro y justificación:** `art-python/TODO.md` §PRIORIDAD — Arquitectura
-asistente/motor, y `art-python/docs/ASSISTANT_LAYER_PROPOSAL.md` (inventario de
-símbolos medido). Contexto: `~/Dropbox/SRC/atws/atsw-suite/RESPUESTA_REVISION_2026-08-12.md`.
+El asistente es su propio paquete, `sima-tseries` (sima-python), construido
+sobre la escalera, y el servidor viejo sobre series crudas (`mcp_server.py`,
+`sima` y luego `sima-legacy`) se quitó en 0.2.0 con el extra `mcp`. La regla
+que decidió el reparto sigue valiendo: **todo lo que el modelo lee pertenece al
+asistente; el motor entrega números y no argumenta.**
 
-La regla que decide qué va a cada lado: **todo lo que el modelo lee pertenece al
-asistente; el motor entrega números y no argumenta.** Corolario: el motor lleva
-sus reservas como DATO, no como prosa.
+Pendiente fuera de aquí: atsw-suite depende de `drvarma[mcp]` y tiene que pasar
+a `sima-tseries` antes de que 0.2.0 llegue a PyPI. El mismo camino espera a
+`mtram` (drtran-python/TODO.md).
 
-Orden obligatorio, y el motivo: hacer (4) antes que (2) publicaría un paquete
-cuya dependencia son internos no declarados, y dejaría dos salidas — promoverlos
-igual, o clavar la versión del asistente a la del motor, que devuelve el
-acoplamiento por la puerta principal.
-
-- [ ] **(1)** `drvarma/assistant/` — subir la capa de criterio fuera de
-      `mcp_server.py` a su propio subpaquete. Sin cambio de empaquetado.
-      Ahí van `_draw_ccf_panel` y `_snap_cmax` — dibujar paneles es
-      presentación, y el guion bajo ya lo dice.
-- [ ] **(2)** Declarar la API: `deseasonalize_raw`, `ccf`, `qccf` e
-      `irf_fevd_bands` entran en `__all__` con el docstring que un símbolo
-      público debe. 6 de 10 símbolos son privados: proporcionalmente, el peor
-      reparto de los tres.
-- [ ] **(3)** Partir la batería: hoy el servidor viaja con el motor.
-- [ ] **(4)** Entonces `sima-tseries`, que a esas alturas es mecánico.
+Lo que se escribió al planearlo, como registro:
 
 **Empezar POR AQUÍ.** Nadie ha trabajado en `sima`, sus docstrings son los
 más delgados y medibles (412 caracteres de media frente a 963 de `art`,
@@ -544,7 +542,11 @@ these is a reason a wrong result went unnoticed.
       `cffi` added to build-system requires; `MANIFEST.in` ships `csrc/` in the
       sdist. (Entry point `drvarma = drvarma.cli:main` already wired.)
       Remaining: real pure-Python *compute* fallback needs P3; binary wheels/CI.
-- [ ] **Binary (compiled-engine) wheels — cibuildwheel, next release.** Today PyPI
+- [x] **Binary (compiled-engine) wheels** — done: PyPI ships cibuildwheel wheels
+      with the engine (cp310-313 × Win/macOS-arm64/Linux manylinux+musllinux
+      x86_64+aarch64); Windows since 0.2.0 (BUG-0022). Verified from PyPI on
+      every platform, 2026-10-15 (art's *Preflight atsw*, `origen=pypi`).
+      Original note: Today PyPI
       ships only the `py3-none-any` pure-Python wheel + sdist, so `pip install
       drvarma` installs cleanly everywhere (Windows too) but runs the **slow**
       pure-Python path; the ~10-100× C engine needs GSL + a compiler

@@ -49,6 +49,30 @@ others are zero and are not parameters, so the LR against the diagonal counts
 only the links. On IPC_ES_m10 + IPC_FR_msar, p = q = 1, `links="IPC_ES<-IPC_FR"`:
 8 parameters, logL 81.114461, as the C (`tests/test_links.py`).
 
+`zeros="AR2[A<-B], MA1[B<-A]"` fixes single cross coefficients at zero.
+
+`rows="A(2,1), B(0,1)"` gives each equation its own cross orders, the row
+degrees of the echelon form (`docs/ECHELON_PLAN.md`, stage 2).
+
+The three compose. The LR against the diagonal counts only the free
+coefficients (`tests/test_zeros.py`, `tests/test_rows.py`).
+
+**The echelon form** (`echelon=(n_1, …, n_m)`) is Lütkepohl and Poskitt's
+(1996) restriction table on route V's specifications. Each row's own ARMA has
+degree ≤ n_r, the cross terms follow the table, and the contemporaneous
+`AR0[r<-c]` makes A₀ lower triangular. The order of the series is part of
+the model. Exact ML starts at Lütkepohl and Poskitt's stage II
+least-squares estimates (`start="echelon"`, the default for this form), and
+`drvarma.echelon.search` chooses the indices from the data. See
+`docs/ECHELON_PLAN.md`, `docs/STUDY-echelon-search.md`,
+`tests/test_echelon.py` and `tests/test_echelon_search.py`.
+
+On route U's models (stage 4), a model's seasonal and fixed-frequency factors
+are its row's factor: F_r(B)[A(B)w]_r = G_r(B)[M(B)a]_r. `own="free"` gives
+each row a free AR(n_r)/MA(n_r) in place of the model's regular ARMA, and
+`factor_test()` checks the factor by an LR against the same rows unfactored.
+See `docs/ECHELON_PLAN.md` §4 and `tests/test_echelon_rowfactor.py`.
+
 Q is normalised with Q11 = 1 (the likelihood concentrates sigma2). Standard
 errors come from Mauricio's finite-difference Hessian (fdhess) at the optimum,
 with BFGS kept, and said, if that Hessian is not positive definite or the

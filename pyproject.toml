@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "drvarma"
-version = "0.2.0"
-description = "Multivariate VARMA modelling — exact maximum-likelihood estimation, forecasting and diagnostics. Ships `sima`, an MCP server for LLM-driven VARMA analysis"
+version = "0.2.1"
+description = "Multivariate VARMA modelling — exact maximum-likelihood estimation, forecasting and diagnostics; the engine of the sima assistant (sima-tseries)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "GPL-2.0-or-later"
@@ -15,8 +15,7 @@ authors = [
 ]
 keywords = [
     "VARMA", "vector ARMA", "time series", "forecasting", "multivariate",
-    "exact maximum likelihood", "econometrics", "impulse response",
-    "MCP", "sima", "MCP server"]
+    "exact maximum likelihood", "econometrics", "impulse response"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Science/Research",
@@ -59,9 +58,8 @@ Changelog = "https://github.com/davidesg/drvarma-python/blob/master/CHANGELOG.md
 
 [project.scripts]
 drvarma = "drvarma.cli:main"
-# The old sima, on raw series, deprecated: the assistant is now its own package,
-# sima-tseries, built on the ladder, and it owns the `sima` command.
-sima-legacy = "drvarma.mcp_server:main"
+# No MCP server: the assistant is its own package, sima-tseries, built on the
+# ladder. The old one on raw series (`sima`, then `sima-legacy`) is gone in 0.2.0.
 
 [project.optional-dependencies]
 # Optional CFFI-compiled C engine (P1): pip install "drvarma[c-engine]"
@@ -69,12 +67,6 @@ c-engine = ["cffi>=1.15"]
 plots = ["matplotlib>=3.6", "pyfug>=2.0"]
 # HTML forecast reports (SPS / fuf format); add weasyprint for optional PDF.
 forecast-report = ["jinja2>=3.0", "matplotlib>=3.6"]
-# sima MCP server: FastMCP + ART (univariate seeding) + charts/reports.
-# mcp<2 is NOT conservatism: mcp 2.0.0 REMOVED `mcp.server.fastmcp`, which is
-# where FastMCP lives and what this server imports. An unbounded `mcp>=1.0`
-# resolves to 2.x on any fresh install and sima then fails to import at all.
-# Verified: 1.27.2 works, 2.0.0 raises ModuleNotFoundError.
-mcp = ["mcp>=1.0,<2", "art-tseries>=0.1.3", "drvarma[plots,forecast-report]"]
 test = ["pytest>=7"]
 
 [tool.setuptools.packages.find]
@@ -107,6 +99,11 @@ skip  = "*-win32 *-manylinux_i686 pp*"
 # failures that say nothing about the wheel.
 test-requires = ["pytest"]
 test-command  = "pytest {project}/tests/test_smoke.py -q"
+# A binary wheel must carry its engine (BUG-0022): the smoke test fails, not
+# skips, when the extension is missing from a cibuildwheel build. In
+# cibuildwheel 2.x `environment` reaches the test step too (test-environment
+# is 3.x); the Windows table below repeats it next to GSL_ROOT.
+environment = { DRVARMA_REQUIRE_ENGINE = "1" }
 
 [tool.cibuildwheel.linux]
 # manylinux_2_28 = AlmaLinux 8. auditwheel then bundles libgsl/libgslcblas into
@@ -125,3 +122,9 @@ archs = ["auto"]
 
 [tool.cibuildwheel.windows]
 archs = ["AMD64"]
+# GSL via vcpkg, as fue (BUG-0022): without it the optional extension did not
+# compile and every Windows wheel shipped without its engine. static-md =
+# static libs + /MD runtime, compatible with Python. `environment` values are
+# evaluated in a shell: bash-style `$VAR` and forward slashes.
+before-all = "vcpkg install gsl:x64-windows-static-md"
+environment = { GSL_ROOT = "$VCPKG_INSTALLATION_ROOT/installed/x64-windows-static-md", DRVARMA_REQUIRE_ENGINE = "1" }
