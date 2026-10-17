@@ -34,6 +34,17 @@ test of that module. What it hid: `test_stderr.py::test_review_case_against_ols`
 anchored phi21's s.e. at 2.40 (2%), measured on the port; the engine gives
 2.45 (the port 2.44). The anchor is 2.45 at the same 2%.
 
+**Built on Windows from pip's temp directory, the engine compiles** (BUG-0024).
+An install from git, or from the sdist, on Windows built drvarma without its
+engine: `setup.py` handed cffi an absolute build directory, setuptools nested
+the whole project path again under `build_temp` for the object file, and from
+pip's temp directory that path passed 260 characters (`cl.exe` C1083). The
+extension being optional, pip only warned. The directory is relative now, as
+fue's. The binary wheels were not affected (cibuildwheel builds from a short
+path). And with `DRVARMA_REQUIRE_ENGINE` set the extension is no longer
+optional: a build meant to carry the engine (every binary wheel) fails instead
+of installing the pure-Python port. Without it nothing changes.
+
 ## 0.2.1 — 2026-10-16
 
 **The PyPI page says what the package is.** 0.2.0's summary still read

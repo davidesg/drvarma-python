@@ -1,11 +1,11 @@
 ---
 id: BUG-0024
 title: Built on Windows from pip's temp directory (a git URL or an sdist), the engine's object path passes 260 characters and the optional extension is dropped in silence
-status: open
+status: fixed
 severity: high
 component: packaging
 found_in: 0.3.0
-fixed_in:
+fixed_in: 0.3.0
 reported: 2026-10-17
 reporter: David / Claude — drvec-python's off-Linux CI (run 39054125424, then 39054783492 with pip -v)
 tags: [packaging, windows, engine, build]
@@ -66,19 +66,24 @@ is `build\temp...\Release\build\temp...\Release\fue._fue_engine.obj`.
 
 ## Fix
 
-Proposed: give cffi a directory RELATIVE to the project (setuptools runs the
-backend with the project as the working directory), e.g.
-`ffi.distutils_extension("build")`, or `os.path.relpath(...)` as
-`_build_cffi.py` already does for `csrc`. The object then lands at
-`build\temp...\Release\build\drvarma\_drvarma_engine.obj`.
+`setup.py` gives cffi a RELATIVE directory,
+`os.path.relpath(os.path.join(_HERE, "build"))` (cffi's own default is
+`"build"`, and fue's `cffi_modules` builds the same way; `_build_cffi.py`
+already took `csrc` relative). The generated source is
+`build/drvarma/_drvarma_engine.c` and its object
+`build\temp...\Release\build\drvarma\_drvarma_engine.obj`: 176 characters
+under the CI's pip directory instead of ~275.
 
-And so that the next cause is not silent either: honour
-`DRVARMA_REQUIRE_ENGINE` at BUILD time too (set `ext.optional = False` when
-it is set), so that a build that is meant to carry the engine fails instead
-of warning.
+And the next cause is not silent: with `DRVARMA_REQUIRE_ENGINE` set the
+extension is no longer `optional` (and an error preparing it is raised, not
+printed), so a build that is meant to carry the engine fails instead of
+warning. cibuildwheel sets it for every binary wheel (BUG-0022), so a wheel
+build without its engine now fails at build time, before the smoke test.
+Without the variable nothing changes: a build that cannot compile the engine
+still installs the pure-Python port.
 
-Workaround (drvec-python's tests.yml): clone to a short path
-(`$RUNNER_TEMP/dv`) and `pip install` that directory.
+Workaround until the fix was on the branch (drvec-python's tests.yml): clone
+to a short path (`$RUNNER_TEMP/dv`) and `pip install` that directory.
 
 ## Validation
 
@@ -86,3 +91,9 @@ The repro exits 0 once the object file no longer nests the project path; on
 Windows, `pip install` from git loads the engine
 (`drvarma._engine.engine_backend() == "c"`), which drvec-python's manual CI
 run checks.
+
+Linux, `python3 bugs/BUG-0024-repro/repro.py`: exits 0, the object at
+`build/temp.linux-x86_64-cpython-312/build/drvarma/_drvarma_engine.o`.
+`pip wheel` with a compiler that fails (`CC=/bin/false`): without the variable
+the wheel is built (pure Python, as before); with `DRVARMA_REQUIRE_ENGINE=1`
+the build fails.
