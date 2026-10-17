@@ -101,6 +101,11 @@ int drvarma_marma(int m, int n, int p, int q,
                   const double *mu, const double *phi, const double *theta,
                   const double *qq, const double *w, double sigma2,
                   double *f1, double *f2, double *logelf);
+
+int drvarma_gensymmv(int n, const double *A, const double *B,
+                     double *eval, double *evec, int sort);
+int drvarma_eigen_nonsymm(int n, const double *A, int balance,
+                          double *wr, double *wi);
 """
 
 _SOURCES = [

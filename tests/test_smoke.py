@@ -87,3 +87,19 @@ def test_a_binary_wheel_can_actually_load_its_engine():
             pytest.fail("this build must carry the compiled engine and has none")
         pytest.skip("pure-Python build: no extension to load")
     import drvarma._drvarma_engine  # noqa: F401  — must not raise
+
+
+def test_gsl_eigensolvers_when_the_engine_loads():
+    """Every binary wheel links GSL, and drvec's Johansen start relies on it:
+    a wheel whose engine loads must also solve GSL's eigenproblems."""
+    from drvarma import _engine as E
+    if E.engine_backend() != "c":
+        import pytest
+        pytest.skip("no compiled engine in this build")
+    assert E.gsl_available()
+    A = np.array([[2.0, 1.0], [1.0, 3.0]])
+    B = np.array([[4.0, 1.0], [1.0, 2.0]])
+    ev, V = E.gensymmv(A, B)
+    assert ev[0] > ev[1] and np.allclose(A @ V, B @ V * ev)
+    wr, wi = E.eigen_nonsymm(np.array([[0.0, -1.0], [1.0, 0.0]]))
+    assert np.allclose(sorted(wi), [-1.0, 1.0]) and np.allclose(wr, 0.0)

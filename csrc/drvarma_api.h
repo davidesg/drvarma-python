@@ -82,4 +82,33 @@ int drvarma_marma(int m, int n, int p, int q,
                   const double *qq, const double *w, double sigma2,
                   double *f1, double *f2, double *logelf);
 
+/* ------------------------------------------------------------------------- */
+/* GSL's eigensolvers, exported for callers that must reproduce a C program   */
+/* that calls them: drvec's Johansen start (canonical_b2) and its reports of  */
+/* eigenvalues. The engine links GSL on every wheel platform, so the caller   */
+/* gets GSL's own routine without looking for a system libgsl.               */
+/*                                                                           */
+/* Arrays are FLAT, 0-based, row-major. GSL's error handler is switched off  */
+/* for the call and restored after it: a failure is the return code, never  */
+/* abort().                                                                  */
+/* ------------------------------------------------------------------------- */
+
+/* drvarma_gensymmv -- A v = lambda B v, A symmetric, B symmetric positive    */
+/* definite (gsl_eigen_gensymmv), then gsl_eigen_gensymmv_sort with `sort`   */
+/* (a gsl_eigen_sort_t: 0 VAL_ASC, 1 VAL_DESC, 2 ABS_ASC, 3 ABS_DESC; -1 does */
+/* not sort). A and B are n*n and are not modified; eval [n]; evec [n*n],    */
+/* evec[i*n + j] = component i of eigenvector j (the vectors are COLUMNS, as */
+/* in GSL). Returns GSL's status (0 = ok; GSL_EDOM when B is not positive    */
+/* definite), and then eval/evec are undefined.                              */
+int drvarma_gensymmv(int n, const double *A, const double *B,
+                     double *eval, double *evec, int sort);
+
+/* drvarma_eigen_nonsymm -- the eigenvalues of a real general n*n matrix A    */
+/* (gsl_eigen_nonsymm, Schur form not computed, balanced when `balance`),    */
+/* in GSL's order: wr[k] + i wi[k]. A is not modified. Returns GSL's status   */
+/* (0 = ok; GSL_EMAXITER when the QR iteration did not converge, and then    */
+/* only some eigenvalues are valid, as GSL documents).                       */
+int drvarma_eigen_nonsymm(int n, const double *A, int balance,
+                          double *wr, double *wi);
+
 #endif
