@@ -4,14 +4,13 @@ In-repo bug tracker for **drvarma**.  One Markdown file per bug (`BUG-NNNN-slug.
 
 New report: `art-bug new` (or copy `TEMPLATE.md`).  Validate: `art-bug check`.  A fix commit references the id, e.g. `fix(pipeline): BUG-0001 …`.
 
-**23 report(s), 5 open.**
+**23 report(s), 4 open.**
 
 | id | status | sev | component | title | fixed in |
 |----|--------|-----|-----------|-------|----------|
 | [BUG-0001](BUG-0001-deseason-phase-still-unpatched-in-the-c-engine.md) | open | high | deseason | The seasonal-adjustment phase off-by-one is fixed in the Python port but STILL LIVE in the C engine, which the standalone executable uses | — |
 | [BUG-0002](BUG-0002-c-sources-are-copies-and-have-already-drifted.md) | open | high | csrc | The C sources are three unsynchronised COPIES, and they have already drifted — the termcode fix lives in the embedded copy only | — |
 | [BUG-0020](BUG-0020-la-puerta-falla-con-un-ma-en-la-pared.md) | open | low | ladder | The diagonal gate fails with NaN when a univariate optimum sits on the MA wall; the same polynomial is admissible alone and ifault 3 in the joint elf | — |
-| [BUG-0023](BUG-0023-la-suite-entera-corre-sin-el-motor.md) | open | medium | tests | A full pytest run computes with the pure-Python port — collecting test_regression_bugs.py sets DRVARMA_NO_ENGINE for the whole session | — |
 | [BUG-0003](BUG-0003-seasonal-adjustment-applied-in-levels-before-box-cox.md) | in-progress | medium | deseason | The seasonal component is estimated and subtracted in LEVELS, before the Box-Cox log, so a multiplicative pattern on a trending index is adjusted at the wrong scale | 0.2.0 (Python; the C pending) |
 | [BUG-0004](BUG-0004-el-docstring-dice-que-el-respaldo-en-python-solo-hace-q0.md) | fixed | low | engine | El docstring de `estimate_w` dice que el respaldo en Python sólo hace q=0, y hace VARMA completo desde junio | 0.2.0 |
 | [BUG-0005](BUG-0005-el-respaldo-en-python-puro-entra-sin-avisar.md) | fixed | medium | packaging | Donde no hay rueda binaria se instala la de Python puro y el motor C no se usa, sin ningún aviso | 0.2.0 |
@@ -27,6 +26,7 @@ New report: `art-bug new` (or copy `TEMPLATE.md`).  Validate: `art-bug check`.  
 | [BUG-0019](BUG-0019-hessiana-singular-rompe-el-ajuste.md) | fixed | medium | stderr | An exactly singular fdhess Hessian passes Cholesky and then raises LinAlgError out of Ladder.fit, instead of falling back to BFGS and saying so | 0.2.0 |
 | [BUG-0021](BUG-0021-una-instalacion-desde-git-no-lleva-el-registro.md) | fixed | low | packaging | An install from git carries no bug register; sima's engine-defects resource says it is missing | 0.2.0 |
 | [BUG-0022](BUG-0022-las-ruedas-de-windows-no-llevan-el-motor.md) | fixed | high | packaging | The Windows wheels carry no compiled engine — GSL is never installed for the Windows build, the optional extension fails in silence, and the smoke test skips | 0.2.0 |
+| [BUG-0023](BUG-0023-la-suite-entera-corre-sin-el-motor.md) | fixed | medium | tests | A full pytest run computes with the pure-Python port — collecting test_regression_bugs.py sets DRVARMA_NO_ENGINE for the whole session | 0.3.0 |
 | [BUG-0009](BUG-0009-load-data-toma-la-columna-de-fecha-como-serie.md) | wontfix | medium | mcp | load_data takes a date column as a series, and the sample start is not read from it | — |
 | [BUG-0011](BUG-0011-el-consenso-impone-un-lambda-y-el-d-maximo.md) | wontfix | low | mcp | The consensus imposes one lambda and d = max(d_i), which over-differences an I(0) series | — |
 | [BUG-0012](BUG-0012-los-coeficientes-armonicos-no-cuentan.md) | wontfix | low | deseason | The harmonic seasonal coefficients are not counted in degrees of freedom, k or forecast uncertainty | — |

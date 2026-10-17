@@ -27,7 +27,15 @@ def _json(rows):
     pasaban en un entorno con numpy 1.26. `tolist()` da floats de Python."""
     return json.dumps(np.asarray(rows, dtype=float).tolist())
 
-os.environ.setdefault("DRVARMA_NO_ENGINE", "1")
+# These tests compare against the pure-Python path. The variable is set for
+# EACH of them and restored after it: at module level it was set at collection
+# and held for the whole session, so a full run computed every other test on
+# the port too (BUG-0023).
+@pytest.fixture(autouse=True)
+def _pure_python_port(monkeypatch):
+    if "DRVARMA_NO_ENGINE" not in os.environ:
+        monkeypatch.setenv("DRVARMA_NO_ENGINE", "1")
+
 
 from drvarma import Model, MultiSeries, transform  # noqa: E402
 from drvarma.deseason import deseasonalize_raw  # noqa: E402

@@ -26,6 +26,14 @@ engine links GSL on every wheel platform, so the bits now come with
   scipy's `eigh` and numpy's `eigvals`, GSL's documented Vandermonde example.
 - Minor version: new public API (as `elf_c` and `marma_c` came with 0.2.0).
 
+**A full test run uses the compiled engine** (BUG-0023). Collecting
+`tests/test_regression_bugs.py` set `DRVARMA_NO_ENGINE` for the whole pytest
+session, so `pytest -q` (the CI's command) computed every test on the
+pure-Python port and took well over 50 minutes. The variable is now set per
+test of that module. What it hid: `test_stderr.py::test_review_case_against_ols`
+anchored phi21's s.e. at 2.40 (2%), measured on the port; the engine gives
+2.45 (the port 2.44). The anchor is 2.45 at the same 2%.
+
 ## 0.2.1 — 2026-10-16
 
 **The PyPI page says what the package is.** 0.2.0's summary still read

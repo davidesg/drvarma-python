@@ -1,17 +1,18 @@
 ---
 id: BUG-0023
 title: A full pytest run computes with the pure-Python port — collecting test_regression_bugs.py sets DRVARMA_NO_ENGINE for the whole session
-status: open
+status: fixed
 severity: medium
 component: tests
 found_in: 0.2.1
-fixed_in:
+fixed_in: 0.3.0
 reported: 2026-10-17
 reporter: David / Claude — running the full suite for drvarma 0.3.0 (GSL's eigensolvers)
 tags: [tests, engine, isolation]
 references:
   - tests/test_regression_bugs.py (module level)
   - bugs/BUG-0023-repro/repro.py
+  - tests/test_stderr.py test_review_case_against_ols
 ---
 
 ## Summary
@@ -55,7 +56,16 @@ only (they compare against the pure-Python path).
 An autouse fixture in that module that sets the variable with `monkeypatch`
 for each of its tests and restores it afterwards; nothing at module level.
 
+What the leak hid: `test_stderr.py::test_review_case_against_ols` fails on
+the compiled engine. Its anchor, phi21's s.e. 2.40 at 2%, was measured on
+the port; the engine gives 2.4496 and the port 2.4434 (the finite-difference
+Hessian differs in the last digits between the two likelihoods; the logL and
+the estimates agree to 1e-9, and both s.e. are 0.99 of the OLS ones, which the
+test also checks). It fails the same with 0.2.1's engine: not a regression.
+The anchor is now 2.45 at the same 2%, which both engines meet.
+
 ## Validation
 
-The repro exits 0; the full suite runs with the engine except in that
-module, and in a time comparable to the sum of its files.
+The repro exits 0. The full suite runs with the engine except in that
+module: 4 min 23 s instead of more than 50 (stopped there), and
+test_review_case_against_ols passes on both engines.
