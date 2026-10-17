@@ -30,6 +30,27 @@ cross-checks below are meaningful.
 when it is absent, so the package is fully functional with no C build (`pip
 install` without GSL).
 
+### 1.1 The engine's other entry points
+
+Besides `estimate_w`, `drvarma._engine` exports what the suite's other ports
+need from the compiled engine:
+
+| Function | What it is | Without the engine |
+|----------|-----------|--------------------|
+| `elf_c(m, n, p, q, mu, phi, theta, qq, w, ...)` | The exact likelihood (AS 311) scored at a GIVEN structure (drtran, drvec, the ladder). | `_as311.elf`, with the BUG-0005 warning |
+| `marma_c(...)` | Shea's likelihood (AS 242) at a given structure, the benchmark. | `_as242.marma`, with the warning |
+| `gensymmv(A, B, sort="val_desc")` | GSL's `gsl_eigen_gensymmv` + `gsl_eigen_gensymmv_sort`: `(eval, evec)`, the eigenvectors as unit-norm columns. drvec's Johansen start. | `EngineUnavailableError` |
+| `eigen_nonsymm(A, balance=True)` | GSL's `gsl_eigen_nonsymm`: `(wr, wi)` in GSL's order. drvec's reports. | `EngineUnavailableError` |
+| `gsl_available()` | whether the two GSL functions can run. | `False` |
+
+The two GSL functions have no pure-Python fallback on purpose: what they
+promise is GSL's bits (drvec's port is byte-identical to its C oracle only
+with them), and scipy's `eigh` would answer a slightly different question in
+silence. The caller asks `gsl_available()` and picks its own fallback. A GSL
+failure (B not positive definite, QR without convergence) is a
+`numpy.linalg.LinAlgError`, never an `abort()`: the C wrapper switches GSL's
+error handler off for the call and restores it.
+
 ---
 
 ## 2. Algorithmic & numerical background

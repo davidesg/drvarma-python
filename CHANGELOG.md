@@ -4,7 +4,29 @@ Exact maximum-likelihood estimation, forecasting and diagnostics of multivariate
 VARMA models (Mauricio 1995 JASA / 1997 AS 311), pure-Python with an optional
 compiled C engine.
 
-## 0.2.1 — unreleased
+## 0.3.0 — unreleased
+
+**GSL's eigensolvers, from the compiled engine.** `drvarma._engine.gensymmv(A, B,
+sort="val_desc")` is `gsl_eigen_gensymmv` + `gsl_eigen_gensymmv_sort` (the
+generalized symmetric-definite problem A v = l B v; eigenvectors as unit-norm
+columns), and `drvarma._engine.eigen_nonsymm(A, balance=True)` is
+`gsl_eigen_nonsymm` (the eigenvalues of a general matrix in GSL's order).
+`gsl_available()` says whether they can run. They are for drvec's Python port,
+whose Johansen start and reports must be GSL's bit for bit to reproduce its C
+oracle: it looked for a system libgsl through ctypes, which Windows and macOS
+without Homebrew do not have, and fell back to scipy, a few ulps off. The
+engine links GSL on every wheel platform, so the bits now come with
+`pip install drvarma`.
+- No pure-Python fallback, on purpose: without the engine (or with
+  `DRVARMA_NO_ENGINE`) they raise `EngineUnavailableError`, and the caller
+  chooses. A GSL failure is a `numpy.linalg.LinAlgError`: the C wrapper turns
+  GSL's error handler off for the call, so it never aborts the process.
+- Tests (`tests/test_gsl_eigen.py`): bit for bit with the same libgsl called
+  through ctypes on Linux x86_64 (320 random problems of each kind), to tolerance with
+  scipy's `eigh` and numpy's `eigvals`, GSL's documented Vandermonde example.
+- Minor version: new public API (as `elf_c` and `marma_c` came with 0.2.0).
+
+## 0.2.1 — 2026-10-16
 
 **The PyPI page says what the package is.** 0.2.0's summary still read
 "Ships `sima`, an MCP server for LLM-driven VARMA analysis", and its keywords

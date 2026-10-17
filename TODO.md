@@ -6,15 +6,19 @@ per-series diagnostics, base plots) are done and validated against the C engine
 pure-Python fallback with no compiled engine. Remaining: the graphics finish
 (pyfug JT formats, deferred to last) and P5 docs/CI.
 
-## Next release — expose GSL's generalized eigensolver for drvec (decided 2026-10-15)
+## ~~Next release — expose GSL's generalized eigensolver for drvec (decided 2026-10-15)~~ — DONE in 0.3.0 (unreleased)
 
-- [ ] drvec-python's Johansen start needs `gsl_eigen_gensymmv` and
+- [x] drvec-python's Johansen start needs `gsl_eigen_gensymmv` and
       `gsl_eigen_gensymmv_sort` bit for bit with the C oracle (scipy's `eigh`
       is a few ulps off and moves that start's optimum on Lutkepohl's E1).
-      The compiled engine already links GSL on every wheel platform: export
-      the two through cffi (e.g. `drvarma._engine.gensymmv(A, B)`), with a test
-      against GSL's documented example, and drvec drops its ctypes lookup of a
-      system libgsl.
+      Exported through cffi as `drvarma._engine.gensymmv(A, B, sort=...)`,
+      with `eigen_nonsymm(A)` beside it (drvec's reports print the eigenvalues
+      of Pi and of the companion matrices in `gsl_eigen_nonsymm`'s order, and
+      that was the other half of its ctypes lookup), and `gsl_available()`.
+      `tests/test_gsl_eigen.py`: bit for bit with the same libgsl through
+      ctypes on Linux x86_64, to tolerance with scipy/numpy, GSL's documented
+      Vandermonde example, and `EngineUnavailableError` without the engine.
+      drvec drops its ctypes lookup of a system libgsl.
 
 ## ~~BUG (C, HEREDADO) — `chisq()` invierte la cola con `df >= 30`~~ — RESUELTO en esta copia 2026-09-26
 
