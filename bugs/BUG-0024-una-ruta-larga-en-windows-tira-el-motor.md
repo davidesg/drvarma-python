@@ -97,3 +97,10 @@ Linux, `python3 bugs/BUG-0024-repro/repro.py`: exits 0, the object at
 `pip wheel` with a compiler that fails (`CC=/bin/false`): without the variable
 the wheel is built (pure Python, as before); with `DRVARMA_REQUIRE_ENGINE=1`
 the build fails.
+
+Windows, drvec-python run 39073627385 (bae8ea0, windows-latest, Pythons 3.10
+and 3.13, all 8 jobs green): `pip install "drvarma @ git+...@gsl-gensymmv"`
+from pip's temp clone compiles the object at
+`build\temp.win-amd64-cpython-313\Release\build\drvarma\_drvarma_engine.obj`,
+`engine_backend()` is `c`, and drvec's eigensolver is `gsl`. drvec-python's
+short-path workaround is gone (its main, c028869).
