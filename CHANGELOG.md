@@ -6,6 +6,29 @@ compiled C engine.
 
 ## 0.3.0 — unreleased
 
+**Forecasting a VARMA from given parameters, unit roots allowed.**
+`drvarma.forecast.forecast_given(phi, theta, sigma, w, a, L, mu=, const=,
+det=, lam=, refactor=, z=)` forecasts Phi(B)(w_t - mu) = const + Theta(B) a_t
+with no estimation and no stationarity asked of Phi(B). It is the entry point
+for a model drvarma did not fit: drvec's VEC written in levels
+(`drvec.to_levels_varma`, sima's decision that a VEC is forecast with the VARMA
+system's code, one forecaster and not two). Phi(1) may be singular, and a
+drift that is not of the form Phi(1) mu goes in `const`.
+- It is the ladder's forecast with the univariate operator empty: the same
+  recursion (`forecast_w`, which gains `const=None`), the same psi weights, and
+  the same band, now two functions both use (`series_psi`, `lead_sd`, taken out
+  of `Ladder.forecast` as they were). The level goes through fue's
+  `_inv_boxcox`, with each series' deterministic path added back first.
+- `z` is the band's multiplier: 1.96 by default, the ladder's; drvec passes the
+  C's 1.959964.
+- No number moves: `Ladder.forecast` is bit for bit the same (three ladders of
+  the IPC fixtures, 24 steps, every field compared).
+- Tests (`tests/test_forecast_given.py`): a stationary model against
+  `forecast_w` and `forecast_level_variances`, a random walk with drift, a
+  cointegrated pair, the Box-Cox at lambda = 0. drvec-python's
+  `tests/test_levels.py` holds it to drvec's own `-f` on the C's ten
+  `.forecast` goldens.
+
 **GSL's eigensolvers, from the compiled engine.** `drvarma._engine.gensymmv(A, B,
 sort="val_desc")` is `gsl_eigen_gensymmv` + `gsl_eigen_gensymmv_sort` (the
 generalized symmetric-definite problem A v = l B v; eigenvectors as unit-norm

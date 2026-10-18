@@ -1591,7 +1591,7 @@ class Ladder:
     def forecast(self, L):
         """L-step forecasts from the current end of every series, with the
         fitted parameters held fixed. Returns one dict per series."""
-        from .forecast import forecast_w
+        from .forecast import forecast_w, lead_sd as _lead_sd, series_psi
         from .irf import psi_weights
         if self.result is None:
             raise LadderError("fit() first")
@@ -1611,18 +1611,10 @@ class Ladder:
         for c, i in enumerate(self._act):
             s = self.series[i]
             ystar, rn = self._level(s, f[:, c])
-            uu = np.zeros(L + 1); uu[0] = 1.0
-            for t in range(1, L + 1):
-                uu[t] = sum(rn[k - 1] * uu[t - k] for k in range(1, min(len(rn), t) + 1))
-            P = np.array([[sum(uu[k] * psi[t - k][c, j] for k in range(t + 1))
-                           for t in range(L + 1)] for j in range(psi.shape[1])])
+            P = series_psi(psi, c, rn, L)
 
             def lead_sd(l, d):
-                v = 0.0
-                for t in range(l):
-                    col = P[:, t] - (P[:, t - d] if d and t >= d else 0.0)
-                    v += col @ sigma @ col
-                return math.sqrt(max(v, 0.0))
+                return _lead_sd(P, sigma, l, d)
 
             n = s.nobs
             sd = np.array([lead_sd(l, 0) for l in range(1, L + 1)])
