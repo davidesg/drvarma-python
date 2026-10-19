@@ -1214,3 +1214,91 @@ int drvarma_marma(int m, int n, int p, int q,
     free_vector(Mu, 1, m);
     return ifault;
 }
+
+
+/* ------------------------------------------------------------------------- */
+/* GSL's eigensolvers (see drvarma_api.h).                                    */
+/* ------------------------------------------------------------------------- */
+#include <gsl/gsl_errno.h>
+#include <gsl/gsl_matrix.h>
+#include <gsl/gsl_vector.h>
+#include <gsl/gsl_eigen.h>
+
+int drvarma_gensymmv(int n, const double *A, const double *B,
+                     double *eval, double *evec, int sort)
+{
+    gsl_matrix *Ag, *Bg, *V;
+    gsl_vector *ev;
+    gsl_eigen_gensymmv_workspace *ws;
+    gsl_error_handler_t *old;
+    int i, j, status;
+
+    if (n <= 0) return GSL_EINVAL;
+    old = gsl_set_error_handler_off();
+    Ag = gsl_matrix_alloc(n, n);
+    Bg = gsl_matrix_alloc(n, n);
+    V  = gsl_matrix_alloc(n, n);
+    ev = gsl_vector_alloc(n);
+    ws = gsl_eigen_gensymmv_alloc(n);
+    if (!Ag || !Bg || !V || !ev || !ws) {
+        status = GSL_ENOMEM;
+    } else {
+        for (i = 0; i < n; i++)
+            for (j = 0; j < n; j++) {
+                gsl_matrix_set(Ag, i, j, A[i * n + j]);
+                gsl_matrix_set(Bg, i, j, B[i * n + j]);
+            }
+        status = gsl_eigen_gensymmv(Ag, Bg, ev, V, ws);
+        if (status == 0 && sort >= 0)
+            status = gsl_eigen_gensymmv_sort(ev, V, (gsl_eigen_sort_t) sort);
+        if (status == 0) {
+            for (i = 0; i < n; i++) {
+                eval[i] = gsl_vector_get(ev, i);
+                for (j = 0; j < n; j++)
+                    evec[i * n + j] = gsl_matrix_get(V, i, j);
+            }
+        }
+    }
+    if (ws) gsl_eigen_gensymmv_free(ws);
+    if (ev) gsl_vector_free(ev);
+    if (V)  gsl_matrix_free(V);
+    if (Bg) gsl_matrix_free(Bg);
+    if (Ag) gsl_matrix_free(Ag);
+    gsl_set_error_handler(old);
+    return status;
+}
+
+int drvarma_eigen_nonsymm(int n, const double *A, int balance,
+                          double *wr, double *wi)
+{
+    gsl_matrix *Ag;
+    gsl_vector_complex *ev;
+    gsl_eigen_nonsymm_workspace *w;
+    gsl_error_handler_t *old;
+    int i, j, status;
+
+    if (n <= 0) return GSL_EINVAL;
+    old = gsl_set_error_handler_off();
+    Ag = gsl_matrix_alloc(n, n);
+    ev = gsl_vector_complex_alloc(n);
+    w  = gsl_eigen_nonsymm_alloc(n);
+    if (!Ag || !ev || !w) {
+        status = GSL_ENOMEM;
+    } else {
+        for (i = 0; i < n; i++)
+            for (j = 0; j < n; j++)
+                gsl_matrix_set(Ag, i, j, A[i * n + j]);
+        gsl_eigen_nonsymm_params(0, balance ? 1 : 0, w);
+        status = gsl_eigen_nonsymm(Ag, ev, w);
+        for (i = 0; i < n; i++) {
+            gsl_complex z = gsl_vector_complex_get(ev, i);
+            wr[i] = GSL_REAL(z);
+            wi[i] = GSL_IMAG(z);
+        }
+    }
+    if (w)  gsl_eigen_nonsymm_free(w);
+    if (ev) gsl_vector_complex_free(ev);
+    if (Ag) gsl_matrix_free(Ag);
+    gsl_set_error_handler(old);
+    return status;
+}

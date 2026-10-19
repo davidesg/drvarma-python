@@ -139,7 +139,11 @@ def test_review_case_against_ols():
     mod = Model(ms, lam=0.0, d=1, p=1, include_mean=True, deseason="auto").fit()
     assert mod.hessian == "fd" and mod.se_method == "fdhess"
     se = np.asarray(mod.std_errors)[2:6]
-    assert se[2] == pytest.approx(2.40, rel=0.02)
+    # 2.44 on the pure-Python port, 2.45 on the compiled engine: the
+    # finite-difference Hessian differs in the last digits between the two
+    # likelihoods. The old anchor, 2.40 at 2%, held only on the port, and a
+    # full run never computed this test on the engine (BUG-0023).
+    assert se[2] == pytest.approx(2.45, rel=0.02)
     np.testing.assert_allclose(se / _ols_se(mod._w), 0.989, atol=0.01)
 
 

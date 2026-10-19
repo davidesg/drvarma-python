@@ -5,6 +5,8 @@ Project metadata lives in ``pyproject.toml``; this file only wires up the
 GSL development headers are available.  The extension is marked *optional*: if
 it cannot be built (e.g. GSL missing), the install still succeeds and the
 package runs in pure-Python mode (the C-engine tests skip themselves).
+With ``DRVARMA_REQUIRE_ENGINE`` set (the binary wheels) it is required: a
+build that cannot compile it fails.
 """
 
 import importlib.util
@@ -25,8 +27,16 @@ def _cffi_extension():
     spec = importlib.util.spec_from_file_location("_drvarma_build_cffi", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
-    ext = mod.ffi.distutils_extension(os.path.join(_HERE, "build"))
-    ext.optional = True          # a build failure must not abort the install
+    # RELATIVE, as cffi's own default and fue's cffi_modules (BUG-0024): with an
+    # absolute directory the generated source's path is absolute, setuptools
+    # nests all of it under build_temp for the object file, and from pip's
+    # temp directory on Windows that path passes MAX_PATH (cl.exe C1083).
+    # setuptools runs the build with the project as the working directory.
+    ext = mod.ffi.distutils_extension(os.path.relpath(os.path.join(_HERE, "build")))
+    # A build failure must not abort the install, unless the build is meant to
+    # carry the engine (the binary wheels, a CI job): then it fails loudly
+    # instead of dropping the engine with a warning (BUG-0022, BUG-0024).
+    ext.optional = not os.environ.get("DRVARMA_REQUIRE_ENGINE")
     return ext
 
 
@@ -55,6 +65,8 @@ else:
     try:
         ext_modules = [_cffi_extension()]
     except Exception as exc:  # pragma: no cover - depends on the build environment
+        if os.environ.get("DRVARMA_REQUIRE_ENGINE"):
+            raise
         print("drvarma: skipping C engine extension (%s); pure-Python install." % exc)
 
 setup(ext_modules=ext_modules)

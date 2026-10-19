@@ -5,11 +5,13 @@ given origin; `forecast_levels` integrates them back to original units via
 transform.integrate_forecast.
 """
 
+import math
+
 import numpy as np
 from . import transform
 
 
-def forecast_w(phi, theta, mu, w, a, L, b=0):
+def forecast_w(phi, theta, mu, w, a, L, b=0, const=None):
     """Point forecasts of the differenced/stationary series (port of forecast_mean).
 
     Parameters
@@ -18,6 +20,13 @@ def forecast_w(phi, theta, mu, w, a, L, b=0):
     w : (nobs, m) modelled stationary series used in estimation
     a : (nobs, m) residuals from estimation
     L : horizon;  b : origin offset (forecast from observation nobs-b)
+    const : (m,) or None, a constant added to every step, for a model
+        written as Phi(B)(w_t - mu) = const + Theta(B) a_t. A model with unit
+        roots in Phi(B) needs it: its drift is not of the form Phi(1) mu
+        (forecast_given). None, the default, adds nothing.
+
+    The recursion is the same with or without unit roots in Phi(B): nothing
+    here assumes stationarity.
 
     Returns
     -------
@@ -38,7 +47,103 @@ def forecast_w(phi, theta, mu, w, a, L, b=0):
             if l <= j:
                 ma += theta[j - 1] @ a[n - b - j + l - 1]
         f[l - 1] = mu + ar - ma
+        if const is not None:
+            f[l - 1] += const
     return f
+
+
+def series_psi(psi, c, rn, L):
+    """The psi weights of series c's LEVEL: row c of the system's psi weights,
+    psi (L+1, m, m), convolved with 1 / r(B), r its univariate non-stationary
+    operator (fue's coefficients, r(B) = 1 - rn[0] B - rn[1] B^2 ...; empty
+    when the system's w is already the level). -> P (m, L+1), P[:, t] the
+    weights of the m shocks at lead t."""
+    uu = np.zeros(L + 1); uu[0] = 1.0
+    for t in range(1, L + 1):
+        uu[t] = sum(rn[k - 1] * uu[t - k] for k in range(1, min(len(rn), t) + 1))
+    return np.array([[sum(uu[k] * psi[t - k][c, j] for k in range(t + 1))
+                      for t in range(L + 1)] for j in range(psi.shape[1])])
+
+
+def lead_sd(P, sigma, l, d=0):
+    """The s.d. of the l-step error of a series whose shock weights are P
+    (series_psi): of its level (d = 0), of its d-period change (d = 1, the
+    period; d = s, the year)."""
+    v = 0.0
+    for t in range(l):
+        col = P[:, t] - (P[:, t - d] if d and t >= d else 0.0)
+        v += col @ sigma @ col
+    return math.sqrt(max(v, 0.0))
+
+
+def forecast_given(phi, theta, sigma, w, a, L, mu=None, const=None, det=None,
+                   lam=None, refactor=None, z=1.96):
+    """L-step forecasts of a VARMA given its parameters: no estimation, and no
+    stationarity asked of Phi(B).
+
+        Phi(B) (w_t - mu) = const + Theta(B) a_t,    a_t ~ N(0, sigma)
+
+    This is the forecasting entry point for a model that drvarma did not fit,
+    such as a VEC written in levels (drvec's ``to_levels_varma``): Phi(B) may
+    carry unit roots (Phi(1) singular), and a drift that is not of the form
+    Phi(1) mu goes in ``const``. It is the ladder's forecast (Ladder.forecast)
+    with the univariate operator empty: the same recursion (forecast_w), the
+    same psi weights (irf.psi_weights) and the same band (series_psi,
+    lead_sd), and the level through fue's inverse Box-Cox.
+
+    Parameters
+    ----------
+    phi : (p, m, m); theta : (q, m, m); sigma : (m, m), the covariance of a_t.
+    w : (n, m), the series up to the origin (the last row), in the model's
+        units: for a ``.pre`` model, refactor * BoxCox(y) - det.
+    a : (n, m), the residuals on the same rows (the MA part reads the last q).
+    mu, const : (m,) or None.
+    det : (m, L) or None, each series' deterministic component at the L
+        forecast dates, added back before the Box-Cox is inverted.
+    lam, refactor : (m,) or None; None leaves the levels in the model's units.
+    z : the band's multiplier, +/- z s.d. in the model's units, transformed
+        at both ends (the ladder's 1.96 by default).
+
+    Returns
+    -------
+    One dict per series: ``w`` (the forecast in the model's units, det not
+    added), ``sd`` (its s.d.), ``level``, ``low``, ``high`` (in the series'
+    own units), and ``psi`` (the system's psi weights, (L+1, m, m)).
+    """
+    from .irf import psi_weights
+    phi = np.asarray(phi, float); theta = np.asarray(theta, float)
+    w = np.asarray(w, float); a = np.asarray(a, float)
+    sigma = np.asarray(sigma, float)
+    n, m = w.shape
+    if a.shape != w.shape:
+        raise ValueError(f"w is {w.shape} and a is {a.shape}: one residual per row")
+    if theta.shape[0] > n:
+        raise ValueError(f"q = {theta.shape[0]} needs that many residuals, there are {n}")
+    if phi.shape[0] > n:
+        raise ValueError(f"p = {phi.shape[0]} needs that many rows of w, there are {n}")
+    mu = np.zeros(m) if mu is None else np.asarray(mu, float)
+    f = forecast_w(phi, theta, mu, w, a, L,
+                   const=None if const is None else np.asarray(const, float))
+    psi = psi_weights(phi, theta, L)
+    if lam is not None:
+        from fue.forecast import _inv_boxcox
+
+        def inv(i, v):
+            return _inv_boxcox(float(v), float(lam[i]), float(refactor[i]))
+    else:
+        def inv(i, v):
+            return float(v)
+    out = []
+    for c in range(m):
+        P = series_psi(psi, c, [], L)
+        sd = np.array([lead_sd(P, sigma, l) for l in range(1, L + 1)])
+        ys = f[:, c] + (np.asarray(det[c], float) if det is not None else 0.0)
+        out.append({"w": f[:, c].copy(), "sd": sd,
+                    "level": np.array([inv(c, v) for v in ys]),
+                    "low": np.array([inv(c, v - z * e) for v, e in zip(ys, sd)]),
+                    "high": np.array([inv(c, v + z * e) for v, e in zip(ys, sd)]),
+                    "psi": psi})
+    return out
 
 
 def _forecast_variance(psis, sigma):

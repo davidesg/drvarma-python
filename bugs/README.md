@@ -4,7 +4,7 @@ In-repo bug tracker for **drvarma**.  One Markdown file per bug (`BUG-NNNN-slug.
 
 New report: `art-bug new` (or copy `TEMPLATE.md`).  Validate: `art-bug check`.  A fix commit references the id, e.g. `fix(pipeline): BUG-0001 …`.
 
-**22 report(s), 4 open.**
+**24 report(s), 4 open.**
 
 | id | status | sev | component | title | fixed in |
 |----|--------|-----|-----------|-------|----------|
@@ -26,6 +26,8 @@ New report: `art-bug new` (or copy `TEMPLATE.md`).  Validate: `art-bug check`.  
 | [BUG-0019](BUG-0019-hessiana-singular-rompe-el-ajuste.md) | fixed | medium | stderr | An exactly singular fdhess Hessian passes Cholesky and then raises LinAlgError out of Ladder.fit, instead of falling back to BFGS and saying so | 0.2.0 |
 | [BUG-0021](BUG-0021-una-instalacion-desde-git-no-lleva-el-registro.md) | fixed | low | packaging | An install from git carries no bug register; sima's engine-defects resource says it is missing | 0.2.0 |
 | [BUG-0022](BUG-0022-las-ruedas-de-windows-no-llevan-el-motor.md) | fixed | high | packaging | The Windows wheels carry no compiled engine — GSL is never installed for the Windows build, the optional extension fails in silence, and the smoke test skips | 0.2.0 |
+| [BUG-0023](BUG-0023-la-suite-entera-corre-sin-el-motor.md) | fixed | medium | tests | A full pytest run computes with the pure-Python port — collecting test_regression_bugs.py sets DRVARMA_NO_ENGINE for the whole session | 0.3.0 |
+| [BUG-0024](BUG-0024-una-ruta-larga-en-windows-tira-el-motor.md) | fixed | high | packaging | Built on Windows from pip's temp directory (a git URL or an sdist), the engine's object path passes 260 characters and the optional extension is dropped in silence | 0.3.0 |
 | [BUG-0009](BUG-0009-load-data-toma-la-columna-de-fecha-como-serie.md) | wontfix | medium | mcp | load_data takes a date column as a series, and the sample start is not read from it | — |
 | [BUG-0011](BUG-0011-el-consenso-impone-un-lambda-y-el-d-maximo.md) | wontfix | low | mcp | The consensus imposes one lambda and d = max(d_i), which over-differences an I(0) series | — |
 | [BUG-0012](BUG-0012-los-coeficientes-armonicos-no-cuentan.md) | wontfix | low | deseason | The harmonic seasonal coefficients are not counted in degrees of freedom, k or forecast uncertainty | — |

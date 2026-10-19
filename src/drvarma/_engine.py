@@ -266,3 +266,126 @@ def elf_c(m, n, p, q, mu, phi, theta, qq, w, sigma2=1.0, xitol=-1e-3, atf=False)
     if atf:
         a[1:, 1:] = a_out.reshape(n, m)
     return float(lg[0]), float(f1[0]), float(f2[0]), a, int(ifault)
+
+
+# -- GSL's eigensolvers, from the compiled engine --------------------------- #
+#
+# drvec's Johansen start (canonical_b2) solves A v = l B v with GSL's
+# gsl_eigen_gensymmv + gsl_eigen_gensymmv_sort, and its reports print the
+# eigenvalues of a general matrix in gsl_eigen_nonsymm's order. Its Python port
+# must call the same routines to be bit-identical with the C (scipy's `eigh` is
+# a few ulps off, and on Lutkepohl's E1 that moves an optimum by 0.47 in logL).
+# The engine already links GSL on every wheel platform, so it exports them and
+# nobody has to look for a system libgsl.
+#
+# There is NO pure-Python fallback here, on purpose: what these functions
+# promise is GSL's bits, and scipy's `eigh` would answer a different question
+# in silence. Without the engine (no extension, or DRVARMA_NO_ENGINE) they
+# raise EngineUnavailableError; `gsl_available()` asks first, and the caller
+# chooses its own fallback.
+
+class EngineUnavailableError(RuntimeError):
+    """The compiled engine is not loaded (or DRVARMA_NO_ENGINE asks for the
+    port), so GSL's routines are not available."""
+
+
+GSL_EIGEN_SORT_VAL_ASC, GSL_EIGEN_SORT_VAL_DESC = 0, 1
+GSL_EIGEN_SORT_ABS_ASC, GSL_EIGEN_SORT_ABS_DESC = 2, 3
+_SORTS = {"val_asc": 0, "val_desc": 1, "abs_asc": 2, "abs_desc": 3, None: -1}
+
+
+def gsl_available() -> bool:
+    """True when `gensymmv` and `eigen_nonsymm` can run: the compiled engine
+    loads, carries them, and DRVARMA_NO_ENGINE is not set."""
+    if os.environ.get("DRVARMA_NO_ENGINE"):
+        return False
+    c = _load_c()
+    return c is not None and hasattr(c[1], "drvarma_gensymmv")
+
+
+def _gsl_lib():
+    if os.environ.get("DRVARMA_NO_ENGINE"):
+        raise EngineUnavailableError(
+            "drvarma: DRVARMA_NO_ENGINE is set; GSL's eigensolvers come only "
+            "from the compiled engine")
+    c = _load_c()
+    if c is None:
+        raise EngineUnavailableError(
+            f"drvarma: the compiled engine did not load ({_C_ERROR}); GSL's "
+            "eigensolvers come only from it. drvarma.engine_backend() says "
+            "which engine is in use.")
+    if not hasattr(c[1], "drvarma_gensymmv"):
+        raise EngineUnavailableError(
+            "drvarma: the compiled engine predates GSL's eigensolvers "
+            "(drvarma < 0.3.0); rebuild it")
+    return c
+
+
+def _square(X, name):
+    X = np.ascontiguousarray(X, dtype=np.float64)
+    if X.ndim != 2 or X.shape[0] != X.shape[1] or X.shape[0] == 0:
+        raise ValueError(f"{name} must be a non-empty square matrix, got shape {X.shape}")
+    return X
+
+
+def gensymmv(A, B, sort="val_desc"):
+    """GSL's generalized symmetric-definite eigensolver: A v = l B v.
+
+    `gsl_eigen_gensymmv` on copies of A (symmetric) and B (symmetric positive
+    definite), then `gsl_eigen_gensymmv_sort` with `sort` ("val_desc" — the
+    default, GSL_EIGEN_SORT_VAL_DESC, what drvec's Johansen start uses —,
+    "val_asc", "abs_asc", "abs_desc", or None for GSL's own order). GSL reads
+    the lower triangle of A and B.
+
+    Returns `(eval, evec)`: eval (n,), evec (n, n) with the eigenvectors as
+    COLUMNS, of unit Euclidean norm as GSL leaves them (scipy's `eigh`
+    B-normalises them instead). Bit for bit what a C program
+    calling GSL gets, with the GSL this engine was linked against.
+
+    Raises `numpy.linalg.LinAlgError` when GSL fails (B not positive
+    definite), and `EngineUnavailableError` without the compiled engine.
+    """
+    if sort not in _SORTS:
+        raise ValueError(f"sort must be one of {sorted(k for k in _SORTS if k)} or None")
+    A, B = _square(A, "A"), _square(B, "B")
+    n = A.shape[0]
+    if B.shape != A.shape:
+        raise ValueError(f"A {A.shape} and B {B.shape} differ in shape")
+    ffi, lib = _gsl_lib()
+    ev = np.empty(n, dtype=np.float64)
+    V = np.empty((n, n), dtype=np.float64)
+    st = lib.drvarma_gensymmv(n, ffi.from_buffer("double[]", A.ravel()),
+                              ffi.from_buffer("double[]", B.ravel()),
+                              ffi.from_buffer("double[]", ev),
+                              ffi.from_buffer("double[]", V.reshape(-1)),
+                              _SORTS[sort])
+    if st != 0:
+        raise np.linalg.LinAlgError(
+            f"gsl_eigen_gensymmv failed (GSL status {st}): B is not positive definite"
+            if st == 1 else f"gsl_eigen_gensymmv failed (GSL status {st})")
+    return ev, V
+
+
+def eigen_nonsymm(A, balance=True):
+    """GSL's eigenvalues of a real general matrix, in GSL's order.
+
+    `gsl_eigen_nonsymm` on a copy of A, without the Schur form, balanced first
+    when `balance` (as the suite's C `eigenqr` does). Returns `(wr, wi)`, two
+    (n,) arrays, the eigenvalues being wr[k] + i wi[k]. The order is GSL's,
+    which is not numpy's: a report that prints them in that order needs this.
+
+    Raises `numpy.linalg.LinAlgError` when the QR iteration does not converge
+    (GSL_EMAXITER), and `EngineUnavailableError` without the compiled engine.
+    """
+    A = _square(A, "A")
+    n = A.shape[0]
+    ffi, lib = _gsl_lib()
+    wr = np.empty(n, dtype=np.float64)
+    wi = np.empty(n, dtype=np.float64)
+    st = lib.drvarma_eigen_nonsymm(n, ffi.from_buffer("double[]", A.ravel()),
+                                   1 if balance else 0,
+                                   ffi.from_buffer("double[]", wr),
+                                   ffi.from_buffer("double[]", wi))
+    if st != 0:
+        raise np.linalg.LinAlgError(f"gsl_eigen_nonsymm failed (GSL status {st})")
+    return wr, wi

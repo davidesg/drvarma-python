@@ -4,7 +4,71 @@ Exact maximum-likelihood estimation, forecasting and diagnostics of multivariate
 VARMA models (Mauricio 1995 JASA / 1997 AS 311), pure-Python with an optional
 compiled C engine.
 
-## 0.2.1 — unreleased
+## 0.3.0 — unreleased
+
+**Forecasting a VARMA from given parameters, unit roots allowed.**
+`drvarma.forecast.forecast_given(phi, theta, sigma, w, a, L, mu=, const=,
+det=, lam=, refactor=, z=)` forecasts Phi(B)(w_t - mu) = const + Theta(B) a_t
+with no estimation and no stationarity asked of Phi(B). It is the entry point
+for a model drvarma did not fit: drvec's VEC written in levels
+(`drvec.to_levels_varma`, sima's decision that a VEC is forecast with the VARMA
+system's code, one forecaster and not two). Phi(1) may be singular, and a
+drift that is not of the form Phi(1) mu goes in `const`.
+- It is the ladder's forecast with the univariate operator empty: the same
+  recursion (`forecast_w`, which gains `const=None`), the same psi weights, and
+  the same band, now two functions both use (`series_psi`, `lead_sd`, taken out
+  of `Ladder.forecast` as they were). The level goes through fue's
+  `_inv_boxcox`, with each series' deterministic path added back first.
+- `z` is the band's multiplier: 1.96 by default, the ladder's; drvec passes the
+  C's 1.959964.
+- No number moves: `Ladder.forecast` is bit for bit the same (three ladders of
+  the IPC fixtures, 24 steps, every field compared).
+- Tests (`tests/test_forecast_given.py`): a stationary model against
+  `forecast_w` and `forecast_level_variances`, a random walk with drift, a
+  cointegrated pair, the Box-Cox at lambda = 0. drvec-python's
+  `tests/test_levels.py` holds it to drvec's own `-f` on the C's ten
+  `.forecast` goldens.
+
+**GSL's eigensolvers, from the compiled engine.** `drvarma._engine.gensymmv(A, B,
+sort="val_desc")` is `gsl_eigen_gensymmv` + `gsl_eigen_gensymmv_sort` (the
+generalized symmetric-definite problem A v = l B v; eigenvectors as unit-norm
+columns), and `drvarma._engine.eigen_nonsymm(A, balance=True)` is
+`gsl_eigen_nonsymm` (the eigenvalues of a general matrix in GSL's order).
+`gsl_available()` says whether they can run. They are for drvec's Python port,
+whose Johansen start and reports must be GSL's bit for bit to reproduce its C
+oracle: it looked for a system libgsl through ctypes, which Windows and macOS
+without Homebrew do not have, and fell back to scipy, a few ulps off. The
+engine links GSL on every wheel platform, so the bits now come with
+`pip install drvarma`.
+- No pure-Python fallback, on purpose: without the engine (or with
+  `DRVARMA_NO_ENGINE`) they raise `EngineUnavailableError`, and the caller
+  chooses. A GSL failure is a `numpy.linalg.LinAlgError`: the C wrapper turns
+  GSL's error handler off for the call, so it never aborts the process.
+- Tests (`tests/test_gsl_eigen.py`): bit for bit with the same libgsl called
+  through ctypes on Linux x86_64 (320 random problems of each kind), to tolerance with
+  scipy's `eigh` and numpy's `eigvals`, GSL's documented Vandermonde example.
+- Minor version: new public API (as `elf_c` and `marma_c` came with 0.2.0).
+
+**A full test run uses the compiled engine** (BUG-0023). Collecting
+`tests/test_regression_bugs.py` set `DRVARMA_NO_ENGINE` for the whole pytest
+session, so `pytest -q` (the CI's command) computed every test on the
+pure-Python port and took well over 50 minutes. The variable is now set per
+test of that module. What it hid: `test_stderr.py::test_review_case_against_ols`
+anchored phi21's s.e. at 2.40 (2%), measured on the port; the engine gives
+2.45 (the port 2.44). The anchor is 2.45 at the same 2%.
+
+**Built on Windows from pip's temp directory, the engine compiles** (BUG-0024).
+An install from git, or from the sdist, on Windows built drvarma without its
+engine: `setup.py` handed cffi an absolute build directory, setuptools nested
+the whole project path again under `build_temp` for the object file, and from
+pip's temp directory that path passed 260 characters (`cl.exe` C1083). The
+extension being optional, pip only warned. The directory is relative now, as
+fue's. The binary wheels were not affected (cibuildwheel builds from a short
+path). And with `DRVARMA_REQUIRE_ENGINE` set the extension is no longer
+optional: a build meant to carry the engine (every binary wheel) fails instead
+of installing the pure-Python port. Without it nothing changes.
+
+## 0.2.1 — 2026-10-16
 
 **The PyPI page says what the package is.** 0.2.0's summary still read
 "Ships `sima`, an MCP server for LLM-driven VARMA analysis", and its keywords
