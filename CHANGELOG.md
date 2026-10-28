@@ -4,7 +4,7 @@ Exact maximum-likelihood estimation, forecasting and diagnostics of multivariate
 VARMA models (Mauricio 1995 JASA / 1997 AS 311), pure-Python with an optional
 compiled C engine.
 
-## 0.3.0 — unreleased
+## 0.3.0 — 2026-10-28
 
 **Forecasting a VARMA from given parameters, unit roots allowed.**
 `drvarma.forecast.forecast_given(phi, theta, sigma, w, a, L, mu=, const=,
