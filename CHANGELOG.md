@@ -4,7 +4,7 @@ Exact maximum-likelihood estimation, forecasting and diagnostics of multivariate
 VARMA models (Mauricio 1995 JASA / 1997 AS 311), pure-Python with an optional
 compiled C engine.
 
-## 0.3.1 — unreleased
+## 0.3.1 — 2026-10-31
 
 **Binary wheels for Python 3.14.** The wheels are built for cp310–cp314 (they
 were cp310–cp313): on Python 3.14 pip used to install the pure wheel, and the
