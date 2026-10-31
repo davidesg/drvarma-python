@@ -4,6 +4,16 @@ Exact maximum-likelihood estimation, forecasting and diagnostics of multivariate
 VARMA models (Mauricio 1995 JASA / 1997 AS 311), pure-Python with an optional
 compiled C engine.
 
+## 0.3.1 — 2026-10-31
+
+**Binary wheels for Python 3.14.** The wheels are built for cp310–cp314 (they
+were cp310–cp313): on Python 3.14 pip used to install the pure wheel, and the
+compiled engine never reached the interpreter current distributions ship (found
+by the clean install test of atsw 2.1.0 in ten distributions). The code does
+not change. cibuildwheel 2.22 → 3.4.1, the first line that builds the final
+3.14; the free-threaded builds (cp314t) are skipped, and `DRVARMA_REQUIRE_ENGINE`
+goes in `test-environment` too, which cibuildwheel 3 gives the test step.
+
 ## 0.3.0 — 2026-10-28
 
 **Forecasting a VARMA from given parameters, unit roots allowed.**
