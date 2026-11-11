@@ -118,9 +118,15 @@ manylinux-aarch64-image = "quay.io/pypa/manylinux_2_28_aarch64"
 before-all = "if command -v dnf >/dev/null 2>&1; then dnf install -y gsl-devel; else apk add --no-cache gsl-dev; fi"
 
 [tool.cibuildwheel.macos]
-before-all = "brew install gsl"
-# Native arch only: cross-building would link the runner's single-arch Homebrew
-# GSL into the wrong architecture.
+# GSL compiled from source, static, for the wheel's macOS (11.0, from the
+# workflow's MACOSX_DEPLOYMENT_TARGET) and the runner's architecture: a
+# Homebrew bottle targets the runner's macOS, too new for a macosx_11_0 wheel.
+# Its gsl-config goes first on PATH, so _discover_gsl_dirs finds this GSL.
+# `environment` replaces the global table's, so the engine flag is repeated.
+before-all = "bash {project}/tools/build_gsl.sh /tmp/gsl"
+environment = { PATH = "/tmp/gsl/bin:$PATH", DRVARMA_REQUIRE_ENGINE = "1" }
+# Native arch only (arm64 on macos-15, x86_64 on macos-15-intel): the GSL
+# above is built for the runner's architecture alone.
 archs = ["auto"]
 
 [tool.cibuildwheel.windows]
