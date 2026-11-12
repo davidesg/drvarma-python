@@ -1,8 +1,16 @@
 name: Publish to PyPI
 
-# Builds cp310-cp314 BINARY wheels (Linux x86_64+aarch64, macOS arm64, Windows
-# AMD64) with GSL bundled, plus the pure-Python wheel and the sdist, and
-# publishes them all on a v* tag.
+# Builds cp310-cp314 BINARY wheels (Linux x86_64+aarch64, macOS arm64 and
+# x86_64, Windows AMD64) with GSL bundled, plus the pure-Python wheel and the
+# sdist, and publishes them all on a v* tag.
+#
+# macOS: macosx_11_0 wheels for both processors, as atsw-gui's .dmg (macOS 11
+# on Apple Silicon and Intel). arm64 on macos-15, x86_64 on macos-15-intel;
+# GSL compiled from source for 11.0 (tools/build_gsl.sh, pyproject's
+# [tool.cibuildwheel.macos]), and tools/check_macos_minos.py stops the
+# workflow if any binary in a wheel asks for a newer macOS. Up to 0.3.1 only
+# macosx_14_0_arm64 was built (on macos-14, retired by GitHub on 2-nov-2026),
+# and an Intel Mac got the pure-Python wheel.
 #
 # WHY THE BINARY WHEELS. Up to 0.1.1 this workflow built only the pure wheel and
 # the sdist, on the assumption that the C engine "builds from the sdist". It does
@@ -33,19 +41,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # macOS is PINNED (not macos-latest): Homebrew's GSL bottle targets the
-        # runner's OS, and a bottle from a newer macOS cannot be bundled into a
-        # lower-target wheel (delocate rejects it). Pinning the runner and
-        # matching MACOSX_DEPLOYMENT_TARGET keeps the two aligned and immune to
-        # runner-OS bumps.
-        #
-        # Intel macOS (macos-13) is deliberately NOT built: those runners are
-        # chronically starved and every current Mac is arm64. Intel users get
-        # the sdist (which finds GSL via _discover_gsl_dirs) or the pure wheel.
+        # macOS runners PINNED (not macos-latest), each building its own
+        # architecture; the deployment target is the wheel's tag and the GSL's.
         include:
           - os: ubuntu-latest      # Linux x86_64 (+ aarch64 under QEMU)
-          - os: macos-14           # macOS Apple Silicon arm64
-            macos_target: "14.0"
+          - os: macos-15           # macOS Apple Silicon arm64
+            macos_target: "11.0"
+          - os: macos-15-intel     # macOS Intel x86_64
+            macos_target: "11.0"
           - os: windows-latest     # Windows AMD64
 
     steps:
@@ -70,6 +73,10 @@ jobs:
         env:
           CIBW_ARCHS_LINUX: "x86_64 aarch64"
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.macos_target }}
+
+      - name: No binary asks for a newer macOS than the tag (macOS)
+        if: runner.os == 'macOS'
+        run: python3 tools/check_macos_minos.py "${{ matrix.macos_target }}" wheelhouse/*.whl
 
       - uses: actions/upload-artifact@v4
         with:
