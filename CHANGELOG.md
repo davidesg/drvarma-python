@@ -4,7 +4,7 @@ Exact maximum-likelihood estimation, forecasting and diagnostics of multivariate
 VARMA models (Mauricio 1995 JASA / 1997 AS 311), pure-Python with an optional
 compiled C engine.
 
-## 0.3.2 — unreleased
+## 0.3.2 — 2026-11-14
 
 **macOS wheels for macOS 11, on Apple silicon and Intel.** The macOS wheels
 are `macosx_11_0`, for arm64 and now also x86_64: GitHub retired the macos-14
