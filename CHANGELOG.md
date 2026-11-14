@@ -4,6 +4,18 @@ Exact maximum-likelihood estimation, forecasting and diagnostics of multivariate
 VARMA models (Mauricio 1995 JASA / 1997 AS 311), pure-Python with an optional
 compiled C engine.
 
+## 0.3.2 — unreleased
+
+**macOS wheels for macOS 11, on Apple silicon and Intel.** The macOS wheels
+are `macosx_11_0`, for arm64 and now also x86_64: GitHub retired the macos-14
+runner on 2 November 2026, and the wheels are built on macos-15 (arm64) and
+macos-15-intel with `MACOSX_DEPLOYMENT_TARGET=11.0`, the same floor as
+atsw-gui's .dmg. Until now the only macOS wheel was `macosx_14_0_arm64`: an
+Intel Mac, or one before macOS 14, got the pure wheel, and drvarma ran without
+its compiled engine there. The GSL is compiled from source, static,
+for 11.0, and `tools/check_macos_minos.py` stops the workflow if any Mach-O in
+a wheel asks for a newer macOS than its tag. The code does not change.
+
 ## 0.3.1 — 2026-10-31
 
 **Binary wheels for Python 3.14.** The wheels are built for cp310–cp314 (they
