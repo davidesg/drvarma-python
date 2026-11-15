@@ -61,9 +61,12 @@ fuf had until 2026-11-15.
 ## Fix
 
 `(100 if lambda = 0 else 1) / refactor` in `_forecast_lines`, and the header
-says "%" only for lambda = 0. The CLI tables in the same pass. The C copy in
-atsw-gui is another repository: report it there (it is the oracle the port
-is compared with, so both move together).
+says "%" only for lambda = 0. The CLI tables in the same pass.
+
+**It waits for the C.** The engines are homologated, always: the port does not
+move away from its oracle. The C's defect is atsw-gui `engines/drvarma`
+BUG-0005, filed with high priority; the two are fixed together, and this
+report closes when the port's table is the C's again.
 
 ## Validation
 
