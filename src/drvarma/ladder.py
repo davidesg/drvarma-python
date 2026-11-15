@@ -573,6 +573,23 @@ def check_alignment(series):
                 f".pre in art over the window you mean to model.")
 
 
+def mixed_refactors_warning(names, refactors):
+    """The C's words (lib/fuepre, ``fuepre_warn_refactors``) when the files of
+    one model do not share a rescaling factor, or None. The joint model is
+    built in w = refactor*BoxCox(z): a coefficient between two series then
+    carries the ratio of their factors, and standard errors lose precision
+    (atsw-gui docs/ESTUDIO-escala.md)."""
+    rs = [float(r) if r else 1.0 for r in refactors]
+    if all(abs(r - rs[0]) <= 1.0e-9 * abs(rs[0]) for r in rs[1:]):
+        return None
+    return ("the files do not share one refactor ("
+            + ", ".join(f"{n} {r:g}" for n, r in zip(names, rs))
+            + ").  The model is built in w = refactor*BoxCox(z) units, so a "
+            "coefficient of series j in the equation of series i is its z-unit "
+            "value times refactor_i / refactor_j, and the standard errors lose "
+            "precision.  A common factor avoids both.")
+
+
 # --------------------------------------------------------------------------- #
 #  The system                                                                 #
 # --------------------------------------------------------------------------- #
@@ -713,6 +730,11 @@ class Ladder:
         self.own = own
         self.series = list(series)
         check_alignment(self.series)
+        _w = mixed_refactors_warning([z.name for z in self.series],
+                                     [z.model.refactor for z in self.series])
+        if _w:                                  # as the C, on stderr there
+            import warnings
+            warnings.warn(_w, RuntimeWarning, stacklevel=2)
         self.p, self.q = int(p), int(q)
         self.diagcov = bool(diagcov)
         self.redet, self.fixarma = bool(redet), bool(fixarma)

@@ -16,6 +16,11 @@ The C had the same defect and is fixed with it (atsw-gui `engines/drvarma`
 BUG-0005): the two print the same numbers. With every series in logs nothing
 changes, header included.
 
+**Files of different rescaling factors are warned of, as in the C.** The
+ladder raises a `RuntimeWarning` with the words of the C's
+`fuepre_warn_refactors` when the files of a system do not share a factor: a
+coefficient between two series then carries their ratio.
+
 ## 0.3.2 — 2026-11-14
 
 **macOS wheels for macOS 11, on Apple silicon and Intel.** The macOS wheels
