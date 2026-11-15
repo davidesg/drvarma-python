@@ -98,15 +98,16 @@ def forecast_report(model, L, b=0):
 
     deseason_str = (model.deseason if model.deseason else "no")
     reseas = " (re-seasonalized)" if model.deseason else ""
-    sc = 100.0 / scale
+    sc = (100.0 if abs(lam) < 1e-8 else 1.0) / scale      # BUG-0025, as the C
 
     out = []
     out.append("Forecasts from VARMA(%d,%d) model\n" % (model.p, model.q))
     out.append("lambda=%g, scale=%g, d=%d, D=%d, freq=%d, horizon=%d, deseason=%s\n"
                % (lam, scale, model.d, model.D, freq, L, deseason_str))
-    out.append("Level/Low95/High95 in original units%s. "
-               "mon%%/ann%% = monthly/annual variation rate and std "
-               "(100*delta/scale; %% for lambda=0).\n\n" % reseas)
+    out.append("Level/Low95/High95 in original units" + reseas + ". "
+               "mon%/ann% = monthly/annual variation rate and std ("
+               + ("100*delta/scale; % for lambda=0" if abs(lam) < 1e-8
+                  else "delta/scale: lambda is not 0") + ").\n\n")
     for k in range(1, m + 1):
         i = k - 1
         out.append("Series %d (%s):\n" % (k, model.series.names[i]))

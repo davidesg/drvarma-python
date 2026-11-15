@@ -1,11 +1,11 @@
 ---
 id: BUG-0025
 title: The ladder's forecast table multiplies the variations by 100/refactor whatever lambda — in levels it prints 100 times the change
-status: open
+status: fixed
 severity: medium
 component: ladder
 found_in: 0.3.2
-fixed_in:
+fixed_in: 0.3.3
 reported: 2026-11-15
 reporter: David / Claude — review of inconsistencies between the suite's components, before mtram
 tags: [forecast, scale, lambda-1, legado-c]
@@ -60,14 +60,15 @@ fuf had until 2026-11-15.
 
 ## Fix
 
-`(100 if lambda = 0 else 1) / refactor` in `_forecast_lines`, and the header
-says "%" only for lambda = 0. The CLI tables in the same pass.
-
-**It waits for the C.** The engines are homologated, always: the port does not
-move away from its oracle. The C's defect is atsw-gui `engines/drvarma`
-BUG-0005, filed with high priority; the two are fixed together, and this
-report closes when the port's table is the C's again.
+With the C, on the same day (atsw-gui `engines/drvarma` BUG-0005): the engines
+are homologated. `(100 if lambda = 0 else 1) / refactor` in `_forecast_lines`
+(the ladder) and in `report.write_forecast` (the `.inp` path). With every
+series in logs nothing changes, header included; otherwise the header states
+both rules, in the C's words. The deprecated `.inp` path's HTML page
+(`report_forecast.py`) keeps the old rule: it has no counterpart in the C.
 
 ## Validation
 
-Pending.
+The repro exits 0: -1.4577 where it said -145.7706, the number the C prints
+for the same files. `tests/test_bug_0025_tabla_en_niveles.py`. The suite: 311
+pass.
