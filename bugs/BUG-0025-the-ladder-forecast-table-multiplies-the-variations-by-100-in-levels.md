@@ -5,7 +5,7 @@ status: fixed
 severity: medium
 component: ladder
 found_in: 0.3.2
-fixed_in: 0.3.3 (unreleased)
+fixed_in: 0.3.3
 reported: 2026-11-15
 reporter: David / Claude — review of inconsistencies between the suite's components, before mtram
 tags: [forecast, scale, lambda-1, legado-c]

@@ -4,7 +4,7 @@ Exact maximum-likelihood estimation, forecasting and diagnostics of multivariate
 VARMA models (Mauricio 1995 JASA / 1997 AS 311), pure-Python with an optional
 compiled C engine.
 
-## 0.3.3 — unreleased
+## 0.3.3 — 2026-11-15
 
 **The forecast table says a percentage only with logs (BUG-0025).** The
 ladder's forecast table — the `.forecast`, the forecast block of the `.out`,
