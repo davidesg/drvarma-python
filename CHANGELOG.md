@@ -4,6 +4,18 @@ Exact maximum-likelihood estimation, forecasting and diagnostics of multivariate
 VARMA models (Mauricio 1995 JASA / 1997 AS 311), pure-Python with an optional
 compiled C engine.
 
+## 0.3.3 — unreleased
+
+**The forecast table says a percentage only with logs (BUG-0025).** The
+ladder's forecast table — the `.forecast`, the forecast block of the `.out`,
+what sima's `forecast` shows — and the `.inp` path's wrote the period and
+annual variations and their standard deviations as 100·Δ/refactor whatever
+lambda was: in levels, 100 times the change, under a "mon%" heading. It is
+now `(100 if lambda = 0 else 1)/refactor`, the rule of fuf, drtran and drvec.
+The C had the same defect and is fixed with it (atsw-gui `engines/drvarma`
+BUG-0005): the two print the same numbers. With every series in logs nothing
+changes, header included.
+
 ## 0.3.2 — 2026-11-14
 
 **macOS wheels for macOS 11, on Apple silicon and Intel.** The macOS wheels

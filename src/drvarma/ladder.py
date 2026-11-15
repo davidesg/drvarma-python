@@ -1883,7 +1883,9 @@ def _forecast_lines(forecasts, L):
     for fc in forecasts:
         s = next(z for z in L.series if z.name == fc["series"])
         y, p = fc["origin"]
-        sc = 100.0 / s.model.refactor
+        # BUG-0025, as the C (escalera.c, its BUG-0005): a percentage only
+        # with logs; otherwise the change of the transformed series.
+        sc = (100.0 if abs(s.model.boxlam) < 1e-8 else 1.0) / s.model.refactor
         n = s.nobs
         ys = fc["ystar"]
         out += [f"Series {fc['series']} (from {p}/{y}):",
@@ -1902,7 +1904,11 @@ def _forecast_lines(forecasts, L):
 def write_forecast(L, forecasts, path):
     lines = [f"Forecasts from the ladder VARMA (cross orders p={L.p} q={L.q})",
              "Level/Low95/High95 in original units. mon%/ann% = period/annual "
-             "variation and std (100*delta/refactor; % for lambda=0).", ""]
+             "variation and std (" + (
+                 "100*delta/refactor; % for lambda=0"
+                 if all(abs(z.model.boxlam) < 1e-8 for z in L.series)
+                 else "% for lambda=0: 100*delta/refactor; otherwise delta/refactor")
+             + ").", ""]
     lines += _forecast_lines(forecasts, L)
     with open(path, "w") as fh:
         fh.write("\n".join(lines) + "\n")
