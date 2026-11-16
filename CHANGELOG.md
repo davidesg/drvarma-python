@@ -4,6 +4,17 @@ Exact maximum-likelihood estimation, forecasting and diagnostics of multivariate
 VARMA models (Mauricio 1995 JASA / 1997 AS 311), pure-Python with an optional
 compiled C engine.
 
+## 0.3.4 — 2026-11-16
+
+**The HTML forecast page says a percentage only with logs (BUG-0026).**
+`write_forecast_report` wrote the variations, their standard deviations, the
+ERR column and the charts as 100·Δ/scale under "(%)" whatever lambda was: in
+levels, 100 times the change. It now follows the `.forecast` (BUG-0025), fue's
+page (fue BUG-0028) and atsw-gui's gui/sim: `(100 if lambda = 0 else 1)/scale`,
+and "(%)" only with logs. With logs the page does not change.
+
+The `test` extra declares pandas, which one of the tests imports.
+
 ## 0.3.3 — 2026-11-15
 
 **The forecast table says a percentage only with logs (BUG-0025).** The

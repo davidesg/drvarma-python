@@ -28,7 +28,7 @@ def test_write_forecast_report_one_html_per_series(fitted, tmp_path):
         assert "<!DOCTYPE html>" in html
         assert "Forecast — %s" % name in html               # table caption
         assert "<svg" in html                                # embedded chart
-        assert "Annual rate of change" in html and "ERR" in html
+        assert "Annual change" in html and "ERR" in html   # levels (BUG-0026)
         assert "drvarma" in html
 
 
