@@ -133,13 +133,13 @@ _HTML = """\
           <th rowspan="2">Date</th>
           <th colspan="2">Level</th>
           <th colspan="2">{{ diff1_label }}</th>
-          <th colspan="2">Annual (%)</th>
-          <th rowspan="2">ERR<br>(%)</th>
+          <th colspan="2">{{ annual_label }}</th>
+          <th rowspan="2">ERR{{ unit_br }}</th>
         </tr>
         <tr>
-          <th>Value</th><th>Std&#160;(%)</th>
-          <th>(%)</th><th>Std&#160;(%)</th>
-          <th>(%)</th><th>Std&#160;(%)</th>
+          <th>Value</th><th>Std{{ unit_sp }}</th>
+          <th>{{ unit_or_value }}</th><th>Std{{ unit_sp }}</th>
+          <th>{{ unit_or_value }}</th><th>Std{{ unit_sp }}</th>
         </tr>
       </thead>
       <tbody>
@@ -205,7 +205,9 @@ def _forecast_arrays(model, L, b=0):
     """Per-(h, series) forecast quantities, identical to ``report.forecast_report``.
 
     Returns a dict of (L, m) arrays: level, level_std, diff1, diff1_std, annual,
-    annual_std (variations in %), plus cf (L,m) and bc (nobs,m).
+    annual_std, plus cf (L,m) and bc (nobs,m). The variations and the standard
+    deviations follow the .forecast (BUG-0025/0026): a percentage with logs,
+    ``100 * delta / scale``; the change itself otherwise, ``delta / scale``.
     """
     from .forecast import forecast_levels, forecast_level_variances
     res, m, freq = model.result, model.series.m, model.series.freq
@@ -223,7 +225,7 @@ def _forecast_arrays(model, L, b=0):
         dseas = seasonal_path(model._dummies, origin, L, model.series.start[1], freq)
     cf = scale * transform.boxcox_fwd(lev_des, lam)
     level = reseasonalize(lev_des, dseas, lam)
-    sc = 100.0 / scale
+    sc = _pct(lam) / scale
     diff1 = np.zeros((L, m)); annual = np.zeros((L, m))
     lvl_std = np.zeros((L, m)); d1_std = np.zeros((L, m)); an_std = np.zeros((L, m))
     for l in range(1, L + 1):
@@ -248,6 +250,13 @@ def _forecast_arrays(model, L, b=0):
 
 def _f2(v):
     return "%.2f" % v
+
+
+def _pct(lam):
+    """BUG-0026: 100 with logs (the variations are percentages), 1 otherwise
+    (the change itself), the rule of the .forecast (BUG-0025), of fue's page
+    (fue BUG-0028) and of atsw-gui's gui/sim."""
+    return 100.0 if abs(float(lam)) < 1e-8 else 1.0
 
 
 def _date_str(model, k):
@@ -329,19 +338,19 @@ def _table_data(model, i, L, arr):
     def bx(x):
         return scale * transform.boxcox_fwd(x, lam)
 
+    pct = _pct(lam)
     hist_rows = []
     for k in range(nobs - n_hist + 1, nobs + 1):
         if k < 1:
             continue
-        diff1 = 100.0 * (bx(raw[k - 1]) - bx(raw[k - 2])) / scale if k > 1 else 0.0
-        if k > freq:
-            annual = 100.0 * (bx(raw[k - 1]) - bx(raw[k - 1 - freq])) / scale
-        else:
-            annual = 100.0 * bx(raw[k - 1]) / scale
+        diff1 = (_f2(pct * (bx(raw[k - 1]) - bx(raw[k - 2])) / scale)
+                 if k > 1 else "—")
+        annual = (_f2(pct * (bx(raw[k - 1]) - bx(raw[k - 1 - freq])) / scale)
+                  if k > freq else "—")             # no datum a year before
         r = k - ornsop - 1
-        err = _f2(100.0 * residuals[r] / scale) if 0 <= r < len(residuals) else "—"
+        err = _f2(pct * residuals[r] / scale) if 0 <= r < len(residuals) else "—"
         hist_rows.append({"date": _date_str(model, k), "level": _f2(raw[k - 1]),
-                          "diff1": _f2(diff1), "annual": _f2(annual), "err": err})
+                          "diff1": diff1, "annual": annual, "err": err})
 
     all_fore = []
     for h in range(L):
@@ -376,7 +385,8 @@ def _make_charts_svg(model, i, L, arr):
     ax_top, ax_bot = fig.add_subplot(gs[0]), fig.add_subplot(gs[1])
 
     # top: annual rate of change
-    hist_annual = np.array([100.0 * (bx(raw[nobs - L + k]) - bx(raw[nobs - L + k - freq]))
+    pct = _pct(lam)
+    hist_annual = np.array([pct * (bx(raw[nobs - L + k]) - bx(raw[nobs - L + k - freq]))
                             / scale for k in range(L)])
     fore_annual = arr["annual"][:, i]
     fore_astd = arr["annual_std"][:, i]
@@ -394,14 +404,15 @@ def _make_charts_svg(model, i, L, arr):
     ax_top.tick_params(direction="out", labelsize=9)
     ax_top.set_axisbelow(True)
     ax_top.grid(axis="x", color="0.75", lw=0.5, ls="-", zorder=0)
-    ax_top.set_title("Annual rate of change (%)", loc="left", fontsize=9, pad=4)
+    ax_top.set_title("Annual rate of change (%)" if pct == 100.0 else "Annual change",
+                     loc="left", fontsize=9, pad=4)
 
     # bottom: ERR
     residuals = model.result["residuals"][:, i]
     err_L = min(L, len(residuals))
-    err_vals = 100.0 * residuals[-err_L:] / scale
+    err_vals = pct * residuals[-err_L:] / scale
     x_err = np.arange(err_L)
-    sigma_plot = math.sqrt(model.result["sigma"][i, i]) * 100.0 / scale
+    sigma_plot = math.sqrt(model.result["sigma"][i, i]) * pct / scale
     prevcmax = _prevcmax(err_vals, sigma_plot)
     hist_tick_pos = [p for p in xtick_pos if p < err_L]
     hist_tick_lbl = xtick_lbl[:len(hist_tick_pos)]
@@ -449,12 +460,14 @@ def write_forecast_report(model, path_prefix, L=12, b=0, source=None,
     logelf = r["logelf"]
     aic = 2 * npar - 2 * logelf
     bic = npar * math.log(nobs) - 2 * logelf
+    percent = _pct(model.lam) == 100.0
+    u = " (%)" if percent else " change"
     if freq == 12:
-        freq_label, diff1_label = "months", "Monthly (%)"
+        freq_label, diff1_label = "months", "Monthly" + u
     elif freq == 4:
-        freq_label, diff1_label = "quarters", "Quarterly (%)"
+        freq_label, diff1_label = "quarters", "Quarterly" + u
     else:
-        freq_label, diff1_label = "periods", "Period (%)"
+        freq_label, diff1_label = "periods", "Period" + u
     sample = "%s – %s" % (_date_str(model, 1), _date_str(model, nobs))
     origin = _date_str(model, nobs - b)
 
@@ -470,6 +483,10 @@ def write_forecast_report(model, path_prefix, L=12, b=0, source=None,
             series_name=name, stem="VARMA(%d,%d)" % (model.p, model.q),
             source=source or "", origin=origin, horizon=L,
             freq_label=freq_label, diff1_label=diff1_label,
+            annual_label="Annual" + u,
+            unit_br="<br>(%)" if percent else "",
+            unit_sp="&#160;(%)" if percent else "",
+            unit_or_value="(%)" if percent else "Value",
             sigma2="%.6f" % r["sigma2"], loglik="%.3f" % logelf,
             aic="%.2f" % aic, bic="%.2f" % bic, npar=npar, nobs=nobs,
             sample=sample, hist_rows=hist_rows, fore_rows_main=fore_main,
