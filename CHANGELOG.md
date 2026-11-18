@@ -4,6 +4,18 @@ Exact maximum-likelihood estimation, forecasting and diagnostics of multivariate
 VARMA models (Mauricio 1995 JASA / 1997 AS 311), pure-Python with an optional
 compiled C engine.
 
+## Unreleased
+
+**The CCF is drawn by pyfug** (`pyfug.graphics.ccf`, pyfug >= 2.1.0 in the
+`plots` extra): the suite's one CCF drawing, which lived here and which
+drtran and sima borrowed — sima through `_draw_ccf_panel`, a private
+function. `plot_ccf`, `ccf_default_lags`, `_ccf_scale` and `_draw_ccf_panel`
+stay, as thin wrappers, so nothing that used them breaks.
+`plot_residual_ccf(save_prefix=...)` writes each pair in vectors too (SVG,
+PDF) besides the PNG. The computation (`diagnostics.ccf`, `qccf`) stays: the
+engines use it and the core does not depend on pyfug; pyfug's tests pin its
+copy to this one to the last bit. Nothing a user computes changes.
+
 ## 0.3.4 — 2026-11-16
 
 **The HTML forecast page says a percentage only with logs (BUG-0026).**
