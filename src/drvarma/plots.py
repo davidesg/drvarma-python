@@ -129,20 +129,20 @@ def _snap_cmax(value):
     return max(0.3, min(c, 1.0))
 
 
+# The CCF's drawing is pyfug's (pyfug.graphics.ccf, pyfug >= 2.1.0): the suite's
+# one, in the format of GraphMaker and drvus that atsw-gui's lib/ccfplot draws.
+# It was here; these names stay so that nothing that used them breaks.
+
 def ccf_default_lags(freq):
-    """GraphMaker's lags for the CCF: 7 for annual data, 15 for quarterly; for
-    monthly it let the analyst choose 8 to 39, and 12 is the default the
-    suite's C (atsw-gui `lib/ccfplot`) takes."""
-    return {1: 7, 4: 15, 12: 12}.get(int(freq), 3 * int(freq) if freq > 1 else 7)
+    """GraphMaker's lags for the CCF (``pyfug.graphics.ccf.ccf_default_lags``)."""
+    from pyfug.graphics.ccf import ccf_default_lags as _f
+    return _f(freq)
 
 
 def _ccf_scale(value):
-    """GraphMaker's vertical scale for a CCF: +-0.4 (marks every 0.2), enlarged
-    to 0.6, 0.8 or 1.0 when a bar or the band does not fit (as `lib/ccfplot`)."""
-    for e in (0.4, 0.6, 0.8, 1.0):
-        if value <= e * 0.98:
-            return e
-    return 1.0
+    """GraphMaker's vertical scale (``pyfug.graphics.ccf.ccf_scale``)."""
+    from pyfug.graphics.ccf import ccf_scale
+    return ccf_scale(value)
 
 
 def plot_ccf(w1, w2, lags=None, freq=12, names=("1", "2"), ax=None):
@@ -174,53 +174,9 @@ def plot_ccf(w1, w2, lags=None, freq=12, names=("1", "2"), ax=None):
 
 
 def _draw_ccf_panel(ax, rho, lags, n, freq, title, q_label, band=None, cmax=None):
-    """One two-sided CCF panel in GraphMaker's format — the CCF Treadway
-    approved (GraphMaker `ccfgrafico.cpp`, the same as drvus' `ccf2_1.eps` and
-    atsw-gui's `lib/ccfplot`, which drtran's GUI draws with).
-
-    Lags -K..K symmetric; black bars at 21 % of the lag step; a solid zero
-    line; the +-2/sqrt(N) bands dotted; a dashed vertical at lag 0 dividing
-    the two sides; the left and bottom axes; the title (the series that leads
-    at k > 0 first, "A - B") centred above and the statistic centred below —
-    between the panels when two are stacked, as fue's Q between ACF and PACF.
-    Scale +-0.4 with marks every half, enlarged to 0.6, 0.8, 1.0 to fit.
-
-    ``band``: the half-width of the band, a scalar or one value per lag -K..K
-    (default 2/sqrt(N)); a series that is not white needs its own —
-    Bartlett's for two unrelated autocorrelated series (Jenkins and Alavi
-    1981, (3.13)) — and the band then follows the lag. ``cmax`` fixes the
-    scale, so that stacked panels share it.
-    """
-    if band is None:
-        band = 2.0 / np.sqrt(n)
-    band = np.broadcast_to(np.asarray(band, float), (2 * lags + 1,))
-    if cmax is None:
-        cmax = _ccf_scale(max(float(np.max(np.abs(rho))), float(band.max())))
-    x = np.arange(-lags, lags + 1)
-    ax.axhline(0.0, color="k", lw=1.0, zorder=2)                  # the zero
-    if np.all(band == band[0]):
-        ax.axhline(band[0], color="k", ls=":", lw=1.2, zorder=2)
-        ax.axhline(-band[0], color="k", ls=":", lw=1.2, zorder=2)
-    else:                                                         # by lag
-        ax.plot(x, band, color="k", ls=":", lw=1.2, zorder=2, drawstyle="steps-mid")
-        ax.plot(x, -band, color="k", ls=":", lw=1.2, zorder=2, drawstyle="steps-mid")
-    ax.axvline(0.0, color="k", ls="--", lw=0.8, zorder=1)         # the two sides
-    ax.bar(x, np.clip(rho, -cmax, cmax), width=0.21, color="k", lw=0, zorder=3)
-    ax.set_ylim(-cmax, cmax)
-    ax.set_yticks([-cmax, -cmax / 2.0, 0.0, cmax / 2.0, cmax])
-    ax.set_xlim(-lags - 0.5, lags + 0.5)
-    if freq > 1 and lags > 8:                   # GraphMaker: 12 a month, 4 a quarter
-        step = freq
-    else:                                       # 2 a year (or with 8 monthly lags)
-        step = 2 if lags <= 12 else 4
-    ticks = list(range(0, lags + 1, step))
-    ax.set_xticks([-t for t in reversed(ticks[1:])] + ticks)
-    ax.tick_params(axis="both", direction="out", length=3, labelsize=9)
-    for sp in ("top", "right"):
-        ax.spines[sp].set_visible(False)
-    ax.set_title(title, fontsize=11)                              # centred above
-    if q_label:
-        ax.set_xlabel(q_label, fontsize=10, labelpad=4)           # centred below
+    """One two-sided CCF panel: ``pyfug.graphics.ccf.draw_ccf_panel``."""
+    from pyfug.graphics.ccf import draw_ccf_panel
+    draw_ccf_panel(ax, rho, lags, n, freq, title, q_label, band=band, cmax=cmax)
 
 
 def plot_residual_ccf(model, lags=None, save_prefix=None, dpi=150):
@@ -259,9 +215,10 @@ def plot_residual_ccf(model, lags=None, save_prefix=None, dpi=150):
                         "P ( %d ) = %.1f" % (df, Q) if df > 0 else
                         "P = %.1f  (K \u2264 p + q)" % Q)
         if save_prefix is not None:
-            fig.savefig("%s_ccf_%d_%d_%s_%s.png" % (save_prefix, i + 1, j + 1,
-                                                    names[i], names[j]),
-                        dpi=dpi, bbox_inches="tight")
+            # the PNG, and in vectors (SVG, PDF): pyfug.graphics.ccf.save_ccf
+            from pyfug.graphics.ccf import save_ccf
+            save_ccf(fig, "%s_ccf_%d_%d_%s_%s.png" % (save_prefix, i + 1, j + 1,
+                                                       names[i], names[j]), dpi=dpi)
         figs.append(fig)
     return figs
 
