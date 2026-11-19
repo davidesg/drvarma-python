@@ -88,3 +88,21 @@ def test_an_inadmissible_start_falls_back_to_zero_and_says_so():
 def test_an_unknown_start_is_refused():
     with pytest.raises(ValueError, match="'ols'"):
         Ladder(FILES, 1, 0, start="mco")
+
+
+def test_route_v_keeps_the_own_models_of_the_diagonal_fit():
+    """The ladder's principle on route V too: the specifications (Tiao and
+    Box's, the own ARMA at zero in the file) are estimated by the diagonal fit
+    first, and the ols start adds only the relation -- the own coefficients
+    at the start are those of the zero start, not the least squares'."""
+    d = os.path.join(HERE, "data", "ladder", "gas_v")
+    files = [os.path.join(d, f) for f in ("InputGasRate_v_p1q1.inp", "CO2_v_p1q1.inp")]
+    z = _stop_at_start(Ladder(files, 1, 1, start="preliminary"))   # own: the diagonal's
+    L = _stop_at_start(Ladder(files, 1, 1, start="ols"))
+    assert L.start_used == "ols"
+    own = lambda X: {nm: v for nm, v in zip(X.names(), X.pack())   # noqa: E731
+                     if nm.startswith(("phi_", "theta_", "mu_"))}
+    a, b = own(z), own(L)
+    assert a and all(abs(a[k] - b[k]) < 1e-12 for k in a)
+    assert np.allclose(L._lvar, z._lvar)
+    assert any(abs(v) > 1e-3 for v in L._cAR.ravel())                # the relation, seeded
