@@ -6,6 +6,21 @@ compiled C engine.
 
 ## Unreleased
 
+**`start="ols"`: the original drvarma's start, in the ladder** (the C's
+`-start ols`, escalera.c; atsw-gui #199). It is `init_varma` of the `.inp`
+path: least squares of the VAR(p) on the stationary series. It is the
+ladder's start plus the parameters of the relation:
+- the cross AR terms take +Phi_k (Box and Jenkins);
+- Q's covariances take the residuals' correlation in the ladder's
+  normalisation, with the gate's Q_ii;
+- the own AR is seeded only in a specification with it at zero (route V).
+
+The default stays `"zero"`. On the US monetary VAR the VAR(2) reaches
+−1741.275477 from it, against −1793.05 from zero (BUG-0027), and the C gives
+the same to 6 decimals (46 parameters within 6e-6). The full suite is
+unchanged. `tests/test_start_ols.py`, and Jenkins and Alavi's muskrat and
+mink in `tests/data/ladder`.
+
 **The CCF is drawn by pyfug** (`pyfug.graphics.ccf`, pyfug >= 2.1.0 in the
 `plots` extra): the suite's one CCF drawing, which lived here and which
 drtran and sima borrowed — sima through `_draw_ccf_panel`, a private
