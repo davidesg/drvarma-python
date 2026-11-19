@@ -663,8 +663,16 @@ class Ladder:
         (drvarma.echelon) for the own and cross terms, A_0 included, and Q:
         the default with ``echelon`` (docs/STUDY-echelon-search.md: from
         zero, exact ML stops below the true parameters in 20 % of a
-        5-dimensional system's fits; from here, in none). If that start is
-        not admissible, zero is used and ``start_used`` says so.
+        5-dimensional system's fits; from here, in none). Or "ols", the
+        original drvarma's start (``init_varma``) brought to the ladder, as
+        the C's ``-start ols``: least squares of the VAR(p) on the stationary
+        series seeds the cross AR terms and Q's covariances (the residuals'
+        correlation, in the ladder's normalisation), and the own AR where the
+        file is a specification with it at zero (route V); the own model of
+        a .pre stays (``_ols_start``). From zero, exact ML stops after two
+        iterations below the nested VAR on the US monetary VAR (BUG-0027);
+        from here it does not. If that start is not admissible, zero is used
+        and ``start_used`` says so.
     links : the cross dynamics only on these pairs, as the C's -links:
         ``"A<-B,C<-A"`` or a list of ``("A", "B")`` (B enters the equation of
         A: AR and MA, every lag up to p and q), with the series' names.
@@ -751,8 +759,8 @@ class Ladder:
         self.links = self._parse_links(links)
         if start is None:
             start = "echelon" if echelon is not None else "zero"
-        if start not in ("zero", "preliminary", "echelon"):
-            raise ValueError("start must be 'zero', 'preliminary' or 'echelon'")
+        if start not in ("zero", "preliminary", "echelon", "ols"):
+            raise ValueError("start must be 'zero', 'preliminary', 'echelon' or 'ols'")
         self.start = start
         self.start_used = None
         if cross not in ("additive", "residual"):
@@ -1298,6 +1306,8 @@ class Ladder:
                 self._preliminary(diag)
             elif self.start == "echelon":
                 self._echelon_start()
+            elif self.start == "ols":
+                self._ols_start()
             self.x_start = self.pack()    # where the requested fit starts
             self.result = self._fit()
         return self.result
@@ -1324,6 +1334,77 @@ class Ladder:
                 for b in range(a):
                     self._qcov[a, b] = S[a, b] / S[0, 0]
         self._take_start(x0, "preliminary")
+
+    def _ols_start(self):
+        """The original drvarma's start (``init_varma``, the ``.inp`` path),
+        brought to the ladder -- the C's ``-start ols`` (escalera.c), the same
+        arithmetic.
+
+        Least squares of the VAR(p), with no constant, on the centred
+        stationary series w of the diagonal state (the cross terms at zero):
+        Phi_1..Phi_p, the residuals E on t = p+1..n and S = E'E / (n - p).
+        The ladder's start plus the parameters of the RELATION:
+
+        * the free cross AR terms take Phi_k[i, j] (Box and Jenkins:
+          Phi(B) = I - SUM Phi_k B^k, so the cross coefficient is +Phi_k);
+          links and zeros are respected (only the free slots);
+        * the covariances of Q (Q_11 = 1, Mauricio 1995, eq. 2.1) take the
+          residuals' CORRELATION, as the original, in the ladder's
+          normalisation: q_ij = r_ij sqrt(Q_ii Q_jj), with the Q_ii of the
+          diagonal fit (the variances are the series' own, not touched);
+        * the cross MA terms stay at zero, as the original.
+
+        The OWN AR is seeded only where the file is a specification -- one
+        regular AR factor, all free and all zero, no seasonal AR (route V's,
+        Tiao and Box: the whole matrices come from the least squares): it
+        takes Phi_k[i, i], and then the variances too, Q_ii = S_ii / S_11.
+        Elsewhere (route U) the own model is the .pre's optimum and stays.
+        If elf does not accept the point, zero is used and ``start_used``
+        says so."""
+        m, p = len(self.series), self._cp
+        _mu, _phi, _th, _qq, W, _ifa = self.cast(self.pack())   # no cross terms in it
+        W = np.asarray(W, float)
+        W = W - W.mean(axis=0)
+        n = W.shape[0]
+        x0 = self.pack()
+        if p < 1 or n <= m * p + 1:
+            self.start_used = "zero (no least squares: p = 0 or too few observations)"
+            return
+        Z = np.hstack([W[p - k:n - k] for k in range(1, p + 1)])
+        Y = W[p:]
+        B = np.linalg.solve(Z.T @ Z, Z.T @ Y)                 # the normal equations
+        E = Y - Z @ B
+        Phi = np.array([B[k * m:(k + 1) * m].T for k in range(p)])
+        S = E.T @ E / E.shape[0]
+        seeded = []
+        names = self.names()
+        v = self.pack()
+        for i, s in enumerate(self.series):
+            m_ = s.model
+            if (not self.fixarma and len(m_.ar) == 1 and not m_.ar_s
+                    and all(m_.ar_free[0]) and not any(m_.ar[0])
+                    and len(m_.ar[0]) <= p):
+                for k in range(1, len(m_.ar[0]) + 1):
+                    nm = f"phi_{s.name}[B^{k}]"
+                    if nm in names:
+                        v[names.index(nm)] = Phi[k - 1][i, i]
+                seeded.append(i)
+        if seeded:
+            self.unpack(v)
+        for kind, k, i, j in self._slots():
+            if kind == "AR" and k >= 0:
+                self._put(kind, k, i, j, Phi[k][i, j])
+        act = self._act
+        if seeded:
+            for i in act[1:]:
+                self._lvar[i] = math.log(S[i, i] / S[act[0], act[0]])
+        if not self._cdiag:
+            Q = [1.0] + [math.exp(self._lvar[i]) for i in act[1:]]
+            for a in range(1, len(act)):
+                for b in range(a):
+                    r = S[act[a], act[b]] / math.sqrt(S[act[a], act[a]] * S[act[b], act[b]])
+                    self._qcov[act[a], act[b]] = r * math.sqrt(Q[a] * Q[b])
+        self._take_start(x0, "ols")
 
     def _admissible(self):
         """Does elf accept the current state as a point of the likelihood?"""

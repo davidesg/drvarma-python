@@ -139,6 +139,28 @@ Hipótesis, en parte comprobada (19-nov-2026):
 3. **Cómo comprobarlo:** contar las llamadas a `objective` que devuelven el
    1.0 de penalización en las dos primeras iteraciones.
 
+## Diagnóstico corregido (19-nov-2026)
+
+**La hipótesis de arriba es falsa.** Medido en el porte, durante la búsqueda
+ninguna evaluación falla: la búsqueda no ve nunca la penalización `1.0`, y
+las 67 que fallan están en el hessiano final. La causa es la **escala de los
+cruzados**:
+- las perturbaciones mueven f solo ~5e-9;
+- var(w) es 461.7 para el GS1 (puntos básicos) frente a 0.039 para el IPC
+  (% de log);
+- un coeficiente cruzado entre los dos mide ~0.01 o ~100, mientras el
+  optimizador supone tamaño 1 (`typx = 1`).
+
+Con el GS1 en % (factor 1) el mismo VAR(2) converge desde cero, al mismo
+óptimo (la diferencia es n·ln 100). El GS3 falla igual.
+
+**Lo que se hizo**, sin tocar la penalización ni el optimizador:
+`start="ols"`, el arranque de drvarma original (`init_varma`), en la
+escalera del porte y en la del C (`-start ols`, atsw-gui #199), homologados.
+Desde ahí el VAR(2) llega a −1741.2755. El arranque por defecto sigue siendo
+cero, así que el repro sigue saliendo con 1: el parte queda abierto para el
+defecto, y sima usa el arranque nuevo.
+
 ## Fix
 
 Propuestas, de menor a mayor alcance:
