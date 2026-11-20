@@ -4,7 +4,7 @@ Exact maximum-likelihood estimation, forecasting and diagnostics of multivariate
 VARMA models (Mauricio 1995 JASA / 1997 AS 311), pure-Python with an optional
 compiled C engine.
 
-## Unreleased
+## 0.3.5 — 2026-11-20
 
 **`start="ols"`: the original drvarma's start, in the ladder** (the C's
 `-start ols`, escalera.c; atsw-gui #199). It is `init_varma` of the `.inp`
@@ -21,6 +21,16 @@ The default stays `"zero"`. On the US monetary VAR the VAR(2) reaches
 the same to 6 decimals (46 parameters within 6e-6). The full suite is
 unchanged. `tests/test_start_ols.py`, and Jenkins and Alavi's muskrat and
 mink in `tests/data/ladder`.
+
+**Documentation.** `docs/ARCHITECTURE.md` describes the ladder in the C and
+the port: the model and its free vector, the gate, the optimiser, the
+starts, the likelihoods, the standard errors and the homologation matrix.
+Corrected:
+- `-m 2` is exact and untruncated, not approximate;
+- Shea also runs in pure Python;
+- the wheels: cp310–cp314, macOS 11.0+ arm64 and x86_64;
+- the deprecated `.inp` path's Box-Cox at λ = 1 is x − 1, not the identity.
+  This is documented, not changed: the C's `tests/banco` pins it.
 
 **The CCF is drawn by pyfug** (`pyfug.graphics.ccf`, pyfug >= 2.1.0 in the
 `plots` extra): the suite's one CCF drawing, which lived here and which
