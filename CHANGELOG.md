@@ -13,7 +13,8 @@ ladder's start plus the parameters of the relation:
 - the cross AR terms take +Phi_k (Box and Jenkins);
 - Q's covariances take the residuals' correlation in the ladder's
   normalisation, with the gate's Q_ii;
-- the own AR is seeded only in a specification with it at zero (route V).
+- the own models are never seeded, on either route (the ladder's principle,
+  from art and mtram). On route V the diagonal fit has already estimated them.
 
 The default stays `"zero"`. On the US monetary VAR the VAR(2) reaches
 −1741.275477 from it, against −1793.05 from zero (BUG-0027), and the C gives

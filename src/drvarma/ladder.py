@@ -667,9 +667,8 @@ class Ladder:
         original drvarma's start (``init_varma``) brought to the ladder, as
         the C's ``-start ols``: least squares of the VAR(p) on the stationary
         series seeds the cross AR terms and Q's covariances (the residuals'
-        correlation, in the ladder's normalisation), and the own AR where the
-        file is a specification with it at zero (route V); the own model of
-        a .pre stays (``_ols_start``). From zero, exact ML stops after two
+        correlation, in the ladder's normalisation); the own models stay the
+        univariate ones on every route (``_ols_start``). From zero, exact ML stops after two
         iterations below the nested VAR on the US monetary VAR (BUG-0027);
         from here it does not. If that start is not admissible, zero is used
         and ``start_used`` says so.
@@ -1354,13 +1353,13 @@ class Ladder:
           diagonal fit (the variances are the series' own, not touched);
         * the cross MA terms stay at zero, as the original.
 
-        The OWN AR is seeded only where the file is a specification -- one
-        regular AR factor, all free and all zero, no seasonal AR (route V's,
-        Tiao and Box: the whole matrices come from the least squares): it
-        takes Phi_k[i, i], and then the variances too, Q_ii = S_ii / S_11.
-        Elsewhere (route U) the own model is the .pre's optimum and stays.
-        If elf does not accept the point, zero is used and ``start_used``
-        says so."""
+        The OWN models are never seeded: the ladder's principle (the
+        univariate models first, from art and mtram) holds on every route. On
+        route U they are the .pre's optima; on route V (specifications with
+        the own ARMA at zero) the diagonal fit the ladder runs first has
+        already estimated them by exact ML. The least squares only add the
+        relation. If elf does not accept the point, zero is used and
+        ``start_used`` says so."""
         m, p = len(self.series), self._cp
         _mu, _phi, _th, _qq, W, _ifa = self.cast(self.pack())   # no cross terms in it
         W = np.asarray(W, float)
@@ -1376,28 +1375,10 @@ class Ladder:
         E = Y - Z @ B
         Phi = np.array([B[k * m:(k + 1) * m].T for k in range(p)])
         S = E.T @ E / E.shape[0]
-        seeded = []
-        names = self.names()
-        v = self.pack()
-        for i, s in enumerate(self.series):
-            m_ = s.model
-            if (not self.fixarma and len(m_.ar) == 1 and not m_.ar_s
-                    and all(m_.ar_free[0]) and not any(m_.ar[0])
-                    and len(m_.ar[0]) <= p):
-                for k in range(1, len(m_.ar[0]) + 1):
-                    nm = f"phi_{s.name}[B^{k}]"
-                    if nm in names:
-                        v[names.index(nm)] = Phi[k - 1][i, i]
-                seeded.append(i)
-        if seeded:
-            self.unpack(v)
         for kind, k, i, j in self._slots():
             if kind == "AR" and k >= 0:
                 self._put(kind, k, i, j, Phi[k][i, j])
         act = self._act
-        if seeded:
-            for i in act[1:]:
-                self._lvar[i] = math.log(S[i, i] / S[act[0], act[0]])
         if not self._cdiag:
             Q = [1.0] + [math.exp(self._lvar[i]) for i in act[1:]]
             for a in range(1, len(act)):
