@@ -36,7 +36,7 @@ Emit these tokens in this exact order:
 | 4 | `start_sub` | int | starting subperiod: month `1..12` (monthly), quarter `1..4`, or `1` (annual) |
 | 5 | `start_year` | int | starting calendar year, e.g. `2002` |
 | 6 | `name_1 … name_m` | str ×`m` | one **whitespace-free** name per series (e.g. `IPC_ES`) |
-| 7 | `lambda` | float | Box-Cox λ: `0` = log transform, `1` = identity (no transform) |
+| 7 | `lambda` | float | Box-Cox λ: `0` = log transform; otherwise (x^λ − 1)/λ — with `1` that is x − 1, not the identity (fue's ladder files use refactor·x; `ARCHITECTURE.md` §1) |
 | 8 | `d` | int | number of regular differences (often `1` for price/level series) |
 | 9 | `D` | int | number of seasonal differences (lag = `freq`); often `0` |
 | 10 | `data` | float ×`(nobs·m)` | the observations, **row-major**: for each time `t` (oldest→newest) the `m` values, series order matching the names |

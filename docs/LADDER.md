@@ -28,7 +28,8 @@ L.fit(); rows, summary = L.recursive(24)                  # fixed-parameter, eve
 ```
 
 Options: `diagcov`, `redet` (re-estimate the deterministic terms, fixed at the
-file by default), `fixarma`, `method` (1 exact, 2 approximate), `estwin`,
+file by default), `fixarma`, `method` (1 exact with ξ truncated at 1e-3, 2 exact untruncated), `start`
+(zero, ols, preliminary, echelon: `docs/ARCHITECTURE.md` §5), `estwin`,
 `links` (below).
 
 ## The model

@@ -39,8 +39,8 @@ impulse responses, variance decompositions, residual diagnostics and volatility.
 pip install drvarma
 ```
 
-The binary wheels carry the compiled engine (CPython 3.10–3.13 on Linux
-x86_64/aarch64, glibc and musl, macOS arm64 and Windows x86_64);
+The binary wheels carry the compiled engine (CPython 3.10–3.14 on Linux
+x86_64/aarch64, glibc and musl, macOS 11.0+ arm64 and x86_64, and Windows x86_64);
 `drvarma._engine.engine_backend()` says `"c"`. Where no wheel fits, pip builds
 the sdist, which needs a C compiler and the GSL headers; if the build or the
 load fails, drvarma warns and runs the pure-Python path: the same results,
