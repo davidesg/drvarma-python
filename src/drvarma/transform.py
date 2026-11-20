@@ -14,7 +14,10 @@ DEFAULT_SCALE = 100.0
 
 
 def boxcox_fwd(x, lam):
-    """Box-Cox forward transform. lam=0 -> log, lam=1 -> identity."""
+    """Box-Cox forward transform: lam=0 -> log, else (x**lam - 1)/lam, so lam=1
+    gives x - 1, NOT the identity. This is the deprecated multivariate .inp
+    path, pinned by the C's tests/banco; the ladder uses fue's transform,
+    refactor*x at lam=1 (docs/ARCHITECTURE.md §1)."""
     x = np.asarray(x, dtype=float)
     if lam == 0.0:
         return np.log(x)

@@ -1,6 +1,7 @@
 # drvarma Python port — status & handoff
 
-Last updated: 2026-06-27. Read this first when resuming in a new session.
+Last updated: 2026-06-27. **Historical**: the state of the port before the
+ladder (drvarma 5). For the current architecture read `docs/ARCHITECTURE.md`.
 
 ## What this is
 

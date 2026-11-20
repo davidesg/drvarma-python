@@ -4,7 +4,7 @@ Goal: the **pure-Python path is feature- and fidelity-complete** versus the C
 engine, so the compiled CFFI engine becomes a *purely optional accelerator* — no
 feature and no output fidelity depends on it. Written 2026-06-25.
 
-**Out of scope (this port):** Shea (`multshea.c` / `marma`). It is not wired into
+**Out of scope (this port, as of 2026-06-25; since done: `_as242.py`):** Shea (`multshea.c` / `marma`). It is not wired into
 the C estimator (`marma` has no callers), so there is no C reference to validate a
 Python port against — deferred, not part of "100% Python". See `docs/FUE_REUSE.md`.
 

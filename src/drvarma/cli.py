@@ -29,7 +29,7 @@ def build_parser():
     p.add_argument("-diagma", action="store_true", help="diagonal MA matrices")
     p.add_argument("-diagcov", action="store_true", help="diagonal covariance")
     p.add_argument("-m", type=int, default=1, dest="method",
-                   help="estimation method: 1=exact (default), 2=approximate")
+                   help="estimation method: 1=exact, xi truncated at 1e-3 (default); 2=exact, untruncated")
     p.add_argument("-hessian", choices=("fd", "bfgs"), default="fd",
                    help="standard errors: fdhess at the optimum (default) or the "
                         "BFGS Hessian of the search (docs/STUDY-standard-errors.md)")

@@ -263,7 +263,8 @@ methods they benchmark against:
   likelihood of ARMA models.* Applied Statistics 33(1), 104–114. [`as197.pdf`]
 - **Shea, B. L. (1989).** *Algorithm AS 242: The exact likelihood of a vector
   ARMA model.* Applied Statistics 38(1), 161–184. — the AS 242 backup route
-  (`multshea.c`), out of scope for the Python port.
+  (`lib/lik/multshea.c`); the port has it in pure Python (`_as242.py`) and
+  compiled, for the ladder's `lik="shea"`.
 - Ansley (1979); Ljung & Box (1979); Pearlman (1980); Kohn & Ansley (1985);
   Hillmer & Tiao (1979); Hall & Nicholls (1980) — methods compared in the above.
 - **Dennis, J. E. & Schnabel, R. B. (1983).** *Numerical Methods for Unconstrained
@@ -274,7 +275,8 @@ methods they benchmark against:
 
 This package compiles a C engine, so its wheels are platform-specific and are
 built **only** by `.github/workflows/publish.yml`, which runs `cibuildwheel`
-across macOS, manylinux, musllinux and Windows for cp310–cp313. Release 0.1.3
+across macOS (11.0+, arm64 and x86_64), manylinux, musllinux and Windows
+for cp310–cp314. Release 0.1.3
 shipped 26 files that way.
 
 `python -m build` on a developer machine produces a `linux_x86_64` wheel, and

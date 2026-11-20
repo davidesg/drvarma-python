@@ -26,8 +26,8 @@ tool. For internals, performance and the engine-vs-pure-Python trade-offs, see
 pip install drvarma
 ```
 
-The binary wheels carry the compiled C engine (CPython 3.10–3.13 on Linux
-x86_64/aarch64, glibc and musl, macOS arm64 and Windows x86_64): nothing to
+The binary wheels carry the compiled C engine (CPython 3.10–3.14 on Linux
+x86_64/aarch64, glibc and musl, macOS 11.0+ arm64 and x86_64, and Windows x86_64): nothing to
 build. Check it with
 
 ```sh
@@ -125,13 +125,14 @@ Model(series,
       diag_ar=False,            # restrict Φ_k to diagonal
       diag_ma=False,            # restrict Θ_k to diagonal
       diag_cov=False,           # restrict Σ to diagonal
-      method=1,                 # 1 = exact ML (default), 2 = approximate
+      method=1,                 # 1 = exact ML, xi truncated at 1e-3 (default); 2 = exact, untruncated
       twostep=False,            # Hannan–Rissanen start (q>0 only)
       deseason=None)            # None | "auto" | "force"
 ```
 
 **Transform.** drvarma models the *stationary* series obtained by a Box-Cox power
-(`lam`: 0 = log, 1 = identity), then `d` regular differences and `D` seasonal
+(`lam`: 0 = log; otherwise (x^λ − 1)/λ, so λ = 1 gives x − 1, not the
+identity: the ladder uses fue's refactor·x, see `docs/ARCHITECTURE.md` §1), then `d` regular differences and `D` seasonal
 differences of period `freq`, then a `scale` factor. Forecasts are integrated and
 inverse-transformed back to the original units automatically.
 
@@ -302,5 +303,5 @@ comparable variances.** See `docs/DEVELOPER_GUIDE.md` §4.3 for the quantitative
 analysis.
 
 **Speed.** Pure-Python fits of VARMA(q>0) or ill-conditioned models can take
-seconds to tens of seconds. Install the C engine (`[c-engine]`, §1) for a
+seconds to tens of seconds. The binary wheels carry the C engine (§1), a
 10–100× speed-up; results are identical for well-conditioned problems.

@@ -642,7 +642,8 @@ class Ladder:
         independent benchmark: the objective and the reported likelihood;
         residuals stay elf's), or "both" (elf is the objective; Shea is
         evaluated at every point and ``lik_check`` reports the largest
-        |dlogL|). Needs the compiled engine. As the C's -lik.
+        |dlogL|). Shea runs with the compiled engine or in pure Python
+        (``_as242``). As the C's -lik.
     estwin : estimate on the first ``estwin`` observations of the FIRST series
         (the others are cut at the same date); ``recursive`` then forecasts
         from every later origin with the parameters fixed
@@ -653,7 +654,11 @@ class Ladder:
         the univariate MA of series i TIMES row i of U*(B) = I - SUM U_k B^k.
         The two coincide when the univariate models have no MA factors. The
         cross AR is additive in both.
-    start : where the cross terms start: "zero" (the default, as the C) or
+    start : where the search starts. "zero", "preliminary" and "ols" seed
+        only the relation (the cross terms, and Q's covariances for the last
+        two); the own models are the univariate ones. "echelon" seeds the own
+        terms too: they belong to its index table (docs/ARCHITECTURE.md §5).
+        "zero" (the default, as the C) or
         "preliminary" — Jenkins and Alavi's (1981) preliminary estimates: the
         cross MA from the cross covariances of the diagonal system's residuals
         (their prewhitened residuals), the cross AR from the multivariate

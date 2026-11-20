@@ -1,6 +1,7 @@
 # Echelon form seeded from the univariate models — a design note
 
-**Status: a proposal, not a plan.** Nothing here is implemented. It is written to
+**Status (2026-08-05): a proposal, not a plan.** Since then most of it has
+been built (`ECHELON_PLAN.md`, stages 2–4; `ARCHITECTURE.md` §5). As written: It is written to
 be argued with, and §8 lists the things that could sink it.
 
 Date: 2026-08-05. Origin: the observation that `drtran` gets something for free
