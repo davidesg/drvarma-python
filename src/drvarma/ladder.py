@@ -762,7 +762,11 @@ class Ladder:
         m = len(self.series)
         self.links = self._parse_links(links)
         if start is None:
-            start = "echelon" if echelon is not None else "zero"
+            # as the C: the original drvarma's least squares with q = 0, zero
+            # with an MA (no start seeds the MA; BUG-0027). The echelon form
+            # keeps its own for now.
+            start = ("echelon" if echelon is not None
+                     else "ols" if (int(q) == 0 and int(p) > 0) else "zero")
         if start not in ("zero", "preliminary", "echelon", "ols"):
             raise ValueError("start must be 'zero', 'preliminary', 'echelon' or 'ols'")
         self.start = start
@@ -1797,6 +1801,33 @@ def search_row_factors(series, n_max=3, criterion="SC", passes=3):
     return sr, hist
 
 
+def _mean_seed(y, lam, d, D, s, scale):
+    """The seed of an estimated mean in ``split``: the sample mean of the
+    stationary series, as the original drvarma's ``init_varma`` and the C's
+    ``-split`` take it (the C's BUG-0007). fue's transformation: scale * ln y,
+    scale * y with lambda = 1, scale * (y^lambda - 1) / lambda otherwise;
+    then D seasonal and d regular differences. Zero on a series in levels
+    (around 10000 with the factor) let the optimiser carry the level with
+    the own AR, near a unit root. Zero if the series cannot be transformed."""
+    y = np.asarray(y, float)
+    lam = float(lam)
+    if abs(lam - 1.0) < 1e-12:
+        w = scale * y
+    elif np.any(y <= 0.0):
+        return 0.0
+    elif abs(lam) < 1e-8:
+        w = scale * np.log(y)
+    else:
+        w = scale * (y ** lam - 1.0) / lam
+    for _ in range(int(D)):
+        if len(w) > s:
+            w = w[s:] - w[:-s]
+    for _ in range(int(d)):
+        if len(w) > 1:
+            w = np.diff(w)
+    return float(np.mean(w))
+
+
 def split(path, mean=False, harmonics=False, ar=0, ma=0, scale=100.0, out_dir="."):
     """Convert a multivariate drvarma ``.inp`` (deprecated since 5.0) into one
     univariate ``.inp`` of fue per series, ``out_dir/<name>.inp``.
@@ -1841,7 +1872,10 @@ def split(path, mean=False, harmonics=False, ar=0, ma=0, scale=100.0, out_dir=".
         L = ["************************************************",
              "* Input file for program FUE                   *",
              "************************************************",
-             f"* Split from {src} by drvarma-python {__version__}", "",
+             # a free header line of fue's format holds 88 characters: fue
+             # counts them with a 90-byte fgets, and a longer one counts as
+             # two (the C's BUG-0001). The source's base name, and cut.
+             f"* Split from {os.path.basename(src)} by drvarma-python {__version__}"[:88], "",
              "** Frequency of time series: either 1(A), 4(Q) or 12(M):", f" {s}",
              "** Number of observations and starting date of time series:",
              f" {data.shape[0]}  {sub if s > 1 else 1} {year} {name}",
@@ -1858,7 +1892,8 @@ def split(path, mean=False, harmonics=False, ar=0, ma=0, scale=100.0, out_dir=".
         L += coefs("Number and orders of anual MA operators", 0)
         L += ["** Number and frequencies of regular AR(2) operators with fixed frequency:", "0",
               "** Number and frequencies of regular MA(2) operators with fixed frequency:", "0",
-              "** Mean parameter (mu):", "0.000000 1" if mean else "0",
+              "** Mean parameter (mu):",
+              f"{_mean_seed(data[:, j], spec.lam, spec.d, spec.D, s, scale):.6f} 1" if mean else "0",
               "** Box-Cox lambda, regular differences and complete annual differences:",
               f" {spec.lam:g}  {spec.d}  {spec.D}",
               "** Individual factors of the annual difference (starting at freq 0.0):",

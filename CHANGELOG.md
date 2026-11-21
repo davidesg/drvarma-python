@@ -6,6 +6,26 @@ compiled C engine.
 
 ## Unreleased
 
+**Re-homologation with the C of November 2026, first part** (atsw-gui
+#203–#219; the C is the oracle and both move together):
+- **The default start is the C's**: `"ols"` with q = 0 and p > 0, `"zero"`
+  with an MA (atsw-gui #207). From zero, exact ML stalled after two
+  iterations on the US monetary VARs (BUG-0027, now fixed: its report is
+  rewritten with the measured cause, the scale of the cross terms, and the
+  two known limits). With an MA no start seeds it and `"ols"` is not better
+  than zero. The echelon form keeps its own default for now.
+- **`split(mean=True)` seeds the mean at the sample mean** of the stationary
+  series, as the C's `-split` (its BUG-0007): seeded at zero, on series in
+  levels the gate carried the level with the own AR, near a unit root, and
+  the ladder ended 49 log-likelihood points below the `.inp` path's same
+  VAR(1). The seeds are the C's to its six decimals.
+- **`split`'s header fits fue's format** (the C's BUG-0001): the source's
+  base name, cut at 88 characters. A longer free header line counts as two
+  for fue, and the ladder rejected the file just written.
+- BUG-0028 is fixed: the C now falls back to zero as the port always did
+  (atsw-gui #203).
+- `tests/test_homologation_c_0_4.py`, with the C's numbers.
+
 **`start="ols"`: the original drvarma's start, in the ladder** (the C's
 `-start ols`, escalera.c; atsw-gui #199). It is `init_varma` of the `.inp`
 path: least squares of the VAR(p) on the stationary series. It is the

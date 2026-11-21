@@ -1,11 +1,11 @@
 ---
 id: BUG-0028
 title: The ols start falls back to zero in the port but not in the C ladder, which starts from the inadmissible least-squares point and fails
-status: open
+status: fixed
 severity: medium
 component: ladder
 found_in: 0.3.5
-fixed_in:
+fixed_in: 0.4.0
 reported: 2026-11-20
 reporter: David / Claude — review of -start ols on route V (gas furnace)
 tags:
@@ -55,3 +55,11 @@ Nothing changes in the port.
 ## Validation
 
 With the C of #203 the repro exits 0: -2638.762693 from both engines.
+
+## Fixed (2026-11-20, in the C)
+
+atsw-gui #203 (drvarma BUG-0006 there): `start_ols()` now frees its check
+fit before putting the zeros back. The gas furnace VAR(6) by route V gives
+−2638.762693 from both starts in the C, as here. Nothing changed in the
+port, which never had the defect. A second case, found independently the
+same day: the monetary VARMA(1,1) of route V with `-redet`, −1756.750712.
