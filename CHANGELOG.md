@@ -47,6 +47,31 @@ compiled C engine.
 - A name may write a date as the output does here (`step 8/1990`) or as the
   C's does (`step 8 1990`): the two engines still print it differently.
 
+**Route V through the gate: `route="v"`** (the C's `-route v`, atsw-gui
+#210–#212 and #219). The vector first (Tiao and Box) used to mean
+specifications without univariate models. It now goes through the same gate
+as route U: the univariate models first, always. They are the yardstick and
+give the mean, the deterministic terms and the stationary series.
+- Past the gate, each series' regular ARMA is replaced by a free AR(p)/MA(q):
+  the whole VARMA(p,q) matrix is free. Its seasonal and fixed-frequency
+  factors multiply its whole row, cross terms included (the row factor,
+  until now the echelon form's only).
+- The LR is against the same model without cross terms. `route_notes` says
+  when the model does not contain a univariate's regular ARMA.
+- **The seed is the whole matrix** (`start="ols"`, the default with q = 0):
+  least squares of the VAR(p) give the diagonal and the cross terms, each
+  row on the series filtered by its own factor; the MA starts at zero.
+- `own_zeros` holds own lags at zero (Tiao and Box's simplification), and
+  `factor_test()` is open to route V.
+- **BUG-0029, fixed**: `factor_test()` freed in its alternative an own
+  coefficient the model holds at zero, and tested that zero with the factor
+  (3 degrees of freedom where there are 2). Found homologating with the C.
+- `tests/test_homologation_c_route_v.py`: the C's numbers to 1e-5, and its
+  iteration counts: the golden cases where routes U and V are the same
+  model, the row factor on the diagonal, the VARMA(1,1) with a row factor
+  (−924.846133), the monetary VAR(1), the gas furnace VAR(6), the row
+  factor's test and the own zeros.
+
 **`start="ols"`: the original drvarma's start, in the ladder** (the C's
 `-start ols`, escalera.c; atsw-gui #199). It is `init_varma` of the `.inp`
 path: least squares of the VAR(p) on the stationary series. It is the

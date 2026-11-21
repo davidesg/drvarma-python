@@ -175,11 +175,22 @@ checks the port's numbers in `tests/escalera/pruebas.sh`.
 
 ## 9. Routes U and V
 
-These are sima's names (sima `docs/ARCHITECTURE.md` §3), and they are the
-two ways of feeding the ladder:
-- **route U:** the analyst's univariate `.pre` files;
-- **route V:** specifications with only each series' transformation, plus a
-  free AR(p)/MA(q) per order, which the diagonal fit estimates first.
+The school's rule holds on both: **the univariate models first**. They are
+the yardstick and give the initial conditions, and the gate is that. Past
+the gate the two routes differ only in what the own part is and how it is
+seeded.
 
-The ladder does not know which route it is on. It only sees whether a file
-moved at the gate.
+- **route U** (the default): each series keeps its univariate ARMA on the
+  diagonal; the cross terms are added.
+- **route V** (`route="v"`, the C's `-route v`; the vector first, Tiao and
+  Box): each series' regular ARMA is replaced by a free AR(p)/MA(q), so the
+  whole VARMA(p,q) matrix is free; its seasonal and fixed-frequency factors
+  multiply its whole row. The seed is the whole matrix; the LR is against
+  the same model without cross terms; `factor_test()` checks the row factor.
+
+When every univariate's regular part is exactly an AR(p) and none has
+seasonal factors, the two routes are the same model (the golden case).
+
+Until 0.3.x "route V" meant specifications without univariate models (sima's
+`write_specs`, `split`): the ladder still takes them, and the gate says they
+are not optima, but they are no longer what route V is.
