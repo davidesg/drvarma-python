@@ -47,8 +47,8 @@ lagged innovation).
 
 **The free vector**, in this order (C `esc_pack`, port `Ladder.pack`):
 1. each series' free own coefficients: its ARMA factors, unless `-fixarma`;
-   its deterministic terms only with `-redet`; its mean if the file estimates
-   it;
+   the deterministic terms the mask frees (`-det`, `det=`: all of them with
+   `-redet`; none by default); its mean if the file estimates it;
 2. the free cross slots: AR lags, then MA, then A₀ in the echelon form. Links,
    zeros, rows and the index table decide which are free, and they are named
    `AR1[A<-B]`;

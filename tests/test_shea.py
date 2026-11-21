@@ -67,10 +67,16 @@ def test_m6_gate_closes_with_shea():
     the gate closes to rounding, and the likelihood is the C oracle's."""
     if len(M6) != 6:
         pytest.skip("the m6 .pre files are missing")
-    L = Ladder(M6, 0, 0, diagcov=True, method=2, lik="shea")
+    L = Ladder(M6, 0, 0, diagcov=True, method=2, lik="shea", detbase="file")
     r = L.fit()
     assert abs(L.gate["difference"]) < 1e-9
     assert r.logL == pytest.approx(-1752.522249, abs=2e-6)
+    # the default since 0.4.0 (the trimmed series' deterministic terms are the
+    # gate's): the C's -1725.491101
+    N = Ladder(M6, 0, 0, diagcov=True, method=2, lik="shea")
+    rn = N.fit()
+    assert abs(N.gate["difference"]) < 1e-9
+    assert rn.logL == pytest.approx(-1725.491101, abs=2e-6)
 
 
 def test_lik_must_be_known():

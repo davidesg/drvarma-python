@@ -467,9 +467,30 @@ class LadderSeries:
         block of x between the deterministic terms and the mean."""
         return int(self.x.size - self.n_det - int(self.has_mu))
 
+    def det_terms(self):
+        """The deterministic variables with free coefficients, in the model's
+        order: (label, class, indices in x[:n_det]). The label is the term as
+        ``param_names`` writes it ("cos 1", "step 8/1990"); the class is the
+        C's: seasonal (cos, sin, alter), calendar (easter), interv (impulse,
+        compimp, step, ramp), trend."""
+        names = self.param_names()[:self.n_det]
+        kinds = {"cos": "seasonal", "sin": "seasonal", "alter": "seasonal",
+                 "easter": "calendar", "trend": "trend", "impulse": "interv",
+                 "compimp": "interv", "step": "interv", "ramp": "interv"}
+        out, seen = [], {}
+        for k, nm in enumerate(names):
+            label = nm[nm.index("[") + 1:-1]
+            if label not in seen:
+                seen[label] = len(out)
+                out.append((label, kinds.get(label.split()[0], ""), []))
+            out[seen[label]][2].append(k)
+        return out
+
     def free_mask(self, redet, fixarma):
+        """``redet``: True or False for every deterministic coefficient, or a
+        boolean array over x[:n_det] (the ladder's mask)."""
         mask = np.zeros(self.x.size, bool)
-        mask[:self.n_det] = bool(redet)
+        mask[:self.n_det] = redet if isinstance(redet, np.ndarray) else bool(redet)
         mask[self.n_det:self.x.size - int(self.has_mu)] = not fixarma
         if self.has_mu:
             mask[-1] = True
@@ -634,7 +655,19 @@ class Ladder:
     series : list of LadderSeries (``load``) or of paths
     p, q : cross orders (the off-diagonal dynamics)
     diagcov : diagonal innovation covariance
-    redet : re-estimate the deterministic terms (default: fixed at the file)
+    redet : re-estimate every deterministic term (default: fixed); it is
+        ``det="all"``
+    det : which deterministic terms are re-estimated jointly (the C's
+        ``-det``): selectors separated by commas -- ``all``, ``none``, a class
+        (``seasonal``: cos, sin, alter; ``calendar``: easter; ``interv``:
+        impulse, compimp, step, ramp; ``trend``), ``SERIES:class``, or a
+        coefficient's name as the output writes it, which frees that term. A
+        shock common to several series is its name in each. Only what the file
+        marks as free is freed.
+    detbase : where the fixed ones stay (the C's ``-detbase``): ``"file"``,
+        the file's values, or ``"gate"``, estimated at the gate series by
+        series on the common window and then held. Default: ``"gate"`` for a
+        series the common window trims, ``"file"`` for the rest.
     fixarma : keep the univariate ARMA factors fixed at the file
     method : 1 exact likelihood, xi truncated at 1e-3 (the C's default);
         2 exact, untruncated
@@ -720,7 +753,7 @@ class Ladder:
                  fixarma=False, method=1, estwin=None, hessian="fd", lik="elf",
                  links=None, start=None, cross="additive", zeros=None,
                  rows=None, echelon=None, own="spec", support=None,
-                 own_zeros=None):
+                 own_zeros=None, det=None, detbase=None):
         _warn_if_no_engine()
         if series and not isinstance(series[0], LadderSeries):
             series = load(series)
@@ -749,7 +782,20 @@ class Ladder:
             warnings.warn(_w, RuntimeWarning, stacklevel=2)
         self.p, self.q = int(p), int(q)
         self.diagcov = bool(diagcov)
-        self.redet, self.fixarma = bool(redet), bool(fixarma)
+        self.fixarma = bool(fixarma)
+        # the mask of the deterministic terms (the C's -det and -detbase)
+        if det is None:
+            det = "all" if redet else ""
+        elif redet and str(det).strip() not in ("all",):
+            raise ValueError("give det, or redet=True (which is det='all'), not both")
+        if detbase not in (None, "file", "gate"):
+            raise ValueError("detbase must be 'file' or 'gate'")
+        self.det, self.detbase = str(det).strip(), detbase
+        self._det_stage = "joint"
+        self._det_joint = self._parse_det(self.det)
+        self._det_gate = [mk.copy() if detbase != "gate" else np.ones_like(mk)
+                          for mk in self._det_joint]
+        self.redet = any(bool(mk.any()) for mk in self._det_joint)
         self.xitol = -1e-3 if method == 2 else 1e-3
         if hessian not in ("fd", "bfgs"):
             raise ValueError("hessian must be 'fd' or 'bfgs'")
@@ -991,8 +1037,70 @@ class Ladder:
     def _set_structure(self, act, cp, cq, cdiag):
         self._act, self._cp, self._cq, self._cdiag = list(act), cp, cq, cdiag
 
+    def _parse_det(self, det):
+        """One boolean array per series over its deterministic coefficients:
+        those the selectors free in the joint fit. Selectors, separated by
+        commas: all, none, a class (seasonal, calendar, interv, trend),
+        SERIES:class, or a coefficient's name as the output writes it, which
+        frees that term. Only what the file marks as free is there to free."""
+        masks = [np.zeros(s.n_det, bool) for s in self.series]
+        toks, depth, cur = [], 0, ""
+        for ch in det:                       # a comma inside [...] is the name's
+            depth += ch == "["
+            depth -= ch == "]"
+            if ch == "," and depth == 0:
+                toks.append(cur); cur = ""
+            else:
+                cur += ch
+        toks.append(cur)
+        norm = lambda z: " ".join(z.replace("/", " ").split())      # noqa: E731
+        for tok in (z.strip() for z in toks):
+            if tok in ("", "none"):
+                continue
+            ser, sel = None, tok
+            if "[" not in tok and ":" in tok:
+                ser, sel = (z.strip() for z in tok.split(":", 1))
+            hit = False
+            for i, s in enumerate(self.series):
+                if ser is not None and ser != s.name:
+                    continue
+                for label, kind, idx in s.det_terms():
+                    if sel == "all" or sel == kind:
+                        ok = True
+                    elif "[" in sel and "_" in sel:
+                        ok = norm(sel.split("_", 1)[1]) == norm(f"{s.name}[{label}]")
+                    else:
+                        ok = False
+                    if ok:
+                        masks[i][idx] = True
+                        hit = True
+            if not hit and sel != "all":
+                raise LadderError(
+                    f"det: '{tok}' does not match any deterministic term. Give all, "
+                    "none, a class (seasonal, calendar, interv, trend), SERIES:class, "
+                    "or a coefficient's name as the output writes it, for instance "
+                    "'w0_IPC[step 8/1990]'")
+        return masks
+
+    def det_report(self):
+        """What the report says of the deterministic terms, as the C's .out."""
+        nt = sum(s.n_det for s in self.series)
+        nj = sum(int(mk.sum()) for mk in self._det_joint)
+        ng = sum(int(mk.sum()) for mk in self._det_gate)
+        if nj == nt and nt > 0:
+            return "re-estimated"
+        if nj > 0:
+            rest = "the gate's values" if ng > nj else "the file"
+            return f"re-estimated: {self.det} ({nj} of {nt}); the rest fixed at {rest}"
+        if ng > 0:
+            return f"fixed at the gate's values ({ng} estimated there, series by series)"
+        return "fixed at the file"
+
+    def _det_mask(self, i):
+        return (self._det_gate if self._det_stage == "gate" else self._det_joint)[i]
+
     def _masks(self):
-        return [self.series[i].free_mask(self.redet, self.fixarma) for i in self._act]
+        return [self.series[i].free_mask(self._det_mask(i), self.fixarma) for i in self._act]
 
     def n_arma(self):
         """The ARMA coefficients behind the residuals, for Hosking's Q
@@ -1270,16 +1378,36 @@ class Ladder:
         n_all = [len(s.stationary()) for s in self.series]
         n_common = min(n_all)
         rows = []
+        # The gate's mask: whatever is free jointly, plus every deterministic
+        # coefficient with detbase="gate", or, by default, those of a series
+        # the common window trims (its file is no longer the optimum of the
+        # sample in use): estimated here, series by series, then held.
+        self._det_gate = [
+            np.ones_like(mk) if (self.detbase == "gate"
+                                 or (self.detbase is None and n_all[i] > n_common))
+            else mk.copy() for i, mk in enumerate(self._det_joint)]
+        self._det_stage = "gate"
+        try:
+            rows = self._gate_fits(n_all, n_common)
+        finally:
+            self._det_stage = "joint"
+        return self._gate_close(rows, m)
+
+    def _gate_fits(self, n_all, n_common):
+        rows = []
         for i, s in enumerate(self.series):
             before = s.x.copy()
             self._set_structure([i], 0, 0, True)
             fit = self._fit()
             if fit.ifault:
                 raise LadderError(f"univariate fit of {s.name} failed (ifault {fit.ifault})")
-            mk = s.free_mask(self.redet, self.fixarma)
+            mk = s.free_mask(self._det_mask(i), self.fixarma)
             move = float(np.max(np.abs(s.x[mk] - before[mk]))) if mk.any() else 0.0
             rows.append({"series": s.name, "logL": fit.logL, "sigma2": fit.sigma2,
                          "move": move, "trimmed": n_all[i] - n_common})
+        return rows
+
+    def _gate_close(self, rows, m):
         s2 = np.array([r["sigma2"] for r in rows])
         self._lvar[:] = np.log(s2 / s2[0])
         self._set_structure(list(range(m)), 0, 0, True)
@@ -1624,7 +1752,8 @@ class Ladder:
                 {l + jj for l in range(ar + 1) for jj in fa} - {0},
                 {l + jj for l in range(ma + 1) for jj in fm} - {0}))
         free = Ladder(series, echelon=self.echelon, support=support,
-                      diagcov=self.diagcov, redet=self.redet, fixarma=self.fixarma,
+                      diagcov=self.diagcov, det=self.det, detbase="file",
+                      fixarma=self.fixarma,
                       method=2 if self.xitol < 0 else 1, hessian=self.hessian,
                       lik=self.lik, start="zero")
         free._set_structure(list(range(m)), free.p, free.q, free.diagcov)
@@ -1936,7 +2065,7 @@ def write_report(L, path, forecasts=None, recursive=None):
                f"{kind}{k + 1}[{L.series[i].name}<-{L.series[j].name}]"
                for kind, k, i, j in L.zeros))] if getattr(L, "zeros", None) else []),
            f"Innovation cov.  : {'diagonal' if L.diagcov else 'full'}",
-           f"Deterministics   : {'re-estimated' if L.redet else 'fixed at the file'}",
+           f"Deterministics   : {L.det_report()}",
            f"Univariate ARMA  : {'fixed at the file' if L.fixarma else 're-estimated jointly'}",
            f"Likelihood       : {_lik_label(L.lik)}",
            f"Standard errors  : {r.se_method or L.hessian}",
@@ -2057,6 +2186,8 @@ def main(argv):
     ap.add_argument("items", nargs="+", help="fue files (.pre/.inp), then p and q")
     ap.add_argument("-diagcov", action="store_true")
     ap.add_argument("-redet", action="store_true")
+    ap.add_argument("-det", default=None)
+    ap.add_argument("-detbase", choices=("file", "gate"), default=None)
     ap.add_argument("-fixarma", action="store_true")
     ap.add_argument("-m", type=int, default=1, dest="method")
     ap.add_argument("-o", default=None, dest="name")
@@ -2079,7 +2210,8 @@ def main(argv):
         raise SystemExit("ERROR: -estwin needs a horizon: give -forecast H")
     name = a.name or "_".join(os.path.splitext(os.path.basename(f))[0] for f in files)
     try:
-        L = Ladder(files, p, q, diagcov=a.diagcov, redet=a.redet, fixarma=a.fixarma,
+        L = Ladder(files, p, q, diagcov=a.diagcov, redet=a.redet, det=a.det,
+                   detbase=a.detbase, fixarma=a.fixarma,
                    method=a.method, estwin=a.estwin, hessian=a.hessian,
                    lik=a.lik, links=a.links)
         L.fit()
