@@ -1,11 +1,11 @@
 ---
 id: BUG-0027
 title: Ladder.fit desde el arranque cero se para a las 2 iteraciones (termcode 3) en un VAR(2) de ruta U, con logL por debajo del VAR(1) anidado y sin decir que el punto es imposible
-status: open
+status: fixed
 severity: high
 component: ladder
 found_in: 0.3.4
-fixed_in:
+fixed_in: 0.4.0
 reported: 2026-11-19
 reporter: David / Claude — rodaje de sima 0.2.5, VAR monetario de EE. UU. 1990–2007 (IPI, IPC, WTI, GS1)
 tags:
@@ -110,86 +110,53 @@ conditioned likelihood surface in this system.
 
 ## Root cause
 
-Hipótesis, en parte comprobada (19-nov-2026):
+**The scale of the cross terms, not the penalty.** The first hypothesis of
+this report (the objective returns exactly 1.0 = f(x0) at a rejected point,
+so the search cannot tell a rejected trial from "no progress") was measured
+and is **false**: no evaluation of the search is rejected in these fits. The
+67 rejections seen belong to the finite-difference Hessian computed
+afterwards.
 
-- **El C hace lo mismo.** `drvmlest.c` (`objcfunc`) devuelve `1.0` cuando
-  `ifault > 0` y cuando f no es finita: «the article's strategy, sec. 3».
-  El porte es fiel; no es una divergencia del porte, sino un defecto latente
-  del motor homologado. Se arregla primero en el C (con confirmación del
-  analista) y los dos se mueven juntos.
-- **Contadas las evaluaciones del ajuste que falla:** de 1830 llamadas, 67
-  fallan en `_elf` (ninguna en `cast`). Encaja con la hipótesis, pero falta
-  ver que caen en la búsqueda lineal de las dos primeras iteraciones y no en
-  el hessiano final.
+What happens: the rate is in basis points (lambda = 1, factor 100) beside
+prices in %. The stationary GS1 has variance 461.7 and the IPC's is 0.039.
+The optimiser (raxopt) works with typical sizes of 1, so from zero cross
+terms its first steps are badly scaled, the objective moves by about 5e-9,
+and the line search gives up after two iterations. With GS1 at factor 1 the
+same fit converges from zero.
 
-1. **La función objetivo es plana para el optimizador.** `objective` está
-   normalizada de modo que f(x0) = 1 y devuelve **exactamente 1.0** cuando
-   `cast` o `_elf` fallan (`ifa`, o f1/f2 no finitos o ≤ 0). Si los primeros
-   pasos de prueba desde x0 caen en puntos que fallan, el optimizador ve el
-   mismo valor que en el arranque y la búsqueda lineal no encuentra un punto
-   más bajo. Por ejemplo:
-   - una raíz AR fuera del círculo, lo que es fácil con 46 parámetros y una
-     escala muy dispar (GS1 en pb, con varianza ≈ 345, frente a IPC en
-     100·log, con varianza ≈ 0,03);
-   - un fallo de elf.
-2. **Por qué solo con GS1.** GS1 es el único tipo cuyo univariante es AR(3) con
-   φ₂ < 0. Junto con el factor estacional del IPI, la primera dirección
-   cuasi-Newton (BFGS = identidad escalada) puede llevar fuera de la región
-   admisible.
-3. **Cómo comprobarlo:** contar las llamadas a `objective` que devuelven el
-   1.0 de penalización en las dos primeras iteraciones.
-
-## Diagnóstico corregido (19-nov-2026)
-
-**La hipótesis de arriba es falsa.** Medido en el porte, durante la búsqueda
-ninguna evaluación falla: la búsqueda no ve nunca la penalización `1.0`, y
-las 67 que fallan están en el hessiano final. La causa es la **escala de los
-cruzados**:
-- las perturbaciones mueven f solo ~5e-9;
-- var(w) es 461.7 para el GS1 (puntos básicos) frente a 0.039 para el IPC
-  (% de log);
-- un coeficiente cruzado entre los dos mide ~0.01 o ~100, mientras el
-  optimizador supone tamaño 1 (`typx = 1`).
-
-Con el GS1 en % (factor 1) el mismo VAR(2) converge desde cero, al mismo
-óptimo (la diferencia es n·ln 100). El GS3 falla igual.
-
-**Lo que se hizo**, sin tocar la penalización ni el optimizador:
-`start="ols"`, el arranque de drvarma original (`init_varma`), en la
-escalera del porte y en la del C (`-start ols`, atsw-gui #199), homologados.
-Desde ahí el VAR(2) llega a −1741.2755. El arranque por defecto sigue siendo
-cero, así que el repro sigue saliendo con 1: el parte queda abierto para el
-defecto, y sima usa el arranque nuevo.
+The same happens with other systems of the same data: GS3 at p = 2 and
+p = 3, FF at p = 3 (atsw-gui `engines/drvarma/tests/rutas`). The earlier
+statement that only GS1 was affected was wrong.
 
 ## Fix
 
-Propuestas, de menor a mayor alcance:
+Neither the penalty nor the optimiser is touched (they are J. A. Mauricio's
+and are not modified: atsw-gui `docs/MOTORES.md`). The start is.
 
-1. **Penalización que no empate con el arranque.** Que `objective` devuelva un
-   valor mayor que f(x0) en un punto inadmisible, por ejemplo 1e10 o
-   `2 * max(1, f_actual)`, para que la búsqueda lineal retroceda en lugar de
-   rendirse.
-2. **Detectar el atasco.** Si termcode = 3 con nit ≤ 5, reintentar desde
-   `start="preliminary"` y quedarse con el mayor logL, diciéndolo en
-   `start_used`.
-3. **Avisar en el `Fit`/informe** cuando nit sea muy pequeño y se pare por
-   termcode 3: «the optimiser did not move from its start».
-4. **(sima) Contrastar contra el anidado.** Hecho en sima (BUG-0019,
-   0.2.5): un ajuste por debajo de un anidado ya ajustado, o atascado
-   (termcode 3 con nit ≤ 5), se reintenta desde el arranque preliminar y el
-   informe lo dice. Es un parche de la capa del asistente; el defecto del
-   motor sigue aquí, abierto, y su arreglo empieza en el C.
+- 0.3.5: `start="ols"`, the original drvarma's `init_varma` in the ladder
+  (the C's `-start ols`, atsw-gui #199 and #200): least squares of the
+  VAR(p) seed the cross AR terms and Q's covariances. From it the monetary
+  VAR(2) reaches −1741.275477 in both engines.
+- 0.4.0: **it is the default with q = 0**, as in the C (atsw-gui #207): the
+  16 monetary VARs and the 29 golden models of the C's battery reach their
+  optimum from it. With an MA the default stays zero: no start seeds the MA,
+  and `ols` is not better than zero there.
+
+## What remains: a known limit
+
+Asking for `start="zero"` on series whose scales differ by orders of
+magnitude still stalls. It is listed as a limit, not as a defect, in the C's
+battery (`tests/rutas/limites.txt`), which checks that the default never
+ends below the better of the two starts.
+
+A second limit found with the default change: the stopping point depends on
+the start, because the objective is normalised to f(x0) = 1. On the muskrat
+and mink VAR(2) with one cross coefficient at zero, zero ends at
+−559.001068 and `ols` at −559.002248, with the parameters equal to the third
+decimal.
 
 ## Validation
 
-- `repro.py` sale con 0: logL(p = 2, elf, por defecto) ≥ logL(p = 1), y en
-  este caso ≈ −1741,28.
-- Test de regresión con estos cuatro `.pre`: el VAR(2) desde cero alcanza el
-  mismo logL que el arranque preliminar y que shea, con tolerancia 1e-3.
-- Comprobar que FF, GS2 y GS3 no cambian. Valores de referencia del VAR(2):
-
-| tipo | logL |
-|---|---|
-| FF | −1666,3269 |
-| GS2 | −1778,2918 |
-| GS3 | −1786,7790 |
+`bugs/BUG-0027-repro/repro.py` exits 0: with the default start the VAR(2) is
+above its nested VAR(1). The C's `tests/rutas` pins the four monetary
+systems by route U from both starts and without `-start`.

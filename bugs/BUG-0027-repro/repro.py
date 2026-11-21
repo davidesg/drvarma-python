@@ -9,6 +9,10 @@ Files: art's .pre of the US monetary VAR 1990:01-2007:12 (IPI m07, IPC m07,
 WTI m03, GS1 m01), in this order.
 
     python3 bugs/BUG-0027-repro/repro.py      # exits 1 while open (~5 min)
+
+Fixed in 0.4.0: the default start with q = 0 is the least squares ("ols"),
+as in the C, and the VAR(2) reaches -1741.2755. Asking for start="zero"
+still stalls: a known limit, not the default's path.
 """
 import os, sys, time
 from drvarma.ladder import Ladder

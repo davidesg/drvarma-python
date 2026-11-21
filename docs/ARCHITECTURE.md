@@ -19,7 +19,7 @@ between them.
 | the series' model | its own, read and cast by fue (`fue.load`, `fue.cast_us`; C: `lib/fuepre`, `lib/prewhiten`, `lib/fuedet`) | drvarma's transform (`transform.c` / `transform.py`) |
 | C | `escalera.c` | `drvarma.c` |
 | port | `ladder.py` (`Ladder`, `LadderSeries`) | `model.py`, `estimate_py.py` |
-| default start | zero cross terms (§5) | `init_varma`: OLS of the VAR, MA at zero; `-twostep` adds a diagonal Hannan-Rissanen |
+| default start | `ols` with q = 0, zero cross terms with an MA (§5) | `init_varma`: OLS of the VAR, MA at zero; `-twostep` adds a diagonal Hannan-Rissanen |
 
 `-split` (`split.c`, `ladder.split`) turns a multivariate `.inp` into fue files
 for the ladder.
@@ -100,8 +100,8 @@ the diagonal system is evaluated at those optima. The gate makes two claims:
 
 | start | seeds | C | port |
 |---|---|---|---|
-| `zero` (default) | nothing beyond the univariate models | yes | yes |
-| `ols` | the original drvarma's `init_varma` in the ladder. Least squares of the VAR(p) on the centred stationary series: cross AR = +Φ_k; Q's covariances = r_ij·√(Q_ii·Q_jj), with the gate's Q_ii; cross MA at zero | `-start ols` | `start="ols"` (API only) |
+| `zero` (the default with q > 0, or with no cross AR) | nothing beyond the univariate models | yes | yes |
+| `ols` (the default with q = 0) | the original drvarma's `init_varma` in the ladder. Least squares of the VAR(p) on the centred stationary series: cross AR = +Φ_k; Q's covariances = r_ij·√(Q_ii·Q_jj), with the gate's Q_ii; cross MA at zero | `-start ols` | `start="ols"` (API only) |
 | `preliminary` | Jenkins and Alavi's preliminary estimates of the cross terms (AR by Yule-Walker, MA from the residuals' cross covariances) | — | API |
 | `echelon` | Lütkepohl and Poskitt's stage II least squares: own, cross, A₀, Q (the echelon form's default) | — | API |
 
