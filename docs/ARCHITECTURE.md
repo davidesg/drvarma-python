@@ -157,14 +157,21 @@ checks the port's numbers in `tests/escalera/pruebas.sh`.
 | the `ols` start | the monetary VAR(2) at −1741.275477 in both, 46 parameters within 6e-6; route V, the gas furnace VARMA(1,1), at −2838.983807 |
 | fue's Box-Cox with λ = 1 | in both, since atsw-gui lib/prewhiten BUG-0002 |
 
-**Only in one engine:**
+**Only in one engine.** No new calculus is born only in the port: this list
+can only shrink.
 
-| feature | C | port |
-|---|---|---|
-| `preliminary`, `echelon` starts; the echelon form, `rows`, `factor_test`; `cross="residual"` | — | yes |
-| `-start`, `-zero` on the command line | yes | API only |
-| `-irfboot` (parametric bootstrap with refits) and delta-method IRF standard errors | yes | — (`irf_fevd_bands`: Monte Carlo from N(θ̂, cov), no refits) |
-| `refit`, `forecast_given`, `identification_mv`, the HTML report | — | yes |
+| feature | C | port | what happens to it |
+|---|---|---|---|
+| `cross="residual"` (Jenkins and Alavi's 3.22 form of the cross MA) | — | yes | a model, kept; to be taken to the C. Results with it are the port's only |
+| `start="preliminary"`, `rows=` | — | deprecated | removed in the next version |
+| `own="spec"`, `own="free"` (the echelon form on files that carry the own part, or replaced before the gate) | — | yes | the same models as `route="v"`; kept for now |
+| the search's later passes, with the factors of a joint fit (`search_row_factors`) | first pass only | yes | to be taken to the C |
+| `-irfboot` (parametric bootstrap with refits), delta-method IRF standard errors | yes | — (`irf_fevd_bands`: Monte Carlo, no refits) | to be ported |
+| `refit`, `forecast_given`, `identification_mv`, the HTML report | — | yes | sima's utilities, not engine calculus |
+
+**Presentation only:** an intervention's date in a coefficient's name
+(`step 8/1990` here, `step 8 1990` in the C; a selector takes either), and
+the place of the `AR0` terms in the table (first here, last in the C).
 
 **Known divergences:**
 - the deseason phase (port BUG-0001, open: live in the C);

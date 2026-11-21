@@ -116,7 +116,9 @@ def test_the_ladder_starts_at_the_stage2_estimates(tmp_path):
     A, M = system_10()
     y = simulate(A, M, 400, seed=7)
     f = specs(tmp_path, y, [(1, 1), (0, 0)])
-    L = Ladder(f, echelon=(1, 0))                # the form's default start
+    # the form's default start is zero, as the C's (0.4.0): stage II is asked for
+    assert Ladder(f, echelon=(1, 0)).start == "zero"
+    L = Ladder(f, echelon=(1, 0), start="echelon")
     assert L.start == "echelon"
     r = L.fit()
     assert L.start_used.startswith("echelon")
