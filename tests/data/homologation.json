@@ -2,7 +2,7 @@
  "_": "The record of the homologation with the C engine. tests/test_c_oracle.py reads it; docs/HOMOLOGATION.md explains it.",
  "c_repository": "davidesg/atsw-gui",
  "c_path": "engines/drvarma",
- "c_commit": "fe41dade8b3ae87d7269fac7b3b6cfc8b8b6ef3d",
+ "c_commit": "d38a71f0f3e13d5a296cf128bf856cbaad5aa1e9",
  "date": "2026-11-22",
  "cases": [
   {
