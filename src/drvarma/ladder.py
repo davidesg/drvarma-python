@@ -314,7 +314,7 @@ class LadderSeries:
         (phi, theta, mu), (fphi, ftheta, _mu) = out
         return phi, theta, fphi, ftheta, mu, 0
 
-    def with_regular(self, k, zeros=None):
+    def with_regular(self, k, zeros=None, kq=None):
         """A copy whose regular ARMA is a free AR(k)/MA(k), the echelon row's
         own part, the rest of the model (the row factor, the deterministic
         terms, the differences, the mean) as the file has it. It starts at
@@ -326,13 +326,15 @@ class LadderSeries:
         phi, theta, _f, _g, _mu, _if = self.split_polynomials()
         m2 = copy.copy(self.model)
         zeros = zeros or {}
+        deg = {"ar": int(k), "ma": int(k if kq is None else kq)}   # route V: AR(p), MA(q)
         for kind in ("ar", "ma"):
-            bad = [lag for lag in zeros.get(kind, ()) if not 1 <= int(lag) <= k]
+            bad = [lag for lag in zeros.get(kind, ()) if not 1 <= int(lag) <= deg[kind]]
             if bad:
                 raise LadderError(f"{self.name}: own {kind.upper()} lag {bad[0]} is "
-                                  f"outside 1..{k}")
+                                  f"outside 1..{deg[kind]}")
 
         def seed(c, kind):
+            k = deg[kind]
             c = list(map(float, c)) if len(c) <= k else []
             z = {int(lag) for lag in zeros.get(kind, ())}
             c = [0.0 if lag in z else v
@@ -409,6 +411,20 @@ class LadderSeries:
             new.x[-1] = self.x[-1]
         new.nobs = self.nobs
         return new
+
+    def own_free_lags(self):
+        """(AR lags, MA lags) of the regular part that are free: all of them,
+        less those a single regular operator holds at zero (the own zeros of
+        route V and of the echelon form)."""
+        ar, ma = self.regular_orders()
+        m = self.model
+        out = []
+        for deg, facs, frees in ((ar, m.ar, m.ar_free), (ma, m.ma, m.ma_free)):
+            lags = set(range(1, deg + 1))
+            if len(facs) == 1 and frees is not None and frees[0] is not None:
+                lags = {k + 1 for k, f in enumerate(frees[0]) if f}
+            out.append(lags)
+        return out[0], out[1]
 
     def regular_orders(self):
         """The degrees of the regular ARMA: in the echelon form, the series'
@@ -655,6 +671,19 @@ class Ladder:
     series : list of LadderSeries (``load``) or of paths
     p, q : cross orders (the off-diagonal dynamics)
     diagcov : diagonal innovation covariance
+    route : ``"u"`` (default), the ladder: each series keeps its univariate
+        ARMA on the diagonal and the cross terms are added. ``"v"``, the
+        vector first (Tiao and Box), through the same gate: the univariate
+        models are the yardstick and give the mean, the deterministic terms
+        and the stationary series; past the gate each series' regular ARMA is
+        replaced by a free AR(p)/MA(q) -- the whole VARMA(p,q) matrix is free
+        -- and its seasonal and fixed-frequency factors multiply its whole
+        row, cross terms included. The LR is then against the same model
+        without cross terms; ``route_notes`` says when p or q is below a
+        univariate's regular order; ``start="ols"`` (the default with q = 0)
+        seeds the whole matrix; ``own_zeros`` holds own lags at zero;
+        ``factor_test()`` checks the row factor. Not with ``fixarma``. The
+        C's ``-route v``.
     redet : re-estimate every deterministic term (default: fixed); it is
         ``det="all"``
     det : which deterministic terms are re-estimated jointly (the C's
@@ -753,10 +782,31 @@ class Ladder:
                  fixarma=False, method=1, estwin=None, hessian="fd", lik="elf",
                  links=None, start=None, cross="additive", zeros=None,
                  rows=None, echelon=None, own="spec", support=None,
-                 own_zeros=None, det=None, detbase=None):
+                 own_zeros=None, det=None, detbase=None, route="u"):
         _warn_if_no_engine()
         if series and not isinstance(series[0], LadderSeries):
             series = load(series)
+        if route not in ("u", "v"):
+            raise ValueError("route must be 'u' or 'v'")
+        self.route = route
+        self._v_on = False                 # route V: the substitution is done
+        self.route_notes = []
+        if route == "v":
+            if fixarma:
+                raise LadderError("route='v' with fixarma: on route V the own ARMA is "
+                                  "the vector's, free by definition; there is no "
+                                  "univariate ARMA to hold")
+            if echelon is None and int(p) == 0 and int(q) == 0:
+                raise LadderError("route='v' needs p or q above zero: it is the full "
+                                  "VARMA(p,q)")
+            if own == "free":
+                raise LadderError("route='v' replaces the own part past the gate; "
+                                  "own='free' replaces it before: give one of them")
+            unknown = set(own_zeros or {}) - {s.name for s in series}
+            if unknown:
+                raise LadderError(f"own_zeros: no series {sorted(unknown)[0]}")
+            self._own_zeros_v = dict(own_zeros or {})
+            own_zeros = None
         if own not in ("spec", "free"):
             raise ValueError("own must be 'spec' or 'free'")
         if own == "free":
@@ -829,11 +879,11 @@ class Ladder:
         if self.echelon is not None:
             self.p = self.q = max(self.echelon)
             rows = {s.name: (k, k) for s, k in zip(self.series, self.echelon)}
-            if self._support is not None:
-                rows = {s.name: tuple(max([k + 1 for kd, k, i, _j in self._support
-                                           if kd == kind and i == r] + [0])
-                                      for kind in ("AR", "MA"))
-                        for r, s in enumerate(self.series)}
+        if self._support is not None:       # the rows' orders are the support's
+            rows = {s.name: tuple(max([k + 1 for kd, k, i, _j in self._support
+                                       if kd == kind and i == r] + [0])
+                                  for kind in ("AR", "MA"))
+                    for r, s in enumerate(self.series)}
         self.rows = self._parse_rows(rows)
         if self.rows is not None:
             self.p = int(max(self.rows[:, 0]))
@@ -949,10 +999,10 @@ class Ladder:
     def _allowed(self, kind, k, i, j):
         """Is the cross slot (kind, lag k + 1, i <- j) in the model's
         structure (before zeros)? k = -1 is the contemporaneous AR0."""
-        if self.echelon is None:
-            return 0 <= k < self._row_order(kind, i)
         if self._support is not None:
             return (kind, k, i, j) in self._support
+        if self.echelon is None:
+            return 0 <= k < self._row_order(kind, i)
         n, nt = self.echelon, self._index_table()
         if kind == "MA":
             return 0 <= k < n[i]
@@ -1166,7 +1216,8 @@ class Ladder:
         self.unpack(v)
         act, m = self._act, len(self._act)
         polys, ws, facs = [], [], []
-        ech = self.echelon is not None and bool(self._cp or self._cq)
+        ech = ((self.echelon is not None or self._v_on)
+               and bool(self._cp or self._cq))
         for i in act:
             s = self.series[i]
             if ech:     # the regular part on the diagonal, the rest a row factor
@@ -1427,6 +1478,8 @@ class Ladder:
         seed), then the requested model."""
         m = len(self.series)
         self.run_gate()
+        if self.route == "v" and not self._v_on:
+            self._substitute()             # past the gate: the vector's own part
         self._set_structure(list(range(m)), 0, 0, True)
         diag = self._fit()
         if diag.ifault:
@@ -1443,10 +1496,104 @@ class Ladder:
             elif self.start == "echelon":
                 self._echelon_start()
             elif self.start == "ols":
-                self._ols_start()
+                if self._v_on:
+                    self._ols_start_v()
+                else:
+                    self._ols_start()
             self.x_start = self.pack()    # where the requested fit starts
             self.result = self._fit()
         return self.result
+
+    # -- route V ------------------------------------------------------------- #
+    def _substitute(self):
+        """Route V, past the gate: each series' regular ARMA becomes a free
+        AR(p)/MA(q), p and q the vector's (or the row's index in the echelon
+        form), so the whole VARMA matrix is free. What is left of the
+        univariate model -- its seasonal and fixed-frequency factors --
+        multiplies its whole row (the cast). The own part starts at the
+        univariate's regular polynomials when they fit, at zero otherwise.
+        The C's -route v (escalera.c, v_sustituye)."""
+        new, self.univariate_orders = [], []
+        for r, s in enumerate(self.series):
+            pa = int(self.echelon[r]) if self.echelon is not None else self.p
+            qa = int(self.echelon[r]) if self.echelon is not None else self.q
+            ar, ma = s.regular_orders()
+            self.univariate_orders.append((ar, ma))
+            if ar > pa:
+                self.route_notes.append(
+                    f"{s.name}'s univariate model has a regular AR({ar}): this model, "
+                    f"with {'its index' if self.echelon is not None else 'p'} = {pa}, "
+                    "does not contain it.")
+            if ma > qa:
+                self.route_notes.append(
+                    f"{s.name}'s univariate model has a regular MA({ma}): this model, "
+                    f"with {'its index' if self.echelon is not None else 'q'} = {qa}, "
+                    "does not contain it.")
+            new.append(s.with_regular(pa, self._own_zeros_v.get(s.name), qa))
+        self.series = new
+        self._v_on = True
+
+    def _ols_start_v(self):
+        """Route V's seed: the WHOLE matrix by least squares. The own part is
+        the vector's, so the original drvarma's start (``init_varma``) holds
+        whole: the least squares of the VAR(p) give the diagonal and the cross
+        terms, and the MA, own and cross, starts at zero. With a row factor,
+        row a is fitted on every series filtered by (F_a/G_a)(B), that row's.
+        Q: the variances are the exact diagonal fit's (the model without cross
+        terms); the covariances, the least-squares residuals' correlation on
+        that scale. A point elf rejects goes back to the model without cross
+        terms. The C's start_ols_v (escalera.c), the same arithmetic."""
+        from .echelon import row_filter
+        m, p = len(self.series), self._cp
+        _mu, _phi, _th, _qq, W, _ifa = self.cast(self.pack())
+        W = np.asarray(W, float)
+        W = W - W.mean(axis=0)
+        n = W.shape[0]
+        x0 = self.pack()
+        facs = [s.split_polynomials()[2:4] for s in self.series]
+        dmax = max([len(f) for f, _g in facs] + [0])
+        t0 = p + dmax
+        if p < 1 or n - t0 <= m * p + 1:
+            self.start_used = "zero (no least squares: p = 0 or too few observations)"
+            return
+        E = np.empty((n - t0, m))
+        Phi = np.zeros((p, m, m))
+        for a in range(m):
+            f, g = facs[a]
+            Z_all = row_filter(W, f, g) if (len(f) or len(g)) else W
+            Z = np.hstack([Z_all[t0 - k:n - k] for k in range(1, p + 1)])
+            y = Z_all[t0:, a]
+            b = np.linalg.solve(Z.T @ Z, Z.T @ y)
+            E[:, a] = y - Z @ b
+            for k in range(p):
+                Phi[k, a] = b[k * m:(k + 1) * m]
+        names, v = self.names(), self.pack()
+        for a, s in enumerate(self.series):
+            for k in range(p):
+                if f"phi_{s.name}[B^{k + 1}]" in names:
+                    v[names.index(f"phi_{s.name}[B^{k + 1}]")] = Phi[k, a, a]
+            for k in range(self._cq):
+                if f"theta_{s.name}[B^{k + 1}]" in names:
+                    v[names.index(f"theta_{s.name}[B^{k + 1}]")] = 0.0
+        self.unpack(v)
+        for kind, k, i, j in self._slots():
+            if kind == "AR" and k >= 0:
+                self._put(kind, k, i, j, Phi[k][i, j])
+        S = E.T @ E / E.shape[0]
+        act = self._act
+        if not self._cdiag:
+            Q = [1.0] + [math.exp(self._lvar[i]) for i in act[1:]]
+            for a in range(1, len(act)):
+                for b in range(a):
+                    r = S[act[a], act[b]] / math.sqrt(S[act[a], act[a]] * S[act[b], act[b]])
+                    self._qcov[act[a], act[b]] = r * math.sqrt(Q[a] * Q[b])
+        if self._admissible():
+            self.start_used = "ols, the whole matrix"
+        else:
+            self.unpack(x0)
+            self._cAR[:] = 0.0; self._cMA[:] = 0.0; self._cA0[:] = 0.0; self._qcov[:] = 0.0
+            self.start_used = ("the model without cross terms (the ols start was "
+                               "not admissible)")
 
     def _preliminary(self, diag):
         """Jenkins and Alavi's preliminary estimates for the cross terms and Q
@@ -1721,9 +1868,12 @@ class Ladder:
         from scipy.stats import chi2
         if self.result is None:
             raise LadderError("factor_test needs a previous fit()")
-        if self.echelon is None or not any(s.has_row_factor() for s in self.series):
-            raise LadderError("factor_test: the echelon form has no row factor "
-                              "(seasonal or fixed-frequency factors) to test")
+        if not (self.echelon is not None or self._v_on):
+            raise LadderError("factor_test is route V's (route='v') and the echelon "
+                              "form's: it tests the row factor")
+        if not any(s.has_row_factor() for s in self.series):
+            raise LadderError("factor_test: no series has seasonal or fixed-frequency "
+                              "factors: there is no row factor to test")
         if self.p == 0 and self.q == 0:
             raise LadderError("factor_test: indices all 0, no cross terms: each factor "
                               "is its univariate model's, to check there (art)")
@@ -1747,10 +1897,13 @@ class Ladder:
             if not s.has_row_factor():
                 series.append(s.copy())
                 continue
-            ar, ma = s.regular_orders()
+            # the lags the product reaches: the factor's, from lag 0 and from
+            # each FREE own lag. An own lag held at zero stays at zero in the
+            # alternative: the test is of the factor, not of that zero.
+            ar, ma = s.own_free_lags()
             series.append(s.without_row_factor(
-                {l + jj for l in range(ar + 1) for jj in fa} - {0},
-                {l + jj for l in range(ma + 1) for jj in fm} - {0}))
+                {l + jj for l in ({0} | ar) for jj in fa} - {0},
+                {l + jj for l in ({0} | ma) for jj in fm} - {0}))
         free = Ladder(series, echelon=self.echelon, support=support,
                       diagcov=self.diagcov, det=self.det, detbase="file",
                       fixarma=self.fixarma,
@@ -2047,7 +2200,10 @@ def write_report(L, path, forecasts=None, recursive=None):
     r = L.result
     S = L.series
     out = [f"Program          : drvarma-python {__version__} (ladder mode: fue files)",
-           f"Model            : VARMA with univariate diagonals; cross orders p={L.p} q={L.q}"
+           (f"Model            : VARMA({L.p},{L.q}), route V: the whole matrix free, the "
+            "univariates' seasonal factors on the rows"
+            if getattr(L, "_v_on", False) and L.echelon is None else
+            f"Model            : VARMA with univariate diagonals; cross orders p={L.p} q={L.q}")
            + ("; cross MA in the residual-model form (Jenkins-Alavi 3.22)"
               if getattr(L, "cross", "additive") == "residual" else ""),
            *([f"Cross links      : " + ", ".join(
@@ -2066,7 +2222,10 @@ def write_report(L, path, forecasts=None, recursive=None):
                for kind, k, i, j in L.zeros))] if getattr(L, "zeros", None) else []),
            f"Innovation cov.  : {'diagonal' if L.diagcov else 'full'}",
            f"Deterministics   : {L.det_report()}",
-           f"Univariate ARMA  : {'fixed at the file' if L.fixarma else 're-estimated jointly'}",
+           "Univariate ARMA  : " + ("replaced by the vector's (route V)"
+                                    if getattr(L, "_v_on", False)
+                                    else "fixed at the file" if L.fixarma
+                                    else "re-estimated jointly"),
            f"Likelihood       : {_lik_label(L.lik)}",
            f"Standard errors  : {r.se_method or L.hessian}",
            ""]
@@ -2107,7 +2266,10 @@ def write_report(L, path, forecasts=None, recursive=None):
                    if c['one_only'] else "")]
     if not (L.p == 0 and L.q == 0 and L.diagcov):
         lr, df, pv = L.lr_test()
-        out += ["", "Cross dynamics against the diagonal system (the univariates):",
+        out += ["", ("Cross dynamics against the same model without cross terms (route V;\n"
+                     "not against the univariate models, which are the yardstick):"
+                     if getattr(L, "_v_on", False) else
+                     "Cross dynamics against the diagonal system (the univariates):"),
                 f"  logL diagonal {L.logL_diag:.6f}, logL full {r.logL:.6f}",
                 f"  LR = {lr:.4f}   df = {df}   p-value = {pv:.4f}"]
     out += ["", f"Innovation covariance Sigma = sigma2 * Q  (sigma2 = {r.sigma2:.8g}):"]
@@ -2189,6 +2351,7 @@ def main(argv):
     ap.add_argument("-det", default=None)
     ap.add_argument("-detbase", choices=("file", "gate"), default=None)
     ap.add_argument("-fixarma", action="store_true")
+    ap.add_argument("-route", choices=("u", "v"), default="u")
     ap.add_argument("-m", type=int, default=1, dest="method")
     ap.add_argument("-o", default=None, dest="name")
     ap.add_argument("-forecast", type=int, default=None)
@@ -2211,7 +2374,7 @@ def main(argv):
     name = a.name or "_".join(os.path.splitext(os.path.basename(f))[0] for f in files)
     try:
         L = Ladder(files, p, q, diagcov=a.diagcov, redet=a.redet, det=a.det,
-                   detbase=a.detbase, fixarma=a.fixarma,
+                   detbase=a.detbase, fixarma=a.fixarma, route=a.route,
                    method=a.method, estwin=a.estwin, hessian=a.hessian,
                    lik=a.lik, links=a.links)
         L.fit()
