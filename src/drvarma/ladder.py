@@ -859,12 +859,25 @@ class Ladder:
         self.links = self._parse_links(links)
         if start is None:
             # as the C: the original drvarma's least squares with q = 0, zero
-            # with an MA (no start seeds the MA; BUG-0027). The echelon form
-            # keeps its own for now.
-            start = ("echelon" if echelon is not None
+            # with an MA (BUG-0027). The echelon form starts at zero too: its
+            # stage II start is asked for (start="echelon"). With the indices
+            # the search chooses the two reach the same optimum; with larger
+            # ones stage II can start far worse (atsw-gui #215).
+            start = ("zero" if echelon is not None
                      else "ols" if (int(q) == 0 and int(p) > 0) else "zero")
         if start not in ("zero", "preliminary", "echelon", "ols"):
             raise ValueError("start must be 'zero', 'preliminary', 'echelon' or 'ols'")
+        if start == "preliminary":
+            import warnings
+            warnings.warn("start='preliminary' is deprecated and will be removed: it is "
+                          "not in the C engine and it gained over 'ols' and 'zero' in no "
+                          "measured case. Use start='ols'.", DeprecationWarning, stacklevel=2)
+        if rows is not None:
+            import warnings
+            warnings.warn("rows= is deprecated and will be removed: it is not in the C "
+                          "engine, and with unequal orders it is misspecified "
+                          "(docs/STUDY-echelon-rows.md). Use echelon=.",
+                          DeprecationWarning, stacklevel=2)
         self.start = start
         self.start_used = None
         if cross not in ("additive", "residual"):
@@ -982,7 +995,8 @@ class Ladder:
             raise LadderError(f"echelon: p and q are max(n) = {max(n)}; give 0, 0")
         for s, k in zip(self.series, n):
             ar, ma = s.regular_orders()
-            if self._support is None and (ar > k or ma > k):
+            # on route V the own part is replaced past the gate: no check here
+            if self.route != "v" and self._support is None and (ar > k or ma > k):
                 raise LadderError(
                     f"echelon: {s.name}'s regular ARMA has degrees ({ar}, {ma}) and its "
                     f"index is {k}. The regular part is the row's own, of degree <= "

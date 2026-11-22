@@ -72,6 +72,27 @@ give the mean, the deterministic terms and the stationary series.
   (−924.846133), the monetary VAR(1), the gas furnace VAR(6), the row
   factor's test and the own zeros.
 
+**The echelon form, as the C's `-echelon`** (atsw-gui #213–#217).
+- `Ladder(files, echelon=n, route="v")` is the C's `-echelon`: the univariate
+  models through the gate, then each row's own part replaced by a free
+  AR(n_r)/MA(n_r). `own="free"` (the replacement before the gate) gives the
+  same model and stays for now; `own="spec"` (files that already carry the
+  own part) too.
+- **Changed: the echelon form's default start is zero**, as in the C. Stage
+  II is asked for with `start="echelon"`. With the indices the search
+  chooses the two reach the same optimum; with larger ones stage II can
+  start far worse (IPI, IPC and WTI at (2,1,1): logL −1421 against −858 from
+  zero, in both engines).
+- **Deprecated, to be removed in the next version**: `start="preliminary"`
+  and `rows=`. Neither is in the C. `preliminary` gained over `ols` and
+  `zero` in no measured case; `rows` is misspecified with unequal orders.
+  `cross="residual"` (Jenkins and Alavi's 3.22 form) stays, only here for
+  now: it is a model, not a start, and it is to be taken to the C.
+- `tests/test_homologation_c_echelon.py`: the C's numbers to 1e-5 and its
+  iteration counts, at (1,0), (1,1), (2,1) and (1,2) for IPC and WTI, with
+  three and four series, with the stage II start, with the row factor's test
+  on unequal indices and with own zeros.
+
 **`start="ols"`: the original drvarma's start, in the ladder** (the C's
 `-start ols`, escalera.c; atsw-gui #199). It is `init_varma` of the `.inp`
 path: least squares of the VAR(p) on the stationary series. It is the

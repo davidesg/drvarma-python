@@ -191,7 +191,7 @@ def test_a_seasonal_system_is_recovered(tmp_path):
     rows filtered by their factors, near the truth; exact ML from it, every
     estimate within 3 standard errors, the factors included."""
     y = simulate(1500, seed=11)
-    L = Ladder(system_specs(tmp_path, y), echelon=(1, 0))
+    L = Ladder(system_specs(tmp_path, y), echelon=(1, 0), start="echelon")
     r = L.fit()
     assert L.start_used == "echelon"
     st = L.echelon_stage2
