@@ -69,6 +69,10 @@ def test_the_port_gives_the_recorded_number(case):
     r = L.fit()
     assert r.logL == pytest.approx(case["logL"], abs=1e-5)
     assert L.npar() == case["npar"]
+    if "nit" in case:
+        # a stop on the MA wall is not a maximum: the same point is reached
+        # only by the same path, so the iterations are part of the record
+        assert r.nit == case["nit"]
 
 
 @pytest.mark.parametrize("case", REC["cases"], ids=IDS)
@@ -87,6 +91,9 @@ def test_the_c_gives_the_recorded_number(case):
     assert m and n, "the C did not estimate"
     assert float(m.group(1)) == pytest.approx(case["logL"], abs=1e-5)
     assert int(n.group(1)) == case["npar"]
+    if "nit" in case:
+        it = re.search(r"OPTIMIZER .* after (\d+) iterations", txt)
+        assert it and int(it.group(1)) == case["nit"]
 
 
 def test_the_c_at_hand_is_at_the_recorded_commit():

@@ -44,6 +44,20 @@ deterministic terms), `test_homologation_c_route_v.py` (route V) and
 `test_homologation_c_echelon.py` (the echelon form). The C's battery pins
 the port's numbers in turn (`engines/drvarma/tests/escalera/pruebas.sh`).
 
+## On the MA wall, the iterations too
+
+A VARMA with an MA can have no interior maximum: the search runs along the
+invertibility wall and stops there. The point where it stops is then not a
+property of the model but of the path, and two engines reach the same one
+only if they take the same steps. So for those cases the record also keeps
+the number of iterations (`nit`), and both sides are checked against it.
+
+What that needed in the port (BUG-0030): the C's cast (no reciprocal of an
+MA(1) beyond the unit circle: the C refuses the point), the C's order of the
+parameters, and the C's arithmetic in the ols seeds. A difference in the
+sixteenth digit is enough to part the paths there; one in the cast is not
+rounding at all.
+
 ## When the C changes
 
 1. Build the C at the new commit and run the port's suite with `ATSW_GUI`

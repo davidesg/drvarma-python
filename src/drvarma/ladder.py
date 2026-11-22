@@ -52,6 +52,28 @@ def _lik_label(lik):
 MA_WALL_TOL = 5e-5
 
 
+def _cast_us(x, spec):
+    """fue's cast of one series, WITHOUT fue's flip (BUG-0030).
+
+    fue takes the invertible form of a regular MA(1) with |theta| > 1 before
+    it builds the polynomial (fue.c's rule). The C's ladder does not
+    (escalera.c shootx_esc): it builds the polynomial from the parameters as
+    they are, and the point is refused if the system's MA operator is not
+    invertible (chekma). With the flip the port evaluated points the C
+    rejects, and past the first of them the two searches are not the same.
+    """
+    from fue.cast_us import cast_us_py
+    try:
+        return cast_us_py(x, spec, flip=False)
+    except TypeError as e:
+        if "flip" not in str(e):
+            raise
+        raise LadderError(
+            "drvarma's ladder needs fue >= 0.1.23 (cast_us_py(flip=False)): "
+            "the installed fue takes the invertible form of an MA(1) in its "
+            "cast, which the C's ladder does not") from None
+
+
 def _ma_boundary(theta):
     """How many MA inverse roots sit on the wall, and of how many.
 
@@ -202,10 +224,9 @@ class LadderSeries:
 
     def stationary(self):
         """w of the current sample, with the current deterministic terms."""
-        from fue.cast_us import cast_us_py
         key = (self.nobs, tuple(self.x[:self.n_det]))
         if self._w_cache is None or self._w_cache[0] != key:
-            *_, w, ifault = cast_us_py(self.x, self.est_spec())
+            *_, w, ifault = _cast_us(self.x, self.est_spec())
             if ifault:
                 return None
             self._w_cache = (key, np.asarray(w, float))
@@ -228,8 +249,7 @@ class LadderSeries:
 
     def polynomials(self):
         """(phi, theta, mu, ifault): the expanded ARMA of the series."""
-        from fue.cast_us import cast_us_py
-        p, q, phi, theta, mu, _w, ifault = cast_us_py(self.x[self.n_det:],
+        p, q, phi, theta, mu, _w, ifault = _cast_us(self.x[self.n_det:],
                                                       self._poly_spec)
         return np.asarray(phi, float), np.asarray(theta, float), float(mu), int(ifault)
 
@@ -299,7 +319,6 @@ class LadderSeries:
         """(phi, theta, fphi, ftheta, mu, ifault): the regular ARMA, the row
         factor (the seasonal and fixed-frequency factors, expanded) and the
         mean. phi * fphi and theta * ftheta are ``polynomials()``'s."""
-        from fue.cast_us import cast_us_py
         if not self.has_row_factor():
             phi, theta, mu, ifault = self.polynomials()
             return phi, theta, np.zeros(0), np.zeros(0), mu, ifault
@@ -307,7 +326,7 @@ class LadderSeries:
         x = self.x[self.n_det:]
         out = []
         for part in ("reg", "fac"):
-            _p, _q, phi, theta, mu, _w, ifault = cast_us_py(x[masks[part]], specs[part])
+            _p, _q, phi, theta, mu, _w, ifault = _cast_us(x[masks[part]], specs[part])
             if ifault:
                 return None, None, None, None, None, int(ifault)
             out.append((np.asarray(phi, float), np.asarray(theta, float), float(mu)))
@@ -358,7 +377,6 @@ class LadderSeries:
     def factor_support(self):
         """(AR lags, MA lags) where the row factor can be non-zero, lag 0
         included: its structure, read by expanding it at arbitrary values."""
-        from fue.cast_us import cast_us_py
         if not self.has_row_factor():
             return {0}, {0}
         specs, masks = self._split_specs()
@@ -371,7 +389,7 @@ class LadderSeries:
         for _ in range(200):
             x = x0.copy()
             x[:k] = rng.uniform(0.15, 0.45, k) * rng.choice([-1.0, 1.0], k)
-            _p, _q, fphi, ftheta, _mu, _w, ifault = cast_us_py(x, specs["fac"])
+            _p, _q, fphi, ftheta, _mu, _w, ifault = _cast_us(x, specs["fac"])
             if ifault:
                 continue
             ar |= {j + 1 for j, c in enumerate(fphi) if abs(c) > 1e-12}
@@ -440,44 +458,6 @@ class LadderSeries:
         k = (p0 - 1) + (obs - 1)
         return y0 + k // f, k % f + 1
 
-    def canonicalize(self):
-        """Put ``x`` in the INVERTIBLE form, with fue's own rule (BUG-0007).
-
-        ``cast_us_py`` flips a regular MA(1) factor with |theta| > 1 to
-        1/theta, and a fixed-frequency MA with c2 < -1 to 1/c2, before it
-        builds the polynomial. The likelihood is therefore the same at theta
-        and at 1/theta, and the optimiser may stop on either side. The model is
-        the flipped one, so that is the value to report. Returns True if an
-        entry changed.
-        """
-        m = self.model
-        k = sum(int(bool(f)) for itv in m.interventions for f in itv.omega_free) \
-            + sum(int(bool(f)) for itv in m.interventions for f in itv.delta_free)
-
-        def nfree(factors, frees):
-            n = 0
-            for i, factor in enumerate(factors):
-                free = frees[i] if frees is not None else None
-                n += sum(1 for j in range(len(factor)) if free is None or free[j])
-            return n
-        k += nfree(m.ar, m.ar_free) + nfree(m.ar_s, m.ar_s_free)
-        changed = False
-        for i, factor in enumerate(m.ma):                 # regular MA factors
-            free = m.ma_free[i] if m.ma_free is not None else None
-            for j in range(len(factor)):
-                if free is None or free[j]:
-                    if len(factor) == 1 and abs(self.x[k]) > 1.0:
-                        self.x[k] = 1.0 / self.x[k]; changed = True
-                    k += 1
-        k += nfree(m.ma_s, m.ma_s_free)
-        k += sum(1 for ff in m.ar_f if ff.free)
-        for ff in m.ma_f:                                 # fixed-frequency MA
-            if ff.free:
-                if self.x[k] < -1.0:
-                    self.x[k] = 1.0 / self.x[k]; changed = True
-                k += 1
-        return changed
-
     def n_arma(self):
         """The series' own ARMA coefficients, those its .pre estimated: the
         block of x between the deterministic terms and the mean."""
@@ -511,6 +491,52 @@ class LadderSeries:
         if self.has_mu:
             mask[-1] = True
         return mask
+
+    def c_layout(self):
+        """The positions of x as the C's ladder orders them (escalera.c
+        esc_pack; lib/fuepre pack_ar_factors, pack_ma_factors; det_pack):
+        ``(arma, det, mu)``, three lists of indices into x.
+
+        x is in fue's order: every omega, every delta, then ar, ar_s, ma,
+        ma_s, ar_f, ma_f, mu. The C packs each deterministic variable's omegas
+        and then its deltas, and the AR side whole (ar, ar_s, ar_f) before the
+        MA side (ma, ma_s, ma_f). The same numbers in another order; the
+        ladder's vector follows the C so that both optimisers walk the
+        parameters in the same sequence (BUG-0030)."""
+        m = self.model
+        pos = 0
+        det, arma = [], []
+        for a, itv in enumerate(m.interventions):
+            for j, f in enumerate(itv.omega_free):
+                if f:
+                    det.append(((a, 0, j), pos)); pos += 1
+        for a, itv in enumerate(m.interventions):
+            for j, f in enumerate(itv.delta_free):
+                if f:
+                    det.append(((a, 1, j), pos)); pos += 1
+
+        def fac(factors, frees, side):
+            nonlocal pos
+            for k, factor in enumerate(factors):
+                free = frees[k] if frees is not None else None
+                for j, _v in enumerate(factor):
+                    if free is None or free[j]:
+                        arma.append(((side, k, j), pos)); pos += 1
+        fac(m.ar, m.ar_free, 0)
+        fac(m.ar_s, m.ar_s_free, 1)
+        fac(m.ma, m.ma_free, 3)
+        fac(m.ma_s, m.ma_s_free, 4)
+        for k, ff in enumerate(m.ar_f):
+            if ff.free:
+                arma.append(((2, k, 0), pos)); pos += 1
+        for k, ff in enumerate(m.ma_f):
+            if ff.free:
+                arma.append(((5, k, 0), pos)); pos += 1
+        mu = [pos] if self.has_mu else []
+        if pos + len(mu) != self.x.size:
+            raise LadderError(f"{self.name}: the model's free coefficients "
+                              f"({pos + len(mu)}) are not x's ({self.x.size})")
+        return ([i for _k, i in sorted(arma)], [i for _k, i in sorted(det)], mu)
 
     def param_names(self):
         """Names in fue's order, one per entry of x."""
@@ -1182,10 +1208,18 @@ class Ladder:
             n += a * (a - 1) // 2
         return n
 
-    def pack(self):
-        v = []
+    def _layout(self):
+        """The own parameters in the C's order (esc_pack): the ARMA of every
+        series, then the deterministic terms of every series, then the means.
+        A list of (series, position in its x)."""
+        out = [[], [], []]
         for i, mk in zip(self._act, self._masks()):
-            v.extend(self.series[i].x[mk])
+            for part, idx in zip(out, self.series[i].c_layout()):
+                part.extend((i, k) for k in idx if mk[k])
+        return out[0] + out[1] + out[2]
+
+    def pack(self):
+        v = [self.series[i].x[k] for i, k in self._layout()]
         act = self._act
         for kind, k, i, j in self._slots():
             v.append(self._get(kind, k, i, j))
@@ -1197,10 +1231,9 @@ class Ladder:
     def unpack(self, v):
         v = np.asarray(v, float)
         idx = 0
-        for i, mk in zip(self._act, self._masks()):
-            k = int(mk.sum())
-            self.series[i].x[mk] = v[idx:idx + k]
-            idx += k
+        for i, k in self._layout():
+            self.series[i].x[k] = v[idx]
+            idx += 1
         act = self._act
         for kind, k, i, j in self._slots():
             self._put(kind, k, i, j, v[idx]); idx += 1
@@ -1212,10 +1245,8 @@ class Ladder:
                     self._qcov[act[a], act[b]] = v[idx]; idx += 1
 
     def names(self):
-        out = []
-        for i, mk in zip(self._act, self._masks()):
-            nm = self.series[i].param_names()
-            out.extend(n for n, f in zip(nm, mk) if f)
+        nm = {i: self.series[i].param_names() for i in self._act}
+        out = [nm[i][k] for i, k in self._layout()]
         act = self._act
         S = [s.name for s in self.series]
         out.extend(f"{kind}{k + 1}[{S[i]}<-{S[j]}]" for kind, k, i, j in self._slots())
@@ -1380,11 +1411,9 @@ class Ladder:
             fk, bfac, nit, termcode = _qnewt.raxopt(
                 lambda z: objective(z[1:npar + 1]), npar, xk, maxits, grtol, sptol)
             xhat = xk[1:npar + 1].copy()
-            # the invertible form, where the model actually is (BUG-0007)
-            self.unpack(xhat)
-            if any(self.series[i].canonicalize() for i in self._act):
-                xhat = self.pack()
-                fk = objective(xhat)
+            # No canonical form is taken here (BUG-0030): the cast does not
+            # flip, so the optimiser cannot stop on the other side of an MA
+            # root, and the point reported is the one it reached, as the C's.
             se, se_method, cov = self._std_errors(objective, xhat, fk, w.shape[0], bfac, nit)
         mu, phi, theta, qq, w, ifault = self.cast(xhat)
         nb, nr = _ma_boundary(theta)
@@ -1557,30 +1586,52 @@ class Ladder:
         terms); the covariances, the least-squares residuals' correlation on
         that scale. A point elf rejects goes back to the model without cross
         terms. The C's start_ols_v (escalera.c), the same arithmetic."""
-        from .echelon import row_filter
+        from . import _cls
         m, p = len(self.series), self._cp
         _mu, _phi, _th, _qq, W, _ifa = self.cast(self.pack())
         W = np.asarray(W, float)
-        W = W - W.mean(axis=0)
         n = W.shape[0]
+        w = [[float(v) for v in W[:, b]] for b in range(m)]
         x0 = self.pack()
         facs = [s.split_polynomials()[2:4] for s in self.series]
         dmax = max([len(f) for f, _g in facs] + [0])
-        t0 = p + dmax
-        if p < 1 or n - t0 <= m * p + 1:
+        t0 = p + dmax                              # the C's t0 - 1 (0-based)
+        T, npar = n - t0, m * p
+        if p < 1 or T <= npar + 1:
             self.start_used = "zero (no least squares: p = 0 or too few observations)"
             return
-        E = np.empty((n - t0, m))
+        mean = [_cls.mean(w[b]) for b in range(m)]
+        E = [[0.0] * m for _ in range(T)]
         Phi = np.zeros((p, m, m))
         for a in range(m):
-            f, g = facs[a]
-            Z_all = row_filter(W, f, g) if (len(f) or len(g)) else W
-            Z = np.hstack([Z_all[t0 - k:n - k] for k in range(1, p + 1)])
-            y = Z_all[t0:, a]
-            b = np.linalg.solve(Z.T @ Z, Z.T @ y)
-            E[:, a] = y - Z @ b
+            f = [float(v) for v in facs[a][0]]
+            g = [float(v) for v in facs[a][1]]
+            da, dg = len(f), len(g)
+            z = [[0.0] * n for _ in range(m)]      # (F_a/G_a)(B) of every series
+            for b in range(m):
+                zb, wb, mb = z[b], w[b], mean[b]
+                for t in range(n):
+                    s = wb[t] - mb
+                    for j in range(1, min(da, t) + 1):
+                        s -= f[j - 1] * (wb[t - j] - mb)
+                    for j in range(1, min(dg, t) + 1):
+                        s += g[j - 1] * zb[t - j]
+                    zb[t] = s
+            Z = [[z[b][t0 + r - 1 - k] for k in range(p) for b in range(m)]
+                 for r in range(T)]
+            ZtZ = _cls.gram(Z, T, npar)
+            ip = _cls.ludcp(ZtZ, npar)
+            y = z[a][t0:]
+            rhs = _cls.cross(Z, y, T, npar)
+            _cls.lusol(ZtZ, rhs, npar, ip)
+            for r in range(T):
+                s = y[r]
+                Zr = Z[r]
+                for i in range(npar):
+                    s -= Zr[i] * rhs[i]
+                E[r][a] = s
             for k in range(p):
-                Phi[k, a] = b[k * m:(k + 1) * m]
+                Phi[k, a] = rhs[k * m:(k + 1) * m]
         names, v = self.names(), self.pack()
         for a, s in enumerate(self.series):
             for k in range(p):
@@ -1593,14 +1644,21 @@ class Ladder:
         for kind, k, i, j in self._slots():
             if kind == "AR" and k >= 0:
                 self._put(kind, k, i, j, Phi[k][i, j])
-        S = E.T @ E / E.shape[0]
+        S = [[0.0] * m for _ in range(m)]
+        for a in range(m):
+            for b in range(m):
+                s = 0.0
+                for r in range(T):
+                    s += E[r][a] * E[r][b]
+                S[a][b] = s / T
         act = self._act
         if not self._cdiag:
             Q = [1.0] + [math.exp(self._lvar[i]) for i in act[1:]]
             for a in range(1, len(act)):
                 for b in range(a):
-                    r = S[act[a], act[b]] / math.sqrt(S[act[a], act[a]] * S[act[b], act[b]])
-                    self._qcov[act[a], act[b]] = r * math.sqrt(Q[a] * Q[b])
+                    self._qcov[act[a], act[b]] = _cls.corr_to_cov(
+                        S[act[a]][act[b]], S[act[a]][act[a]], S[act[b]][act[b]],
+                        Q[a], Q[b], True)
         if self._admissible():
             self.start_used = "ols, the whole matrix"
         else:
@@ -1658,21 +1716,45 @@ class Ladder:
         already estimated them by exact ML. The least squares only add the
         relation. If elf does not accept the point, zero is used and
         ``start_used`` says so."""
+        from . import _cls
         m, p = len(self.series), self._cp
         _mu, _phi, _th, _qq, W, _ifa = self.cast(self.pack())   # no cross terms in it
         W = np.asarray(W, float)
-        W = W - W.mean(axis=0)
         n = W.shape[0]
         x0 = self.pack()
-        if p < 1 or n <= m * p + 1:
+        T, npar = n - p, m * p
+        if p < 1 or T <= npar + 1:
             self.start_used = "zero (no least squares: p = 0 or too few observations)"
             return
-        Z = np.hstack([W[p - k:n - k] for k in range(1, p + 1)])
-        Y = W[p:]
-        B = np.linalg.solve(Z.T @ Z, Z.T @ Y)                 # the normal equations
-        E = Y - Z @ B
-        Phi = np.array([B[k * m:(k + 1) * m].T for k in range(p)])
-        S = E.T @ E / E.shape[0]
+        w = [[float(v) for v in W[:, b]] for b in range(m)]
+        mean = [_cls.mean(w[b]) for b in range(m)]
+        Z = [[w[b][r + p - 1 - k] - mean[b] for k in range(p) for b in range(m)]
+             for r in range(T)]
+        ZtZ = _cls.gram(Z, T, npar)
+        ip = _cls.ludcp(ZtZ, npar)
+        B = [[0.0] * m for _ in range(npar)]       # B[k*m + b][a] = Phi_(k+1)[a][b]
+        for a in range(m):
+            rhs = _cls.cross(Z, [w[a][r + p] - mean[a] for r in range(T)], T, npar)
+            _cls.lusol(ZtZ, rhs, npar, ip)
+            for i in range(npar):
+                B[i][a] = rhs[i]
+        S = [[0.0] * m for _ in range(m)]
+        for r in range(T):
+            e = [0.0] * m
+            Zr = Z[r]
+            for a in range(m):
+                s = w[a][r + p] - mean[a]
+                for i in range(npar):
+                    s -= Zr[i] * B[i][a]
+                e[a] = s
+            for a in range(m):
+                for b in range(m):
+                    S[a][b] += e[a] * e[b]
+        for a in range(m):
+            for b in range(m):
+                S[a][b] /= T
+        Phi = np.array([[[B[k * m + b][a] for b in range(m)] for a in range(m)]
+                        for k in range(p)])
         for kind, k, i, j in self._slots():
             if kind == "AR" and k >= 0:
                 self._put(kind, k, i, j, Phi[k][i, j])
@@ -1681,8 +1763,9 @@ class Ladder:
             Q = [1.0] + [math.exp(self._lvar[i]) for i in act[1:]]
             for a in range(1, len(act)):
                 for b in range(a):
-                    r = S[act[a], act[b]] / math.sqrt(S[act[a], act[a]] * S[act[b], act[b]])
-                    self._qcov[act[a], act[b]] = r * math.sqrt(Q[a] * Q[b])
+                    self._qcov[act[a], act[b]] = _cls.corr_to_cov(
+                        S[act[a]][act[b]], S[act[a]][act[a]], S[act[b]][act[b]],
+                        Q[a], Q[b], False)
         self._take_start(x0, "ols")
 
     def _admissible(self):
