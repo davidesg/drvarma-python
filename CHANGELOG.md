@@ -26,6 +26,27 @@ compiled C engine.
   (atsw-gui #203).
 - `tests/test_homologation_c_0_4.py`, with the C's numbers.
 
+**The mask of the deterministic terms: `det=` and `detbase=`** (the C's
+`-det` and `-detbase`, atsw-gui #209). `redet` was all or nothing.
+- `det` says which are re-estimated jointly: `"all"` (which is `redet=True`),
+  a class (`seasonal`, `calendar`, `interv`, `trend`), `SERIES:class`, or a
+  coefficient's name as the output writes it, which frees that term. A shock
+  common to several series is its name in each. Only what the file marks as
+  free is freed.
+- `detbase` says where the fixed ones stay: `"file"`, or `"gate"` (estimated
+  at the gate, series by series, on the common window, then held).
+- **Changed by default, as in the C:** a series the common window trims has
+  its deterministic terms re-estimated at the gate and held there. Until now
+  they stayed at the values of the longer sample while its ARMA and mean were
+  re-estimated on the short one. `detbase="file"` gives the old behaviour.
+  Series that are not trimmed are unchanged.
+- The mean is not part of it: it is estimated whenever the file estimates it.
+- `tests/test_homologation_c_det.py`: every number is the C's, to 1e-5 (the
+  IPC of Spain and France; the trimmed window; IPC and WTI with the Gulf and
+  Katrina interventions).
+- A name may write a date as the output does here (`step 8/1990`) or as the
+  C's does (`step 8 1990`): the two engines still print it differently.
+
 **`start="ols"`: the original drvarma's start, in the ladder** (the C's
 `-start ols`, escalera.c; atsw-gui #199). It is `init_varma` of the `.inp`
 path: least squares of the VAR(p) on the stationary series. It is the

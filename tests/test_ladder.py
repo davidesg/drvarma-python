@@ -119,10 +119,18 @@ def test_different_lengths_same_end_align_at_the_end(tmp_path):
     L.fit()
     rows = {r["series"]: r for r in L.gate["rows"]}
     assert rows["IPC_FR"]["trimmed"] == 12 and rows["IPC_ES"]["trimmed"] == 0
-    # the C's numbers for the same case (tests/escalera, "corto")
+    # the C's numbers for the same case (tests/escalera, "corto"). Since
+    # 0.4.0 the gate re-estimates the deterministic terms of the series it
+    # trims, as the C since atsw-gui #209: France, 52.563291.
     assert rows["IPC_ES"]["logL"] == pytest.approx(-8.820102, abs=2e-6)
-    assert rows["IPC_FR"]["logL"] == pytest.approx(52.128376, abs=2e-6)
+    assert rows["IPC_FR"]["logL"] == pytest.approx(52.563291, abs=2e-6)
     assert abs(L.gate["difference"]) < 1e-9
+    # with the file's (detbase="file", the behaviour up to 0.3.x): 52.128376
+    F = Ladder([str(short), FR], 0, 0, diagcov=True, detbase="file")
+    F.fit()
+    old = {r["series"]: r for r in F.gate["rows"]}
+    assert old["IPC_FR"]["logL"] == pytest.approx(52.128376, abs=2e-6)
+    assert abs(F.gate["difference"]) < 1e-9
 
 
 # -- forecasting ------------------------------------------------------------- #
@@ -198,11 +206,24 @@ def test_m6_reports_the_invertible_ma_as_the_c_does():
     non-invertible one. On m6 it stopped on theta_EU = 1.0722: the model was
     right (1/1.0722 = 0.9327) and the report was not. The C: 0.932651."""
     M6 = [os.path.join(D, "m6", f"M6_{n}.pre") for n in ("EP", "EI", "EU", "EC", "EA", "P")]
-    L = Ladder(M6, 0, 0, diagcov=True)
+    # m6's series have different lengths. With the files' deterministic terms
+    # (detbase="file", the behaviour up to 0.3.x) the C gives 0.932651.
+    L = Ladder(M6, 0, 0, diagcov=True, detbase="file")
     L.fit()
     got = dict(zip(L.result.names, zip(L.result.x, L.result.std_errors)))
     assert got["theta_EU[B^1]"][0] == pytest.approx(0.932651, abs=2e-6)
     assert got["theta_EU[B^1]"][1] == pytest.approx(0.041682, abs=5e-6)
+    # By default (0.4.0, as the C since atsw-gui #209) the gate re-estimates
+    # the deterministic terms of the four series the common window trims and
+    # holds them: the C gives 0.907324 (0.047135), logL -1725.491101.
+    N = Ladder(M6, 0, 0, diagcov=True)
+    rn = N.fit()
+    new = dict(zip(rn.names, zip(rn.x, rn.std_errors)))
+    assert new["theta_EU[B^1]"][0] == pytest.approx(0.907324, abs=2e-6)
+    assert new["theta_EU[B^1]"][1] == pytest.approx(0.047135, abs=5e-6)
+    assert rn.logL == pytest.approx(-1725.491101, abs=2e-6)
+    assert N.det_report() == ("fixed at the gate's values (23 estimated there, "
+                              "series by series)")
     moves = {r["series"]: r["move"] for r in L.gate["rows"]}
     assert moves["EU"] == pytest.approx(0.0527, abs=1e-4)       # the C's gate
     # The gate's difference on m6 was -0.000428, in the C too: elf's xi
