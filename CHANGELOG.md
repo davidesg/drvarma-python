@@ -93,6 +93,16 @@ give the mean, the deterministic terms and the stationary series.
   three and four series, with the stage II start, with the row factor's test
   on unequal indices and with own zeros.
 
+**The record of the homologation** (`tests/data/homologation.json`,
+`docs/HOMOLOGATION.md`). It names the C's commit the port was homologated
+against, eleven cases with the C's command line, the port's call and the
+number both give, and the sha256 of each vendored C source.
+`tests/test_c_oracle.py` checks that the port gives every number (always),
+that the C does (with `ATSW_GUI` and its binary at hand), that the fixtures
+are the C battery's files, and that `csrc/` has not changed without the
+record. `RELEASING.md` has the step. Until now nothing said which C the port
+matched, and most tests still looked for a frozen copy of September.
+
 **`start="ols"`: the original drvarma's start, in the ladder** (the C's
 `-start ols`, escalera.c; atsw-gui #199). It is `init_varma` of the `.inp`
 path: least squares of the VAR(p) on the stationary series. It is the
