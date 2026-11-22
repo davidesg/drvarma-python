@@ -1,0 +1,238 @@
+{
+ "_": "The record of the homologation with the C engine. tests/test_c_oracle.py reads it; docs/HOMOLOGATION.md explains it.",
+ "c_repository": "davidesg/atsw-gui",
+ "c_path": "engines/drvarma",
+ "c_commit": "1bc1862edf1369df4d9e89c129105fa6d0dd0bf2",
+ "date": "2026-11-22",
+ "cases": [
+  {
+   "name": "route U, monetary pair, VAR(1), deterministic terms by class",
+   "files": [
+    "engines/drvarma/tests/escalera/data/monetario/IPC_m07.pre",
+    "engines/drvarma/tests/escalera/data/monetario/WTI_m03.pre"
+   ],
+   "c_args": "1 0 -det interv",
+   "port": {
+    "p": 1,
+    "q": 0,
+    "det": "interv"
+   },
+   "logL": -628.995175,
+   "npar": 21
+  },
+  {
+   "name": "route V is route U (golden), VAR(1)",
+   "files": [
+    "engines/drvarma/tests/escalera/data/monetario/WTI_m03.pre",
+    "engines/drvarma/tests/escalera/data/monetario/GS2_m05.pre"
+   ],
+   "c_args": "1 0 -route v",
+   "port": {
+    "p": 1,
+    "q": 0,
+    "route": "v"
+   },
+   "logL": -1689.702669,
+   "npar": 7
+  },
+  {
+   "name": "route V, golden VAR(3), whole-matrix seed",
+   "files": [
+    "engines/drvarma/tests/escalera/data/monetario/GS1_m01.pre",
+    "engines/drvarma/tests/escalera/data/monetario/FF_m03.pre"
+   ],
+   "c_args": "3 0 -route v",
+   "port": {
+    "p": 3,
+    "q": 0,
+    "route": "v"
+   },
+   "logL": -1747.072002,
+   "npar": 14
+  },
+  {
+   "name": "route V, VARMA(1,1) with a row factor",
+   "files": [
+    "engines/drvarma/tests/escalera/data/monetario/IPI_m07.pre",
+    "engines/drvarma/tests/escalera/data/monetario/WTI_m03.pre"
+   ],
+   "c_args": "1 1 -route v",
+   "port": {
+    "p": 1,
+    "q": 1,
+    "route": "v"
+   },
+   "logL": -924.846133,
+   "npar": 13
+  },
+  {
+   "name": "route V, an own zero",
+   "files": [
+    "engines/drvarma/tests/escalera/data/monetario/IPC_m07.pre",
+    "engines/drvarma/tests/escalera/data/monetario/WTI_m03.pre"
+   ],
+   "c_args": "2 0 -route v -zero phi_WTI[B^2]",
+   "port": {
+    "p": 2,
+    "q": 0,
+    "route": "v",
+    "own_zeros": {
+     "WTI": {
+      "ar": [
+       2
+      ]
+     }
+    }
+   },
+   "logL": -630.694064,
+   "npar": 11
+  },
+  {
+   "name": "echelon (1,0)",
+   "files": [
+    "engines/drvarma/tests/escalera/data/monetario/IPC_m07.pre",
+    "engines/drvarma/tests/escalera/data/monetario/WTI_m03.pre"
+   ],
+   "c_args": "0 0 -echelon 1,0",
+   "port": {
+    "echelon": [
+     1,
+     0
+    ],
+    "route": "v"
+   },
+   "logL": -638.329701,
+   "npar": 8
+  },
+  {
+   "name": "echelon (1,1)",
+   "files": [
+    "engines/drvarma/tests/escalera/data/monetario/IPC_m07.pre",
+    "engines/drvarma/tests/escalera/data/monetario/WTI_m03.pre"
+   ],
+   "c_args": "0 0 -echelon 1,1",
+   "port": {
+    "echelon": [
+     1,
+     1
+    ],
+    "route": "v"
+   },
+   "logL": -630.843671,
+   "npar": 12
+  },
+  {
+   "name": "echelon (2,1), with A0",
+   "files": [
+    "engines/drvarma/tests/escalera/data/monetario/IPC_m07.pre",
+    "engines/drvarma/tests/escalera/data/monetario/WTI_m03.pre"
+   ],
+   "c_args": "0 0 -echelon 2,1",
+   "port": {
+    "echelon": [
+     2,
+     1
+    ],
+    "route": "v"
+   },
+   "logL": -629.155884,
+   "npar": 16
+  },
+  {
+   "name": "echelon (1,2)",
+   "files": [
+    "engines/drvarma/tests/escalera/data/monetario/IPC_m07.pre",
+    "engines/drvarma/tests/escalera/data/monetario/WTI_m03.pre"
+   ],
+   "c_args": "0 0 -echelon 1,2",
+   "port": {
+    "echelon": [
+     1,
+     2
+    ],
+    "route": "v"
+   },
+   "logL": -628.70302,
+   "npar": 15
+  },
+  {
+   "name": "echelon (0,1,1), three series, a row factor",
+   "files": [
+    "engines/drvarma/tests/escalera/data/monetario/IPI_m07.pre",
+    "engines/drvarma/tests/escalera/data/monetario/IPC_m07.pre",
+    "engines/drvarma/tests/escalera/data/monetario/WTI_m03.pre"
+   ],
+   "c_args": "0 0 -echelon 0,1,1",
+   "port": {
+    "echelon": [
+     0,
+     1,
+     1
+    ],
+    "route": "v"
+   },
+   "logL": -835.732462,
+   "npar": 19
+  },
+  {
+   "name": "echelon (1,1) from the stage II start",
+   "files": [
+    "engines/drvarma/tests/escalera/data/monetario/IPC_m07.pre",
+    "engines/drvarma/tests/escalera/data/monetario/WTI_m03.pre"
+   ],
+   "c_args": "0 0 -echelon 1,1 -start echelon",
+   "port": {
+    "echelon": [
+     1,
+     1
+    ],
+    "route": "v",
+    "start": "echelon"
+   },
+   "logL": -630.843671,
+   "npar": 12
+  }
+ ],
+ "csrc": {
+  "csrc/internal/drvmlest.c": {
+   "sha256": "199be2d72cafabe36a702876d8aea30cbef65c38a2316b03c97d838e65c84959",
+   "c_file": "engines/drvarma/src/drvmlest.c",
+   "identical_to_c": false
+  },
+  "csrc/internal/elfvarma.c": {
+   "sha256": "bce5e718b0ad87eca01a519b43c190c24f59df0b4de81bcdb13049353d1523a7",
+   "c_file": "engines/drvarma/src/elfvarma.c",
+   "identical_to_c": true
+  },
+  "csrc/internal/main.h": {
+   "sha256": "d1b4b133016545d7e4ddbf41c950c1d4ae8576bca0acdddea44f9bf46c2c31db",
+   "c_file": "engines/drvarma/include/main.h",
+   "identical_to_c": false
+  },
+  "csrc/internal/multshea.c": {
+   "sha256": "8eebd784c50514679099225212f033226af3a9d135bfb4ed296029b2745acc15",
+   "c_file": "lib/lik/multshea.c",
+   "identical_to_c": false
+  },
+  "csrc/internal/nlatools.c": {
+   "sha256": "c67df33692fdb22e1b48fcb1c7c89d70a16689cc732faea8275a711f8aed6225",
+   "c_file": "engines/drvarma/src/nlatools.c",
+   "identical_to_c": false
+  },
+  "csrc/internal/qnewtopt.c": {
+   "sha256": "1374e8b07ac11ec3e798a1050d77ad0f53554230cf6080aa947635e894ca2d70",
+   "c_file": "engines/drvarma/src/qnewtopt.c",
+   "identical_to_c": false
+  },
+  "csrc/drvarma_api.c": {
+   "sha256": "01b6e48f38101eeacadb22b4ab17672c76c5c964235a17e2b28fe8da1c16df03",
+   "c_file": null,
+   "identical_to_c": null
+  },
+  "csrc/drvarma_api.h": {
+   "sha256": "5a6fa08c84dea40b4e56feac70aad98925684a1d82cf319cf1e5c433dc181df0",
+   "c_file": null,
+   "identical_to_c": null
+  }
+ }
+}

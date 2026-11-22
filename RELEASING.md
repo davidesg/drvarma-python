@@ -34,6 +34,19 @@ On a branch `release-drvarma-X.Y.Z`:
 * `CHANGELOG.md` → a section `## X.Y.Z — unreleased` saying what changes for
   the user.
 
+### 1b. Homologation with the C
+
+The C engine (atsw-gui `engines/drvarma`) and this port are the same engine:
+nothing is released that the C does not reproduce.
+
+* Build the C at the commit the release is homologated against and run
+
+      ATSW_GUI=/path/to/atsw-gui pytest tests/test_c_oracle.py
+
+  with no test skipped: the C and the port give every recorded number.
+* If the C moved since `tests/data/homologation.json` was written, bring the
+  change to the port first and update the record (`docs/HOMOLOGATION.md`).
+
 ### 2. Validate without publishing
 
 Run the workflow by hand on the branch. It builds and smoke-tests everything;
