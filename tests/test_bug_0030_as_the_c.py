@@ -94,13 +94,19 @@ def test_the_cast_does_not_take_the_reciprocal_of_an_ma1():
 
 
 def _kernel():
+    import platform
+    import sys
     from drvarma import _engine
-    return _engine.engine_backend() == "c"
+    # ...and on the platform the record was made on: on the wall the point
+    # is the path's, and the path follows the last digit of each platform's
+    # arithmetic (HOMOLOGATION.md)
+    return (_engine.engine_backend() == "c" and sys.platform.startswith("linux")
+            and platform.machine() in ("x86_64", "AMD64"))
 
 
 @needs_fue
-@pytest.mark.skipif(not _kernel(), reason="on the MA wall the path is the compiled "
-                    "likelihood's; the pure-Python fallback agrees with it to rounding only")
+@pytest.mark.skipif(not _kernel(), reason="on the MA wall the point is the path's: checked "
+                    "with the compiled likelihood, on Linux x86-64")
 def test_on_the_ma_wall_the_port_ends_where_the_c_does():
     """GS1 + FF, VARMA(1,1), route V: the C stops on the invertibility wall
     at -1740.636683 after 62 iterations from zero and at -1740.622890 after
