@@ -52,6 +52,68 @@ def _lik_label(lik):
 MA_WALL_TOL = 5e-5
 
 
+def _own_ma_outside(series):
+    """The own MA factors of each series, each read ALONE, whose largest
+    inverse root has modulus >= 1 - MA_WALL_TOL: the C's own_ma_outside
+    (escalera.c), in its order -- series by series, the regular factors, the
+    seasonal ones, the fixed-frequency ones.
+
+    The likelihood is evaluated only where the MA operator of the SYSTEM is
+    invertible, and the ladder does not take the invertible form of a
+    coefficient (BUG-0030): in a system, inverting one element of Theta is
+    not the same model. So an own factor can end outside the unit circle read
+    alone, which fue never estimates. It is said; nothing changes.
+
+    Returns [(series, kind, order, coefficient text, modulus)].
+    """
+    from fue.forecast import _reconstruct_params
+    out = []
+
+    def modulus(c):
+        c = np.asarray(c, float)
+        q = c.size
+        if q == 0:
+            return 0.0
+        if q == 1:
+            return abs(float(c[0]))
+        A = np.zeros((q, q))
+        A[0, :] = c
+        A[1:, :-1] = np.eye(q - 1)
+        return float(np.max(np.abs(np.linalg.eigvals(A))))
+
+    for s in series:
+        (_om, _de, _ar, _ars, ma, ma_s, _arf, ma_f, _mu) = _reconstruct_params(s.model, s.x)
+        for kind, sym, facs in (("regular MA", "theta", ma), ("seasonal MA", "Theta", ma_s)):
+            for f in facs:
+                md = modulus(f)
+                if md >= 1.0 - MA_WALL_TOL:
+                    coef = f"{sym} = {float(f[0]):.6f}" if len(f) == 1 else ""
+                    out.append((s.name, kind, len(f), coef, md))
+        for c2 in ma_f:
+            c2 = float(c2)
+            md = math.sqrt(-c2) if c2 < 0.0 else 0.0
+            if md >= 1.0 - MA_WALL_TOL:
+                out.append((s.name, "fixed-frequency MA", 2, f"c2 = {c2:.6f}", md))
+    return out
+
+
+def _own_ma_text(own):
+    """The C's block of the .out for own_ma_outside, line for line."""
+    if not own:
+        return []
+    out = ["", "OWN MA FACTORS NOT INVERTIBLE, EACH READ ALONE:"]
+    for name, kind, q, coef, md in own:
+        what = kind if kind == "fixed-frequency MA" else f"{kind}({q})"
+        out.append(f"  {name:<14} {what:<22} {coef:<20} inverse root modulus {md:.6f} "
+                   f"({'beyond the unit circle' if md >= 1.0 + MA_WALL_TOL else 'on the unit circle'})")
+    out += ["  The likelihood is evaluated only where the MA operator of the SYSTEM",
+            "  is invertible, so this is a point of the joint model: each own factor",
+            "  is one block of that operator, not a univariate model. Read alone it",
+            "  is not invertible -- fue never estimates such a factor -- and it is",
+            "  not to be read or reported as one."]
+    return out
+
+
 def _cast_us(x, spec):
     """fue's cast of one series, WITHOUT fue's flip (BUG-0030).
 
@@ -679,6 +741,9 @@ class Fit:
     ma_boundary: int = 0       # MA inverse roots on the wall at the stop
     ma_nroots: int = 0         # (the C's est(): a stop on the invertibility wall)
     cov: np.ndarray = None     # covariance of the estimates (se_method's Hessian)
+    # own MA factors not invertible read alone (the C's own_ma_outside):
+    # [(series, kind, order, coefficient text, inverse-root modulus)]
+    own_ma_outside: list = field(default_factory=list)
 
     @property
     def npar(self):
@@ -1424,7 +1489,8 @@ class Ladder:
         return Fit(names, xhat, se, float(logL), float(f1 / (n * m)), int(ifa),
                    int(nit), int(termcode), mu, phi, theta, qq, w,
                    np.asarray(a)[1:, 1:].copy(),      # elf_c: 1-based out
-                   se_method, None if fk is None else float(fk), nb, nr, cov)
+                   se_method, None if fk is None else float(fk), nb, nr, cov,
+                   _own_ma_outside([self.series[i] for i in self._act]))
 
     def _std_errors(self, objective, xhat, fk, n, bfac, nit=1):
         """Mauricio's fdhess at the optimum (drvarma.stderr), or the BFGS
@@ -2369,6 +2435,7 @@ def write_report(L, path, forecasts=None, recursive=None):
                      "Cross dynamics against the diagonal system (the univariates):"),
                 f"  logL diagonal {L.logL_diag:.6f}, logL full {r.logL:.6f}",
                 f"  LR = {lr:.4f}   df = {df}   p-value = {pv:.4f}"]
+    out += _own_ma_text(getattr(r, "own_ma_outside", None))
     out += ["", f"Innovation covariance Sigma = sigma2 * Q  (sigma2 = {r.sigma2:.8g}):"]
     for a, row in enumerate(r.sigma):
         out.append(f"  {S[a].name:<14}" + "".join(f" {v:14.6g}" for v in row))
@@ -2488,6 +2555,10 @@ def main(argv):
             write_recursive(L, rec[0], a.forecast, name + ".recursive")
     write_report(L, name + ".out", fc, rec)
     print(f"Exact log-likelihood: {L.result.logL:.6f}")
+    own = L.result.own_ma_outside
+    if own:
+        print("WARNING: own MA factor(s) not invertible read alone: "
+              + ", ".join(f"{o[0][:40]} ({o[4]:.4f})" for o in own))
     print(f"Full results written to {name}.out")
     return 0
 

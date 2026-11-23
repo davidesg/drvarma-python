@@ -259,6 +259,22 @@
    "logL": -626.197302,
    "npar": 16,
    "nit": 212
+  },
+  {
+   "name": "route U, an own MA factor ends beyond the circle: muskrat and mink, VARMA(2,1), from zero",
+   "files": [
+    "lib/outvarma/datos/MUSKRAT_m03.pre",
+    "lib/outvarma/datos/MINK_m02.pre"
+   ],
+   "c_args": "2 1 -start zero",
+   "port": {
+    "p": 2,
+    "q": 1,
+    "start": "zero"
+   },
+   "logL": -551.715772,
+   "npar": 20,
+   "nit": 124
   }
  ],
  "csrc": {
