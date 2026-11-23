@@ -6,6 +6,28 @@ compiled C engine.
 
 ## Unreleased
 
+**The ladder follows the C along the MA wall (BUG-0030).** Where the search
+runs along the invertibility wall there is no interior maximum, and the port
+did not end where the C does. Three causes, all in the port, found by tracing
+both engines evaluation by evaluation:
+- *The cast flipped the MA.* Each series is cast with fue's `cast_us_py`,
+  which takes the invertible form of a regular MA(1) with |θ| > 1. The C's
+  ladder does not: it builds the polynomial from the parameters and refuses
+  the point. The port evaluated a model the C rejects. The ladder now asks
+  for the cast without the flip (`flip=False`, **fue ≥ 0.1.23**; an older fue
+  is said, in words), and no longer moves the result to an "invertible form".
+- *The order of the parameters* is the C's: the ARMA of every series, then
+  the deterministic terms, then the means. **`result.names`, `result.x`, the
+  standard errors and the covariance matrix come in that order: read them by
+  name.**
+- *The ols seeds* are computed in the C's arithmetic (`_cls.py`): sums in
+  sequence and the C's own LU, not numpy's.
+
+Against the C's routes battery: the 64 US monetary cases (4 systems, 2
+routes, VAR(1) to VAR(3) and VARMA(1,1), 2 starts) give the C's likelihood to
+the sixth decimal and the C's iterations; so do 16 pairs with an MA. Four of
+them are in the homologation record, with their iterations.
+
 **Re-homologation with the C of November 2026, first part** (atsw-gui
 #203–#219; the C is the oracle and both move together):
 - **The default start is the C's**: `"ols"` with q = 0 and p > 0, `"zero"`

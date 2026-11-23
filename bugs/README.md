@@ -4,7 +4,7 @@ In-repo bug tracker for **drvarma-python**.  One Markdown file per bug (`BUG-NNN
 
 New report: `art-bug new` (or copy `TEMPLATE.md`).  Validate: `art-bug check`.  A fix commit references the id, e.g. `fix(pipeline): BUG-0001 …`.
 
-**29 report(s), 4 open.**
+**30 report(s), 4 open.**
 
 | id | status | sev | component | title | fixed in |
 |----|--------|-----|-----------|-------|----------|
@@ -33,6 +33,7 @@ New report: `art-bug new` (or copy `TEMPLATE.md`).  Validate: `art-bug check`.  
 | [BUG-0027](BUG-0027-ladder-desde-cero-se-para-en-2-iteraciones-por-debajo-del-anidado.md) | fixed | high | ladder | Ladder.fit desde el arranque cero se para a las 2 iteraciones (termcode 3) en un VAR(2) de ruta U, con logL por debajo del VAR(1) anidado y sin decir que el punto es imposible | 0.4.0 |
 | [BUG-0028](BUG-0028-the-c-ols-start-does-not-fall-back-to-zero.md) | fixed | medium | ladder | The ols start falls back to zero in the port but not in the C ladder, which starts from the inadmissible least-squares point and fails | 0.4.0 |
 | [BUG-0029](BUG-0029-factor-test-frees-an-own-coefficient-held-at-zero.md) | fixed | medium | ladder | factor_test frees in its alternative an own coefficient the model holds at zero, and tests that zero with the row factor | 0.4.0 |
+| [BUG-0030](BUG-0030-the-ladder-evaluated-points-the-c-refuses-and-walked-the-parameters-in-another-order.md) | fixed | high | ladder | The ladder evaluated points the C's ladder refuses (fue's MA flip in the cast), packed the parameters in another order and seeded ols with another arithmetic — on the MA wall it did not end where the C does | 0.4.0 |
 | [BUG-0009](BUG-0009-load-data-toma-la-columna-de-fecha-como-serie.md) | wontfix | medium | mcp | load_data takes a date column as a series, and the sample start is not read from it | — |
 | [BUG-0011](BUG-0011-el-consenso-impone-un-lambda-y-el-d-maximo.md) | wontfix | low | mcp | The consensus imposes one lambda and d = max(d_i), which over-differences an I(0) series | — |
 | [BUG-0012](BUG-0012-los-coeficientes-armonicos-no-cuentan.md) | wontfix | low | deseason | The harmonic seasonal coefficients are not counted in degrees of freedom, k or forecast uncertainty | — |

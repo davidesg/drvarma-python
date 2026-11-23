@@ -2,7 +2,7 @@
  "_": "The record of the homologation with the C engine. tests/test_c_oracle.py reads it; docs/HOMOLOGATION.md explains it.",
  "c_repository": "davidesg/atsw-gui",
  "c_path": "engines/drvarma",
- "c_commit": "1bc1862edf1369df4d9e89c129105fa6d0dd0bf2",
+ "c_commit": "d38a71f0f3e13d5a296cf128bf856cbaad5aa1e9",
  "date": "2026-11-22",
  "cases": [
   {
@@ -191,6 +191,74 @@
    },
    "logL": -630.843671,
    "npar": 12
+  },
+  {
+   "name": "route V on the MA wall: GS1 + FF, VARMA(1,1), from zero",
+   "files": [
+    "engines/drvarma/tests/escalera/data/monetario/GS1_m01.pre",
+    "engines/drvarma/tests/escalera/data/monetario/FF_m03.pre"
+   ],
+   "c_args": "1 1 -route v -start zero",
+   "port": {
+    "p": 1,
+    "q": 1,
+    "route": "v",
+    "start": "zero"
+   },
+   "logL": -1740.636683,
+   "npar": 10,
+   "nit": 62
+  },
+  {
+   "name": "route V on the MA wall: GS1 + FF, VARMA(1,1), from ols",
+   "files": [
+    "engines/drvarma/tests/escalera/data/monetario/GS1_m01.pre",
+    "engines/drvarma/tests/escalera/data/monetario/FF_m03.pre"
+   ],
+   "c_args": "1 1 -route v -start ols",
+   "port": {
+    "p": 1,
+    "q": 1,
+    "route": "v",
+    "start": "ols"
+   },
+   "logL": -1740.62289,
+   "npar": 10,
+   "nit": 43
+  },
+  {
+   "name": "route V on the MA wall: WTI + GS2, VARMA(2,1), from zero",
+   "files": [
+    "engines/drvarma/tests/escalera/data/monetario/WTI_m03.pre",
+    "engines/drvarma/tests/escalera/data/monetario/GS2_m05.pre"
+   ],
+   "c_args": "2 1 -route v -start zero",
+   "port": {
+    "p": 2,
+    "q": 1,
+    "route": "v",
+    "start": "zero"
+   },
+   "logL": -1678.563622,
+   "npar": 15,
+   "nit": 59
+  },
+  {
+   "name": "route V on the MA wall: IPC + WTI, VARMA(2,1), from ols",
+   "files": [
+    "engines/drvarma/tests/escalera/data/monetario/IPC_m07.pre",
+    "engines/drvarma/tests/escalera/data/monetario/WTI_m03.pre"
+   ],
+   "c_args": "2 1 -route v -start ols",
+   "port": {
+    "p": 2,
+    "q": 1,
+    "route": "v",
+    "start": "ols"
+   },
+   "logL": -626.197302,
+   "npar": 16,
+   "nit": 212
   }
  ],
  "csrc": {

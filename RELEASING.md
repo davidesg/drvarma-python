@@ -93,6 +93,13 @@ Packages are tagged in dependency order, each one only once its dependencies
 are on PyPI, because the smoke tests install from PyPI:
 fue → drvarma → drvec → sima → art / pyfug / drtran → atsw.
 
+**For 0.4.0: fue 0.1.23 first.** The ladder asks fue's cast for the
+polynomial without its MA flip (`cast_us_py(flip=False)`, BUG-0030), which is
+in fue's master and not in 0.1.22. Before tagging drvarma: publish fue
+0.1.23, raise the requirement in `pyproject.toml` to `fue>=0.1.23`, and
+remove the temporary step of `.github/workflows/ci.yml` that takes
+`fue/cast_us.py` from fue's master.
+
 After the last tag, run `preflight-atsw.yml` with `origen=pypi` and the suites.
 For a few minutes after a publish, some runners do not yet see the new version
 on the index: rerun the failed jobs.
