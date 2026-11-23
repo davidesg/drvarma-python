@@ -2,7 +2,7 @@
  "_": "The record of the homologation with the C engine. tests/test_c_oracle.py reads it; docs/HOMOLOGATION.md explains it.",
  "c_repository": "davidesg/atsw-gui",
  "c_path": "engines/drvarma",
- "c_commit": "d38a71f0f3e13d5a296cf128bf856cbaad5aa1e9",
+ "c_commit": "29bd4f2f9724aea6994abf52499af86d0afb1b8f",
  "date": "2026-11-22",
  "cases": [
   {
@@ -259,6 +259,22 @@
    "logL": -626.197302,
    "npar": 16,
    "nit": 212
+  },
+  {
+   "name": "route U, an own MA factor ends beyond the circle: muskrat and mink, VARMA(2,1), from zero",
+   "files": [
+    "lib/outvarma/datos/MUSKRAT_m03.pre",
+    "lib/outvarma/datos/MINK_m02.pre"
+   ],
+   "c_args": "2 1 -start zero",
+   "port": {
+    "p": 2,
+    "q": 1,
+    "start": "zero"
+   },
+   "logL": -551.715772,
+   "npar": 20,
+   "nit": 124
   }
  ],
  "csrc": {

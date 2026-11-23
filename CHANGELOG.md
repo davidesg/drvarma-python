@@ -6,6 +6,16 @@ compiled C engine.
 
 ## Unreleased
 
+**The own MA factors, each read alone, are said when outside the circle** —
+the C's `own_ma_outside` (atsw-gui #223). The likelihood is evaluated only
+where the MA operator of the system is invertible, and the ladder does not
+take the invertible form of a coefficient (BUG-0030), so an own factor can
+end outside the unit circle read alone, which fue never estimates.
+`Fit.own_ma_outside` lists them (series, kind, order, coefficient, inverse
+root modulus); the report adds the C's block, line for line, and the command
+line its warning. Nothing else changes. The C's muskrat and mink files are
+now among the fixtures, and that case is in the homologation record.
+
 **The ladder follows the C along the MA wall (BUG-0030).** Where the search
 runs along the invertibility wall there is no interior maximum, and the port
 did not end where the C does. Three causes, all in the port, found by tracing

@@ -1,0 +1,103 @@
+************************************************
+*        Input file for program DRVUS          *
+* Copyright (C) 1996 Jos? Alberto Mauricio     *
+************************************************
+
+** Frequency of time series: either 1(A), 4(Q) or 12(M):
+ 1
+** Number of observations and starting date of time series:
+ 62 1911 1850 MUSKRAT
+** Number of deterministic variables (including seasonal components):
+ 0
+**Number and orders of regular AR operators:
+1 6
+**
+0.6522 1
+-0.5833 1
+0.2178 1
+-0.3080 1
+-0.0395 1
+-0.3188 1
+** Number and orders of annual AR operators:
+0
+** Number and orders of regular MA operators:
+1 1
+**
+0.5454 1
+** Number and orders of anual MA operators:
+0
+** Number and frequencies of regular AR(2) operators with fixed frequency:
+0
+** Number and frequencies of regular MA(2) operators with fixed frequency:
+0
+** Mean parameter (mu):
+0
+** Box-Cox lambda, regular differences and complete annual differences:
+0.00 1 0
+** Individual factors of the annual difference (from freq 0.0): 
+ 0
+** ACF/PACF bands (0 Automatic) and reescaling factor: 
+ 0.00 100.00
+** Time series (stochastic and non-standard deterministic variables): 
+175472.0000000000 
+194682.0000000000 
+292530.0000000000 
+493952.0000000000 
+512291.0000000000 
+345626.0000000000 
+258806.0000000000 
+302267.0000000000 
+313502.0000000000 
+254246.0000000000 
+177291.0000000000 
+206020.0000000000 
+335385.0000000000 
+357060.0000000000 
+509769.0000000000 
+418370.0000000000 
+320824.0000000000 
+412164.0000000000 
+618081.0000000000 
+404173.0000000000 
+232251.0000000000 
+443999.0000000000 
+704789.0000000000 
+767896.0000000000 
+671982.0000000000 
+523802.0000000000 
+583319.0000000000 
+437121.0000000000 
+486030.0000000000 
+499727.0000000000 
+478078.0000000000 
+829034.0000000000 
+1029296.0000000000 
+1069183.0000000000 
+1083067.0000000000 
+817003.0000000000 
+347050.0000000000 
+380132.0000000000 
+344878.0000000000 
+223614.0000000000 
+322160.0000000000 
+574742.0000000000 
+806103.0000000000 
+934646.0000000000 
+648687.0000000000 
+674811.0000000000 
+813159.0000000000 
+551716.0000000000 
+568934.0000000000 
+701487.0000000000 
+767741.0000000000 
+928199.0000000000 
+1650214.0000000000 
+1488287.0000000000 
+924439.0000000000 
+1056253.0000000000 
+695070.0000000000 
+407472.0000000000 
+172418.0000000000 
+302195.0000000000 
+749142.0000000000 
+963597.0000000000 
