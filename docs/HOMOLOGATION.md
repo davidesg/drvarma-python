@@ -68,6 +68,15 @@ are checked with the compiled likelihood and skipped without it. The
 fallback is a fallback: about a hundred times slower, and not what an
 analysis should run on.
 
+**On the platform of the record only.** The record was made on Linux
+x86-64, C and port. On the wall the point follows the last digit of the
+arithmetic, and that digit is the compiler's and the C library's: the same
+fit (the flour prices' echelon form, in sima's suite) stops at −658.9552 on
+Linux, −659.2055 on Windows and −659.7980 on macOS. So the cases with
+iterations are checked on Linux x86-64 and skipped elsewhere. Whether the
+port and the C agree with each other on macOS or Windows has not been
+measured: the C has only been run on Linux for this record.
+
 ## When the C changes
 
 1. Build the C at the new commit and run the port's suite with `ATSW_GUI`
