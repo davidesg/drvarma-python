@@ -21,11 +21,16 @@ MM = [os.path.join(D, "MUSKRAT_m03.pre"), os.path.join(D, "MINK_m02.pre")]   # t
 
 
 def _kernel():
+    """The compiled likelihood, on the platform of the record: this stop is
+    not an interior maximum, and the point is the path's (HOMOLOGATION.md)."""
+    import platform
+    import sys
     from drvarma import _engine
-    return _engine.engine_backend() == "c"
+    return (_engine.engine_backend() == "c" and sys.platform.startswith("linux")
+            and platform.machine() in ("x86_64", "AMD64"))
 
 
-@pytest.mark.skipif(not _kernel(), reason="the path to this point is the compiled likelihood's")
+@pytest.mark.skipif(not _kernel(), reason="the path to this point is the compiled likelihood's, on Linux x86-64")
 def test_the_muskrat_factor_beyond_the_circle_is_said(tmp_path):
     L = Ladder(MM, 2, 1, start="zero")
     r = L.fit()
@@ -41,7 +46,7 @@ def test_the_muskrat_factor_beyond_the_circle_is_said(tmp_path):
     assert "beyond the unit circle" in txt and "fue never estimates such a factor" in txt
 
 
-@pytest.mark.skipif(not _kernel(), reason="the path to this point is the compiled likelihood's")
+@pytest.mark.skipif(not _kernel(), reason="the path to this point is the compiled likelihood's, on Linux x86-64")
 def test_nothing_is_said_when_no_own_factor_is_outside():
     L = Ladder(MM, 2, 1, start="ols")
     r = L.fit()
