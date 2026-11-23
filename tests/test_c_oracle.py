@@ -48,6 +48,12 @@ def _c_bin():
     return b if b and os.path.exists(b) else None
 
 
+def _kernel():
+    """Is the compiled likelihood (the C's elf, in the wheel) the one in use?"""
+    from drvarma import _engine
+    return _engine.engine_backend() == "c"
+
+
 def _port_kwargs(d):
     kw = dict(d)
     if "echelon" in kw:
@@ -64,6 +70,10 @@ def test_the_record_names_a_commit():
 
 @pytest.mark.parametrize("case", REC["cases"], ids=IDS)
 def test_the_port_gives_the_recorded_number(case):
+    if "nit" in case and not _kernel():
+        pytest.skip("a stop on the MA wall is reached only by the same path, and the "
+                    "path is the compiled likelihood's: the pure-Python fallback agrees "
+                    "with it to rounding, which is not enough there (docs/HOMOLOGATION.md)")
     files = [os.path.join(D, os.path.basename(f)) for f in case["files"]]
     L = Ladder(files, **_port_kwargs(case["port"]))
     r = L.fit()

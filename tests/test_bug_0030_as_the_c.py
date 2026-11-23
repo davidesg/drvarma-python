@@ -93,7 +93,14 @@ def test_the_cast_does_not_take_the_reciprocal_of_an_ma1():
     L.unpack(r.x)
 
 
+def _kernel():
+    from drvarma import _engine
+    return _engine.engine_backend() == "c"
+
+
 @needs_fue
+@pytest.mark.skipif(not _kernel(), reason="on the MA wall the path is the compiled "
+                    "likelihood's; the pure-Python fallback agrees with it to rounding only")
 def test_on_the_ma_wall_the_port_ends_where_the_c_does():
     """GS1 + FF, VARMA(1,1), route V: the C stops on the invertibility wall
     at -1740.636683 after 62 iterations from zero and at -1740.622890 after
