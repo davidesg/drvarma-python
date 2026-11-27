@@ -30,6 +30,13 @@ def _load_c():
     not caching keeps honest the tests that block the module to force the port.
     """
     global _C_ERROR
+    # DRVARMA_NO_ENGINE asks for the port at EVERY entry point (BUG-0032): it
+    # was read only by estimate_w and engine_backend, so elf_c and marma_c --
+    # the ladder's, and sima's -- went on computing in C while the backend
+    # answered "python".
+    if os.environ.get("DRVARMA_NO_ENGINE"):
+        _C_ERROR = "DRVARMA_NO_ENGINE is set (the port was asked for)"
+        return None
     try:
         from drvarma._drvarma_engine import ffi, lib
     except ImportError as e:
@@ -42,8 +49,6 @@ def _load_c():
 def engine_backend() -> str:
     """"c" when the compiled engine loads, "python" when drvarma falls back to
     the pure-Python port (or DRVARMA_NO_ENGINE asks for it)."""
-    if os.environ.get("DRVARMA_NO_ENGINE"):
-        return "python"
     return "c" if _load_c() is not None else "python"
 
 
@@ -83,12 +88,9 @@ def estimate_w(w, p, q, include_mean=False,
     # Runtime opt-out: DRVARMA_NO_ENGINE forces the pure-Python estimator (e.g. to
     # dodge a C-engine issue) without rebuilding.  Otherwise use the C engine if
     # built, falling back to pure-Python when it is not.
-    c = None
-    if not os.environ.get("DRVARMA_NO_ENGINE"):
-        c = _load_c()
-        if c is None:
-            _warn_python_fallback()
+    c = _load_c()
     if c is None:
+        _warn_python_fallback()
         from .estimate_py import estimate_w_py
         return estimate_w_py(w, p, q, include_mean=include_mean,
                              diag_ar=diag_ar, diag_ma=diag_ma, diag_cov=diag_cov,

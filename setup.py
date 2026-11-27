@@ -11,6 +11,7 @@ build that cannot compile it fails.
 
 import importlib.util
 import os
+import sysconfig
 
 from setuptools import setup
 
@@ -37,7 +38,18 @@ def _cffi_extension():
     # carry the engine (the binary wheels, a CI job): then it fails loudly
     # instead of dropping the engine with a warning (BUG-0022, BUG-0024).
     ext.optional = not os.environ.get("DRVARMA_REQUIRE_ENGINE")
+    # abi3 (BUG-0031): cffi already compiles against the limited API (the .pyd
+    # links python3.dll), so one wheel per platform serves every CPython from
+    # 3.10 on, the ones released after the wheel included. The wheels were
+    # per minor version and stopped at cp314; on 3.15 pip took the
+    # py3-none-any wheel and every fit ran on the port. A free-threaded
+    # build has no limited API: it keeps a version-specific extension.
+    ext.py_limited_api = _ABI3
     return ext
+
+
+# The limited API does not exist on a free-threaded CPython (3.13t, 3.14t...).
+_ABI3 = not sysconfig.get_config_var("Py_GIL_DISABLED")
 
 
 def _sync_material():
@@ -69,4 +81,7 @@ else:
             raise
         print("drvarma: skipping C engine extension (%s); pure-Python install." % exc)
 
-setup(ext_modules=ext_modules)
+# The abi3 tag goes on the wheel only when it carries the extension: the pure
+# wheel stays py3-none-any, the port for every platform without a binary.
+options = {"bdist_wheel": {"py_limited_api": "cp310"}} if ext_modules and _ABI3 else {}
+setup(ext_modules=ext_modules, options=options)

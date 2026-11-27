@@ -6,13 +6,19 @@ of that workflow's matrix, and a manual upload leaves users without them.
 
 ## What gets published
 
-* **Binary wheels**, cp310–cp314, with the GSL bundled (cibuildwheel):
+* **Binary wheels**, one `cp310-abi3` per platform, with the GSL bundled
+  (cibuildwheel), smoke-tested on cp310–cp315. abi3 serves every CPython from
+  3.10 on, later ones included (BUG-0031); when a new CPython goes final, add it
+  to `[tool.cibuildwheel] build` so the wheel is tested on it
+  (`bugs/BUG-0031-repro/repro.py` keeps the list of final versions). Not
+  covered: free-threaded builds and 32-bit Windows, which get the pure wheel:
   Linux x86_64 and aarch64, macOS arm64 and x86_64 (`macosx_11_0`, built on
   macos-15 and macos-15-intel), Windows AMD64.
   `tools/check_macos_minos.py` stops the build if a macOS binary asks for a
   newer system than its tag.
 * **Pure-Python wheel** `py3-none-any` (built with `DRVARMA_NO_ENGINE=1`), the
-  fallback for any other platform.
+  fallback for any other platform. It stays: every platform gets drvarma, and
+  the port warns when it computes (BUG-0005).
 * **sdist**, which ships `csrc/` and builds the engine where GSL is present.
 
 All three carry the bug register (`tools/sync_material.py` copies it into

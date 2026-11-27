@@ -93,8 +93,15 @@ testpaths = ["tests"]
 # The fix is the shape fue already uses: per-platform binary wheels WITH GSL
 # bundled, plus the pure wheel as the last resort for platforms not built.
 [tool.cibuildwheel]
-build = "cp310-* cp311-* cp312-* cp313-* cp314-*"
-skip  = "*-win32 *-manylinux_i686 pp* cp31?t-*"   # cp31?t: free-threaded, built by default since cibuildwheel 3.1
+# ONE abi3 wheel per platform (setup.py, BUG-0031): cibuildwheel builds it on
+# cp310 and, for every later identifier in the list, reuses it and runs the
+# smoke test on that Python. So the list is the versions TESTED, not the ones
+# served: the wheel installs on any CPython >= 3.10, the next ones too. When a
+# CPython goes final, add it here (bugs/BUG-0031-repro checks it).
+build = "cp310-* cp311-* cp312-* cp313-* cp314-* cp315-*"
+# Without a binary, pip takes the py3-none-any wheel: the port, which is kept on
+# purpose (every platform gets drvarma) and says so when it computes (BUG-0005).
+skip  = "*-win32 *-manylinux_i686 pp* cp31?t-*"   # cp31?t: free-threaded, no limited API
 
 # Smoke-test every wheel: it must import, estimate, and report how the
 # optimiser terminated. NOT the golden battery — exact log-likelihoods are

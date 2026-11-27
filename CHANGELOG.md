@@ -6,6 +6,17 @@ compiled C engine.
 
 ## Unreleased
 
+**One abi3 wheel per platform, for every CPython from 3.10 on (BUG-0031).**
+The binary wheels were per minor version and stopped at cp314; on CPython
+3.15 pip took the pure wheel and every fit ran on the port. Now the wheel is
+`cp310-abi3` and is smoke-tested on cp310–cp315 (cibuildwheel 4.3.5, with
+abi3audit). The pure `py3-none-any` wheel stays, for every platform without a
+binary (free-threaded builds, 32-bit Windows, others).
+
+**DRVARMA_NO_ENGINE reaches `elf_c` and `marma_c` (BUG-0032).** Only
+`estimate_w` read it, so the ladder went on computing in C while
+`engine_backend()` said "python".
+
 **The own MA factors, each read alone, are said when outside the circle** —
 the C's `own_ma_outside` (atsw-gui #223). The likelihood is evaluated only
 where the MA operator of the system is invertible, and the ladder does not
