@@ -91,3 +91,30 @@ entra en el `diff` automático.
 ## Validation
 
 El test de (2) pasa hoy solo después de aplicar (1). Es su propia comprobación.
+
+## Update (2026-11-28): two copies now, and the drift is the `.inp` path's
+
+`drvarma_v.04.1` is retired and drtran keeps its own engine: the copies are
+two, atsw-gui's `engines/drvarma` (the C of record) and the embedded
+`csrc/internal/` the wheel builds. The original symptom, an executable with
+an inert convergence diagnosis, is solved in atsw-gui in its own way
+(`opt_termcode`, `opt_iters`).
+
+Measured against atsw-gui main today:
+
+| file | lines different | what |
+|---|---|---|
+| `elfvarma.c` | 0 | the likelihood: the ladder's C (`elf_c`) is the C's |
+| `drvmlest.c` | ~200 | the C's `.inp` path moved on: fdhess standard errors, the MA wall report, `objcfunc`'s boundary sentinel |
+| `qnewtopt.c` | ~200 | the verdict recorded differently, the report deferred |
+| `nlatools.c` | 34 | |
+
+So the ladder (what sima uses) runs the C's likelihood, and its numbers are
+homologated case by case (`tests/test_c_oracle.py`, `docs/HOMOLOGATION.md`).
+What has drifted is `estimate_w`, the deprecated `.inp` path (`model.py`,
+`forecast.py`), which the record pins by sha256 and declares pending; the
+path goes in drvarma 6.0.
+
+Two ways to close it: bring `drvmlest.c`/`qnewtopt.c`/`nlatools.c` to the
+C's and regenerate the `.inp` path's references (its standard errors become
+fdhess's), or leave it until 6.0 removes the path. A decision for David.
