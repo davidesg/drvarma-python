@@ -703,6 +703,58 @@ the CFFI engine is an optional accelerator only. Ordered PP1 → PP5.
       solo en la copia empotrada. Ahí va el arreglo y el test del `diff`.
 - [ ] Single source of truth for forecasting/diagnostics: numpy (current) vs the C.
 
+## ESTUDIO — La velocidad del port en Python (no es un bug)
+
+**No va al registro de defectos.** `_as311.elf` es un port fiel, bucle a bucle,
+de `elfvarma.c`: da la misma verosimilitud con un error de ~1e-10, y para eso
+existe. Su lentitud es el coste de esa fidelidad. Lo que se estudia es si se
+puede ganar velocidad sin perder la homologación.
+
+**Por qué importa (rodaje de la P08, 2026-11-27).** Cinco grupos acabaron con
+el port porque no tenían rueda binaria para su Python (`bugs/BUG-0031`). sima
+mete el polinomio AR univariante de cada serie dentro de Phi(B). En el VAR
+monetario de EE. UU. (IPI, IPC, WTI, FF, 1990-2007), elf recibe m = 4,
+n = 215 y p = 15, y un `estimate` de sima lo llama 3 293 veces con p = 0 y
+8 795 con p = 1. Con el motor tarda 15 s y 46 s; con el port, unos 40 min y
+1,7 h. Dos grupos dejaron sima por statsmodels o MCO, y otros relajaron las
+tolerancias o renunciaron al VAR completo. fue en Python también es lento,
+pero se puede usar.
+
+**Lo medido.** El punto de partida es `bench/velocidad_elf_port.py`.
+
+| Caso | C (ms por evaluación) | Port (ms por evaluación) | Cociente |
+|---|---|---|---|
+| Sintético, m = 4, n = 215, p = 2 | 0,12 | 19–56 | 166–379 |
+| Sintético, m = 4, n = 215, p = 15 | 8–15 | 300–575 | ~37 |
+| Sistema monetario real, p = 15 | 4,9 | 704 | 143 |
+
+La documentación (DEVELOPER_GUIDE 4.1: 13–100 veces; README: 20–250 veces)
+mide `estimate_w` con p ≤ 3. No dice el coste absoluto con los órdenes de sima.
+
+**El perfil.** 150 s de un `estimate` con p = 0 en el port:
+- el 99,7 % se va en `elf`;
+- 93,6 s son sus propios bucles: [3.1]/[3.2], seis bucles anidados en Python;
+- 35,7 s son `cgamma`;
+- 15,0 s son 31,9 millones de llamadas a la función `gval`, unas 65 000 por evaluación;
+- el 57 % del tiempo total son las hessianas por diferencias finitas (`fd_covariance`).
+
+**El estudio, por pasos:**
+- [ ] Perfil completo con `bench/velocidad_elf_port.py` a varios (m, p, q):
+      dónde crece el coste y cuánto se lleva cada bloque de `elf` y de `cgamma`.
+- [ ] Vectorizar [3.1]/[3.2] y `cgamma` por bloques (m × m) con numpy, y medir
+      la desviación frente al C. El criterio es la homologación a 1e-10
+      (`HOMOLOGATION.md`), y donde importe hay que conservar el orden de suma
+      del C.
+- [ ] Si no basta, otras vías, cada una con su coste de fidelidad: numba como
+      dependencia opcional, o el acceso empaquetado a gamma sin closure.
+- [ ] Cuántas evaluaciones pide la escalera. ¿Hacen falta las hessianas de los
+      univariantes de la puerta, que no se usan, o en cada peldaño intermedio?
+      Afecta a los dos motores.
+- [ ] Documentar el coste absoluto junto al cociente: «con los órdenes de sima
+      (p ~ 15, m = 4) una evaluación tarda ~0,6 s y un ajuste necesita miles».
+- Objetivo orientativo: menos de 50 ms por evaluación con m = 4 y p = 15, es
+  decir, un `estimate` con p = 1 por debajo de 5 minutos sin motor.
+
 ## ESTUDIO — El criterio de parada del optimizador (no es un bug)
 
 **Esto no va al registro de defectos, y la distinción es sustantiva.**

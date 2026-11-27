@@ -1,8 +1,10 @@
 name: Publish to PyPI
 
-# Builds cp310-cp314 BINARY wheels (Linux x86_64+aarch64, macOS arm64 and
-# x86_64, Windows AMD64) with GSL bundled, plus the pure-Python wheel and the
-# sdist, and publishes them all on a v* tag.
+# Builds abi3 BINARY wheels, cp310-abi3, one per platform (Linux x86_64+aarch64,
+# macOS arm64 and x86_64, Windows AMD64) with GSL bundled and smoke-tested on
+# cp310-cp315, plus the pure-Python wheel and the sdist, and publishes them all
+# on a v* tag. Up to 0.3.4 the wheels were per minor version and stopped at
+# cp314: on CPython 3.15 pip took the pure wheel in silence (BUG-0031).
 #
 # macOS: macosx_11_0 wheels for both processors, as atsw-gui's .dmg (macOS 11
 # on Apple Silicon and Intel). arm64 on macos-15, x86_64 on macos-15-intel;
@@ -69,7 +71,7 @@ jobs:
           platforms: aarch64
 
       - name: Build wheels
-        uses: pypa/cibuildwheel@v3.4.1
+        uses: pypa/cibuildwheel@v4.3.5   # 4.x: CPython 3.15 and abi3audit
         env:
           CIBW_ARCHS_LINUX: "x86_64 aarch64"
           MACOSX_DEPLOYMENT_TARGET: ${{ matrix.macos_target }}
