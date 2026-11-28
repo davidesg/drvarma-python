@@ -23,6 +23,14 @@ of the C's battery the parameter table is the C's line for line
 (`tests/test_inp_path_as_the_c.py`). The pure-Python `.inp` estimator is not
 yet the C's on four of them (BUG-0033).
 
+**The gate says when the diagonal system could not be evaluated (BUG-0020).**
+With a univariate optimum whose own MA sits on the invertibility wall, the
+diagonal system can fail the likelihood where each series alone passes; the
+gate said "difference nan: the joint cast does not reproduce the univariate
+models". It now says the system could not be evaluated, with the reason, and
+names the MA factor on the wall: the univariate model to reconsider. The C
+does the same (atsw-gui `engines/drvarma` BUG-0009). Only the message changes.
+
 **DRVARMA_NO_ENGINE reaches `elf_c` and `marma_c` (BUG-0032).** Only
 `estimate_w` read it, so the ladder went on computing in C while
 `engine_backend()` said "python".

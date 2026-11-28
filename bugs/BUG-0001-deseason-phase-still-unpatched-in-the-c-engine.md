@@ -1,11 +1,11 @@
 ---
 id: BUG-0001
 title: The seasonal-adjustment phase off-by-one is fixed in the Python port but STILL LIVE in the C engine, which the standalone executable uses
-status: open
+status: fixed
 severity: high
 component: deseason
 found_in: 0.1.3
-fixed_in:
+fixed_in: the C, atsw-gui engines/drvarma BUG-0008 (2026-11-28); the port long before
 reported: 2026-07-28
 reporter: David / ejercicio de pass-through del petróleo
 tags:
@@ -95,3 +95,21 @@ El componente estacional se estima sobre la **diferencia simple de niveles** y s
 resta en niveles, **antes** del logaritmo de Box-Cox en `transform`. Para un patrón
 estacional multiplicativo sobre un índice con tendencia (el IPC de España va de 69 a
 98) un ajuste aditivo en niveles es la escala equivocada. Ver BUG-0003.
+
+## Resolution (2026-11-28)
+
+The live C is atsw-gui's `engines/drvarma`; `drvarma_v.04.1` is gone. There
+the defect was still in place on 2026-11-28 (`src/deseason.c`, under a
+comment saying «NOT fixed here»), with `-deseason` live in the executable.
+Fixed there as its BUG-0008 with the rotation above, the same as the port's,
+so C and port subtract the same pattern again.
+
+- Repro: atsw-gui `engines/drvarma/bugs/BUG-0008-repro/repro.py`. IPC_ES from
+  January and from February: the monthly rate of the re-seasonalized forecast
+  differed by 61 % of its range before, by 0.001 points after.
+- The battery's `-deseason` cases start in January, where the rotation is the
+  identity: their references do not move.
+
+BUG-0003 (estimated in levels before the Box-Cox) is separate and still
+pending in the C.
+
