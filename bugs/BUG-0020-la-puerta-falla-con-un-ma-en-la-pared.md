@@ -1,15 +1,16 @@
 ---
 id: BUG-0020
 title: The diagonal gate fails with NaN when a univariate optimum sits on the MA wall; the same polynomial is admissible alone and ifault 3 in the joint elf
-status: open
+status: fixed
 severity: low
 component: ladder
 found_in: 0.1.7
-fixed_in:
+fixed_in: unreleased (after 0.3.4); the C, atsw-gui engines/drvarma BUG-0009
 reported: 2026-10-11
 reporter: David / Claude — echelon stage 2's fits study
 tags: [ladder, gate, elf, invertibility]
 references:
+  - bugs/BUG-0020-repro/repro.py
   - src/drvarma/ladder.py (Ladder._run_gate)
   - src/drvarma/_as311.py (chekma, elf: ifault 3 at the Cholesky of mtmp0)
   - research/echelon_seed/fits.py
@@ -49,8 +50,30 @@ wall"; (b) the univariate search keeps away from the wall.
 
 ## Fix
 
-—
+Fix (a), in both engines, only the report: when the diagonal system has an
+ifault, the gate says it could not be evaluated, with the C's words for the
+fault, and names every own MA factor of the univariate optima on the wall
+(`_own_ma_outside`, the C's `own_ma_outside`):
+
+```
+the diagonal gate failed: the diagonal system could not be evaluated at the
+univariate optima (AR nonstationary), and an own MA factor is on the
+invertibility wall: y2 (1.0000). Reconsider that univariate model.
+```
+
+The numerical cause (why the joint Cholesky of mtmp0 fails at m = 3 where it
+passes at m = 1) is in `elf`, the same in both engines: the C gives ifault 3
+on the same files, and the port in C and in pure Python too. It is not
+touched: a proven engine, and an MA on the wall is already a model to
+reconsider. Fix (b), keeping the univariate search off the wall, would
+change fue's optima and is not taken.
 
 ## Validation
 
-—
+- `bugs/BUG-0020-repro/repro.py` (y1.inp, y2.inp, y3.inp): exits 1 on the
+  code before (the "difference nan" message), 0 after.
+- `tests/test_bug_0020_puerta_ma_en_la_pared.py`, with the C engine and with
+  `DRVARMA_NO_ENGINE=1`.
+- The C: atsw-gui `engines/drvarma/bugs/BUG-0009-repro/repro.py`, the same
+  three files and the same message; before, "joint diagonal 0.000000" and a
+  difference of 1.26e+03.

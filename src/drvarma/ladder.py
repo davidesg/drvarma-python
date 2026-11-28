@@ -97,6 +97,21 @@ def _own_ma_outside(series):
     return out
 
 
+# The C's fault_msg (escalera.c): the ifault of a ladder fit, in words.
+_FAULT_MSG = {1: "Q matrix not positive definite", 2: "unit root in AR",
+              3: "AR nonstationary", 4: "MA noninvertible", 5: "numerical problem",
+              6: "inadmissible point (fixed-frequency factor or deterministic denominator)"}
+
+
+def _fault_msg(ifault):
+    return _FAULT_MSG.get(int(ifault), "unknown")
+
+
+def _own_ma_list(own):
+    """The C's list of own_ma_outside: "y2 (1.0000), ..." (BUG-0020)."""
+    return ", ".join(f"{name[:40]} ({md:.4f})" for name, _k, _q, _c, md in own)
+
+
 def _own_ma_text(own):
     """The C's block of the .out for own_ma_outside, line for line."""
     if not own:
@@ -1575,8 +1590,24 @@ class Ladder:
         total = float(sum(r["logL"] for r in rows))
         diff = joint.logL - total
         passed = (joint.ifault == 0 and abs(diff) <= GATE_TOL * (1.0 + abs(total)))
+        # BUG-0020 (the C's BUG-0009): when the diagonal system cannot be
+        # evaluated, say so, and name an own MA factor of the univariate optima
+        # on the invertibility wall, the likely cause in sight. Only the report.
+        wall = _own_ma_outside(self.series) if joint.ifault else []
         self.gate = {"rows": rows, "sum": total, "joint": joint.logL,
-                     "difference": diff, "passed": bool(passed)}
+                     "difference": diff, "passed": bool(passed),
+                     "ifault": int(joint.ifault), "own_ma_wall": wall}
+        if not passed and wall:
+            raise GateError(
+                "the diagonal gate failed: the diagonal system could not be evaluated "
+                f"at the univariate optima ({_fault_msg(joint.ifault)}), and an own MA "
+                f"factor is on the invertibility wall: {_own_ma_list(wall)}. "
+                "Reconsider that univariate model.")
+        if not passed and joint.ifault:
+            raise GateError(
+                "the diagonal gate failed: the diagonal system could not be evaluated "
+                f"at the univariate optima ({_fault_msg(joint.ifault)}). Nothing on top "
+                "of it can be trusted.")
         if not passed:
             raise GateError(f"the diagonal gate failed (difference {diff:.3g}): the "
                             f"joint cast does not reproduce the univariate models")
