@@ -10,7 +10,8 @@
 #include <string.h>
 #include <math.h>
 
-extern int qn_last_termcode, qn_last_nit;   /* set by raxopt (qnewtopt.c) */
+/* opt_termcode/opt_iters (qnewtopt.c), est_se_how and est_ma_* (drvmlest.c):
+   main.h, as in the C engine of record (atsw-gui engines/drvarma). */
 
 real macheps;
 FILE *outputv;
@@ -994,6 +995,10 @@ DrvarmaResult *drvarma_estimate(const DrvarmaModelSpec *spec)
     xitol  = (met == 2) ? -1.0e-3 : 1.0e-3;
     varma1.xitol = xitol;
 
+    /* As the C's .inp path (drvarma.c): fdhess by default, with qq[1,1] held
+       (Q -> cQ leaves the likelihood unchanged: a flat direction). */
+    est_fdhess = spec->bfgs_se ? 0 : 1;
+    est_fixed  = npar - (global_diag_cov ? nser : nser * (nser + 1) / 2) + 1;
     shootx(x, &varma1, &ifault, 1, 0);
     est(&shootx, npar, x, dev, cov, maxits, nrits, grtol, sptol,
         xitol, varma1.a, &varma1.sigma2, &varma1.logelf, &ifault);
@@ -1009,8 +1014,11 @@ DrvarmaResult *drvarma_estimate(const DrvarmaModelSpec *spec)
        returned no termination code and every convergence diagnosis downstream
        was silently inert, while the pure-Python estimator reported it. Both
        engines must say the same thing about the same fit. */
-    r->termcode = qn_last_termcode;
-    r->nit      = qn_last_nit;
+    r->termcode = opt_termcode;
+    r->nit      = opt_iters;
+    r->se_how      = est_se_how;
+    r->ma_boundary = est_ma_boundary;
+    r->ma_nroots   = est_ma_nroots;
     r->params     = (double *) malloc((size_t)npar * sizeof(double));
     r->std_errors = (double *) malloc((size_t)npar * sizeof(double));
     r->cov_matrix = (double *) malloc((size_t)npar * npar * sizeof(double));

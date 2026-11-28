@@ -16,15 +16,141 @@
 /*  Copyright (C) Jos‚ Alberto Mauricio, 1995.                               */
 /*****************************************************************************/
 
-#include "main.h"              /* Header file (prototype declarations)        */
+#include "main.h"
+#include <math.h>              /* Header file (prototype declarations)        */
 extern real macheps;          /* Machine epsilon (global: declared in DRV.C) */
 extern FILE *outputv;         /* Output file (global: declared in DRV.C)     */
 
 /*****************************************************************************/
 
 real pi10x, pi20x, xitolx;
+int  est_ma_boundary = 0;     /* MA inverse roots on the wall at the stop (lik.h) */
+int  est_ma_nroots   = 0;
+int  est_fdhess = 0;          /* 1: standard errors from fdhess at the optimum */
+int  est_fixed  = 0;          /* >0: parameter held while fdhess runs (flat dir.) */
+int  est_se_how = EST_SE_BFGS;/* <- which Hessian gave the standard errors      */
+extern int   opt_iters;       /* qnewtopt.c: iterations of the last raxopt  */
+static int   objc_rejects;    /* points objcfunc refused (boundary sentinel)     */
+static real *fix_full;        /* full vector behind the reduced objective        */
+static int   fix_n;
 struct Tvarma varmax;
 void (*castx)( real *, struct Tvarma *,int *, int, int );
+
+/*****************************************************************************/
+
+void fdhess( real (*func)(real *), int n, real *x, real f, real eta, real **H );
+real objcfunc( real *x );
+
+/* The Hessian behind the standard errors, as the reports write it.         */
+const char *est_se_label( int how )
+{
+   switch ( how )
+      {
+      case EST_SE_FDHESS:   return "fdhess";
+      case EST_SE_BOUNDARY: return "bfgs (fdhess: the optimum is on the boundary "
+                                   "of the admissible region)";
+      case EST_SE_NOTPD:    return "bfgs (fdhess: the Hessian is not positive definite)";
+      case EST_SE_NONE_BOUNDARY:
+         return "none (fdhess: the optimum is on the boundary of the admissible "
+                "region; the search did not move, so it built no BFGS Hessian)";
+      case EST_SE_NONE_NOTPD:
+         return "none (fdhess: the Hessian is not positive definite; the search "
+                "did not move, so it built no BFGS Hessian)";
+      default:              return "bfgs";
+      }
+}
+
+/* The objective with parameter est_fixed held at fix_full[est_fixed].       */
+static real objcfix( real *z )
+{
+   int i, k = 1;
+   for ( i = 1; i <= fix_n; i++ )
+       if ( i != est_fixed ) fix_full[i] = z[k++];
+   return objcfunc( fix_full );
+}
+
+/* 1 if H (k x k, symmetric) is positive definite by a plain Cholesky.       */
+static int strict_pd( real **H, int k )
+{
+   int i, j, l, ok = 1;
+   real s, **L = matrix( 1, k, 1, k );
+   for ( j = 1; j <= k && ok; j++ )
+       {
+       s = H[j][j];
+       for ( l = 1; l < j; l++ ) s -= L[j][l] * L[j][l];
+       if ( !(s > 0.0) || !isfinite( s ) ) { ok = 0; break; }
+       L[j][j] = sqrt( s );
+       for ( i = j + 1; i <= k; i++ )
+           {
+           s = H[i][j];
+           for ( l = 1; l < j; l++ ) s -= L[i][l] * L[j][l];
+           L[i][j] = s / L[j][j];
+           }
+       }
+   free_matrix( L, 1, k, 1, k );
+   return ok;
+}
+
+/* Covariance 2 F H^-1 / n from fdhess at par. Sets est_se_how; fills cov    */
+/* and dev only when it is EST_SE_FDHESS (otherwise the caller uses BFGS).   */
+static void fdhess_cov( int npar, real *par, real f, real **cov, real *dev )
+{
+   int  i, j, ii, jj, k = npar - ( est_fixed > 0 ), pfault;
+   real d1, d2, *z, *v, **H;
+
+   z = vector( 1, k );  v = vector( 1, k );  H = matrix( 1, k, 1, k );
+   for ( i = 1, ii = 1; i <= npar; i++ ) if ( i != est_fixed ) z[ii++] = par[i];
+   fix_full = vector( 1, npar );  fix_n = npar;
+   for ( i = 1; i <= npar; i++ ) fix_full[i] = par[i];
+
+   objc_rejects = 0;
+   fdhess( est_fixed > 0 ? objcfix : objcfunc, k, z, f, macheps, H );
+
+   if ( objc_rejects > 0 )
+      est_se_how = EST_SE_BOUNDARY;
+   else if ( !strict_pd( H, k ) )
+      est_se_how = EST_SE_NOTPD;
+   else
+      {
+      pfault = 0;
+      choldcp( H, k, &d1, &d2, &pfault );
+      if ( pfault ) est_se_how = EST_SE_NOTPD;
+      else
+         {
+         est_se_how = EST_SE_FDHESS;
+         for ( i = 1; i <= npar; i++ )
+             { dev[i] = NAN; for ( j = 1; j <= npar; j++ ) cov[i][j] = NAN; }
+         for ( i = 1, ii = 1; i <= npar; i++ )
+             {
+             if ( i == est_fixed ) continue;
+             for ( j = 1; j <= k; j++ ) v[j] = 0.0;
+             v[ii] = 1.0;
+             cholsol( H, k, v );
+             for ( j = 1, jj = 1; j <= npar; j++ )
+                 {
+                 if ( j == est_fixed ) continue;
+                 cov[j][i] = ( 2.0 * f * v[jj] ) / varmax.n;
+                 jj++;
+                 }
+             dev[i] = sqrt( cov[i][i] );
+             ii++;
+             }
+         }
+      }
+   /* raxopt starts b at the identity: with no iteration there is no BFGS    */
+   /* Hessian to fall back on (a .pre that already is the optimum), and the  */
+   /* identity would give sqrt(2F/n) for every parameter. Say so instead.    */
+   if ( ( est_se_how == EST_SE_BOUNDARY || est_se_how == EST_SE_NOTPD ) &&
+        opt_iters == 0 )
+      {
+      est_se_how = ( est_se_how == EST_SE_BOUNDARY ) ? EST_SE_NONE_BOUNDARY
+                                                     : EST_SE_NONE_NOTPD;
+      for ( i = 1; i <= npar; i++ )
+          { dev[i] = NAN; for ( j = 1; j <= npar; j++ ) cov[i][j] = NAN; }
+      }
+   free_vector( fix_full, 1, npar );
+   free_matrix( H, 1, k, 1, k );  free_vector( v, 1, k );  free_vector( z, 1, k );
+}
 
 /*****************************************************************************/
 /*****************************************************************************/
@@ -71,14 +197,13 @@ void est( void (*cast)( real *, struct Tvarma *, int *, int, int ),
 
    void raxopt( real (*func)( real [] ), real *fk, int n, real *xk, real **b,
                 int maxits, int nrits, real gradtol, real steptol );
-   void fdhess( real (*func)(real *), int n, real *x, real f,
-                real eta, real **H );
    real objcfunc( real *x );
 
 
 /* [1]: First computation of the log-likelihood: initialize pi10x & pi20x:   */
 
    *ifault = 0;                               /* Initialize fault indicator. */
+   est_se_how = EST_SE_BFGS;                  /* until the Hessian is taken  */
 
    varmax.xitol = xitol;                      /* Estimation method.          */
 
@@ -86,7 +211,7 @@ void est( void (*cast)( real *, struct Tvarma *, int *, int, int ),
 
    if ( *ifault > 0 ) return;                 /* Bad initial estimates (1).  */
 
-   elf( varmax.m, varmax.n, varmax.p, varmax.q, varmax.mu, varmax.phi,
+   varma_lik( varmax.m, varmax.n, varmax.p, varmax.q, varmax.mu, varmax.phi,
         varmax.theta, varmax.qq, varmax.w, 1.0, varmax.xitol,
         TRUE, varmax.a, &pi10x, &pi20x, &pi3, ifault );
 
@@ -99,15 +224,53 @@ void est( void (*cast)( real *, struct Tvarma *, int *, int, int ),
    vtmp  = vector( 1, npar );
    castx = cast;                              /* Assign casting routine.     */
 
+   opt_report_deferred = 1;             /* report_stop, below, once the MA   */
    raxopt( objcfunc, &pi1, npar, par, mtmp, maxits, nrits, grtol, sptol );
+   opt_report_deferred = 0;             /* roots at the stop are known       */
+   est_ma_boundary = 0;
+   est_ma_nroots = 0;
+   {
+   int  cf = 0, ir;
+   (*cast)( par, &varmax, &cf, 0, 0 );
+   if ( cf == 0 && varmax.q > 0 )
+      {
+      int  nr = varmax.m * varmax.q;
+      real *wr = vector( 1, nr ), *wi = vector( 1, nr ), *wmod = vector( 1, nr );
+      chekma( varmax.m, varmax.q, varmax.theta, wr, wi, wmod, &cf );
+      est_ma_nroots = nr;
+      for ( ir = 1; ir <= nr; ir++ ) if ( wmod[ir] >= 1.0 - MA_WALL_TOL ) est_ma_boundary++;
+      free_vector( wmod, 1, nr ); free_vector( wi, 1, nr ); free_vector( wr, 1, nr );
+      }
+   }
+   report_stop( est_ma_boundary, est_ma_nroots );
 
 /* This is an alternative way of computing the second derivative matrix:     */
+/*                                                                           */
+/*   raxopt leaves in mtmp the Hessian ACCUMULATED by BFGS along the path:   */
+/*   good to steer the search, but not the curvature at the optimum -- it    */
+/*   depends on the path and degrades in the flattest directions, which are  */
+/*   those with the largest standard errors. With est_fdhess the Hessian is  */
+/*   recomputed by finite differences AT the optimum, as drtran does. The    */
+/*   ladder (.pre input) sets it; the .inp path keeps the 0.4.1 behaviour.   */
 
-/* fdhess( objcfunc, npar, par, pi1, macheps, mtmp );                        */
-/* choldcp( mtmp, npar, &pi2, &pi3, ifault );                                */
+/*                                                                           */
+/*   Two guards (docs/STUDY-standard-errors.md in drvarma-python):           */
+/*   - a neighbour objcfunc refuses (Q not PD, unit root, non-invertible)    */
+/*     means the optimum is on the boundary: no unrestricted Hessian;        */
+/*   - choldcp is a MODIFIED Cholesky that patches small pivots, so the      */
+/*     Hessian is first checked with a plain one.                            */
+/*   Either way the BFGS factor is kept and est_se_how says why. With        */
+/*   est_fixed = k, parameter k (qq[1,1] in the .inp path: Q -> cQ leaves    */
+/*   the likelihood unchanged) is held; its dev and cov are NAN.             */
+
+   est_se_how = EST_SE_BFGS;
+   if ( est_fdhess )
+      fdhess_cov( npar, par, pi1, cov, dev );
 
 /* [3]: Sample estimation of the variance-covariance matrix:                 */
 
+   if ( est_se_how == EST_SE_BFGS || est_se_how == EST_SE_BOUNDARY ||
+        est_se_how == EST_SE_NOTPD )
    for ( i = 1; i <= npar; i++ )
        {
        for ( j = 1; j <= npar; j++ ) vtmp[j] = 0.0;
@@ -126,7 +289,7 @@ void est( void (*cast)( real *, struct Tvarma *, int *, int, int ),
 
    (*cast)( par, &varmax, ifault, 0, 0 );
 
-   elf( varmax.m, varmax.n, varmax.p, varmax.q, varmax.mu, varmax.phi,
+   varma_lik( varmax.m, varmax.n, varmax.p, varmax.q, varmax.mu, varmax.phi,
         varmax.theta, varmax.qq, varmax.w, 1.0, varmax.xitol,
         TRUE, a, &pi1, &pi2, &pi3, ifault );
 
@@ -154,25 +317,25 @@ real objcfunc( real *x )
    ifault = 0;
    (*castx)( x, &varmax, &ifault, 0, 0 );
    if ( ifault > 0 )                            /* ifault = 6-7-8- ...       */
-      return( 1.0 );
+      { objc_rejects++; return( 1.0 ); }
 
 /* [2]: Compute objective function and return:                               */
 
-   elf( varmax.m, varmax.n, varmax.p, varmax.q, varmax.mu, varmax.phi,
+   varma_lik( varmax.m, varmax.n, varmax.p, varmax.q, varmax.mu, varmax.phi,
         varmax.theta, varmax.qq, varmax.w, 1.0, varmax.xitol,
         FALSE, varmax.a, &pi1, &pi2, &pi3, &ifault );
 
    if ( ifault > 0 )                            /* ifault = 1-2-3-4-5.       */
-      return( 1.0 );
-   else
-      {
-      /* BUG-0006: a non-finite objective is an inadmissible point, exactly
-         like an elf ifault (drtran's guard, the same line).  pi1 overflowing
-         while pi2 underflows gives inf*0 = NaN.                             */
-      real f = pow( (pi1 / pi10x), varmax.m ) * (pi2 / pi20x);
-      if ( !isfinite( f ) ) return( 1.0 );
-      return( f );
-      }
+      { objc_rejects++; return( 1.0 ); }
+
+/* A point whose objective is not finite is inadmissible, exactly like an     */
+/* elf ifault: return 1.0 (the article's strategy, sec. 3). Without this the  */
+/* line search received the NaN and never returned (BUGS.md). As in drtran.   */
+   {
+   real f = pow( (pi1 / pi10x), varmax.m ) * (pi2 / pi20x);
+   if ( !isfinite( f ) ) { objc_rejects++; return( 1.0 ); }
+   return( f );
+   }
 }
 
 /*****************************************************************************/

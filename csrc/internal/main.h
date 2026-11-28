@@ -75,24 +75,45 @@ struct Tseries
     int  max;                    /* ?ndice del m?ximo */
     int  min;                    /* ?ndice del m?nimo */
     real *data;                  /* Vector de datos */
+    int  numbering;              /* 1 = numeracion simple, 0 = fechas (.pre) */
+    real refactor;               /* reescalado de fue, del .pre              */
     };
+
+/* El modelo univariante de un .pre (lib/fuepre): la escalera, desde 5.0. */
+#include "tusmodel.h"
 
 /*****************************************************************************/
 /*  Funciones de estimaci?n (de elfvarma.c y drvmlest.c)                     */
 /*****************************************************************************/
+
+/* Which Hessian gave the standard errors (est_se_how, set by est):         */
+#define EST_SE_BFGS      0    /* the one BFGS accumulated (fdhess not asked)   */
+#define EST_SE_FDHESS    1    /* fdhess at the optimum                         */
+#define EST_SE_BOUNDARY  2    /* BFGS kept: the optimum is on the boundary     */
+#define EST_SE_NOTPD     3    /* BFGS kept: fdhess not positive definite       */
+#define EST_SE_NONE_BOUNDARY 4 /* neither: boundary, and BFGS never built       */
+#define EST_SE_NONE_NOTPD    5 /* neither: not PD, and BFGS never built         */
+extern int est_fdhess, est_fixed, est_se_how;
+const char *est_se_label( int how );
 
 void est( void (*cast)( real *, struct Tvarma *, int *, int, int ),
           int npar, real *par, real *dev, real **cov, int maxits, int nrits,
           real grtol, real sptol, real xitol, real **a, real *sigma2,
           real *logelf, int *ifault );
 
-void marma( int k, int n, int p, int q, real *mu, real ***phi, real ***theta,
-            real **qq, real **w, real sigma2, real xtol, int chkma, int atf,
-            real **v, real *r1, real *r2, real *rlogl, int *ifault );
+/* The optimizer's stop (qnewtopt.c) and where the MA roots ended (drvmlest.c). */
+extern int  opt_termcode, opt_iters, opt_report_deferred;
+extern int  est_ma_boundary, est_ma_nroots;
+void report_stop( int nboundary, int nroots );
+
+#include "lik.h"            /* lib/lik: Shea (AS 242) beside elf, -lik */
+
 void elf( int m, int n, int p, int q, real *mu, real ***phi, real ***theta,
           real **qq, real **w, real sigma2, real delta, int atf, real **a,
           real *f1, real *f2, real *logelf, int *ifault );
 
+/* nlatools.c; lib/fuepre calls it for the easter regressor (host-provided). */
+void Easter( int *day, int *month, int year );
 void chekma( int m, int q, real ***theta, real *wr, real *wi,
              real *wmod, int *ifault );
 
@@ -153,6 +174,8 @@ void DateToObs( int beg_per, int beg_sub, int per, int sub, int freq,
                 int *obs_no );
 real Mean( real *data, int nobs );
 real Stdev( real *data, int nobs );
+void Ccf( real *data1, real *data2, int nobs, int lags, real *corr,
+          real mean1, real mean2, real sd1, real sd2 );
 int  MaxVal( real *data, int nobs );
 int  MinVal( real *data, int nobs );
 real Skew( real *data, int nobs );
@@ -170,10 +193,8 @@ void PlotCor( real *corr, int lags, int isacf, struct Tseries *ser, int npar );
 void PlotCCF( real *corr, int lags, struct Tseries *ser );
 void ccf( struct Tseries *ser1, struct Tseries *ser2, int lags, real *corr );
 real ChiTestC( real *corr, int lags, int nobs );
-void hosking_test(real **res, int nobs, int m, int s, real *Q, real *pval);
-void jarque_bera_multivariate(real **res, int nobs, int m, real *JB, real *pval);
-void multivariate_diagnostics(real **res, int nobs, int m, FILE *outputv);
-void diagnose(struct Tvarma *varma);
+/* Hosking and the multivariate Jarque-Bera: lib/diagmv/diagmv.h */
+void diagnose(struct Tvarma *varma, const int *npar_ser);
 /* Funciones de diagn?stico adicionales (declaradas en diagnose.c) */
 void test_last_lag_significance(real *x, real **cov, int npar,
                                 int m, int p, int q,
@@ -213,13 +234,6 @@ void AnalyzeOneSeries(real *res, int nobs, int idx, int freq);
 real chisq( real x, int df );          /* Distribuci?n Chi?cuadrado acumulada */
 real tdist( real t, int df );          /* Distribuci?n t?Student acumulada   */
 real normal_cdf( real z );             /* Distribuci?n normal est?ndar acumulada */
-
-/*****************************************************************************/
-/*  Funciones auxiliares para el operador de convergencia (no usadas en      */
-/*  la versi?n actual, pero se mantienen por compatibilidad)                 */
-/*****************************************************************************/
-
-void calcnu( double omega, int s, double delta, int r, double *nu, int lags );
 
 /*****************************************************************************/
 /*  Funciones propias de drvarma.c (declaradas para completitud)             */

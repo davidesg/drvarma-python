@@ -13,6 +13,16 @@ The binary wheels were per minor version and stopped at cp314; on CPython
 abi3audit). The pure `py3-none-any` wheel stays, for every platform without a
 binary (free-threaded builds, 32-bit Windows, others).
 
+**The compiled engine is the C of record (BUG-0002).** `csrc/` was an old
+copy of the C: its `.inp` path (`estimate_w`, `Model`) had drifted from
+atsw-gui's (the optimizer's line search, the boundary sentinel, the MA wall
+count). Every vendored file is now atsw-gui's, identical, with `lib/lik` and
+`lib/optim/lnsrch.c`, and with the compiled engine `Model` takes its fdhess
+standard errors from the C itself (`estimate_w(hessian="fd")`): on six cases
+of the C's battery the parameter table is the C's line for line
+(`tests/test_inp_path_as_the_c.py`). The pure-Python `.inp` estimator is not
+yet the C's on four of them (BUG-0033).
+
 **DRVARMA_NO_ENGINE reaches `elf_c` and `marma_c` (BUG-0032).** Only
 `estimate_w` read it, so the ladder went on computing in C while
 `engine_backend()` said "python".

@@ -18,28 +18,20 @@
 /*  Copyright (C) Jos� Alberto Mauricio, 1995.                               */
 /*****************************************************************************/
 
-#include "main.h"              /* Header file (prototype declarations)        */
+#include "main.h"
+#include <math.h>              /* Header file (prototype declarations)        */
 extern real macheps;          /* Machine epsilon (global: declared in DRV.C) */
 extern FILE *outputv;         /* Output file (global: declared in DRV.C)     */
 extern int quiet_mode;   /* added */
 
-/* The optimizer's verdict, recorded for callers that cannot read `outputv`.
-
-   `report()` announces the termination code and the iteration count, but it
-   writes to `outputv`, and `quiet_mode` was introduced to silence the trace for
-   batch simulations. In the Python binding `outputv` is /dev/null, so the
-   announcement was produced and thrown away: the C engine returned no termcode
-   at all while the pure-Python estimator did, and every convergence diagnosis
-   downstream was inert on the DEFAULT engine.
-
-   These two globals only RECORD what raxopt already computed -- no criterion,
-   no announcement and no numerical behaviour changes. They exist so both
-   engines can say the same thing about the same fit. */
-int qn_last_termcode = 0;
-int qn_last_nit      = 0;
-
 /*****************************************************************************/
 /*****************************************************************************/
+
+int  opt_termcode = 0;        /* the last raxopt's verdict, and its objective: */
+real opt_fk = 0.0;            /* est() writes the report once it has checked    */
+int  opt_report_deferred = 0; /* the MA roots (report_stop)                     */
+int opt_iters = 0;            /* iterations of the last raxopt (est: 0 means the */
+                              /* BFGS factor was never updated from I)          */
 
 void raxopt( real (*func)(real *), real *fk, int n, real *xk, real **b,
              int maxits, int nrits, real gradtol, real steptol )
@@ -127,9 +119,11 @@ void raxopt( real (*func)(real *), real *fk, int n, real *xk, real **b,
       *fk = fkp1;
       }                                       /* Back for another iteration. */
 
-   qn_last_termcode = termcode;               /* Record before announcing:   */
-   qn_last_nit      = k;                      /* report() may be silenced.   */
-   report( n, k, xk, gk, *fk, termcode );     /* Report on convergence.      */
+   opt_iters = k;
+   opt_termcode = termcode;
+   opt_fk = *fk;
+   if ( !opt_report_deferred )
+      report( n, k, xk, gk, *fk, termcode );  /* Report on convergence.      */
    if (!quiet_mode) printf( "%4d F: %0.10f\n", k, *fk );
 
 /* Deallocate temporary storage and return:                                  */
@@ -142,31 +136,63 @@ void raxopt( real (*func)(real *), real *fk, int n, real *xk, real **b,
 
 /*****************************************************************************/
 
+static const char *criterion( int termcode )
+{
+   switch ( termcode )
+       {
+       case 1:  return "norm of scaled gradient <= gradtol";
+       case 2:  return "scaled distance between last two steps <= steptol";
+       case 3:  return "last global step failed to locate a lower point";
+       case 4:  return "iteration limit reached";
+       case 5:  return "five consecutive steps of maximum length taken";
+       default: return NULL;
+       }
+}
+
 void report( int n, int k, real *x, real *g, real f, int termcode )
 
 {
-   const char *crit;
+   const char *crit = criterion( termcode );
 
    (void) n; (void) x; (void) g;   /* per-parameter x/g dump removed:        */
                                     /* the estimates already appear in the    */
                                     /* "Estimated Parameters" table.          */
    if ( quiet_mode ) return;
 
-   switch ( termcode )
-       {
-       case 1:  crit = "norm of scaled gradient <= gradtol";                break;
-       case 2:  crit = "scaled distance between last two steps <= steptol"; break;
-       case 3:  crit = "last global step failed to locate a lower point";   break;
-       case 4:  crit = "iteration limit reached";                           break;
-       case 5:  crit = "five consecutive steps of maximum length taken";    break;
-       default: crit = NULL;                                                break;
-       }
-
    fprintf( outputv, "\n=============================================================\n" );
    fprintf( outputv, "  OPTIMIZER %s after %d iterations\n",
             ( termcode == 1 || termcode == 2 ) ? "CONVERGED" : "STOPPED", k );
    fprintf( outputv, "  Objective function = %.12f\n", f );
    if ( crit ) fprintf( outputv, "  Convergence criterion: %s\n", crit );
+   fprintf( outputv, "=============================================================\n\n" );
+}
+
+/* The report est() writes once it knows where the MA roots ended (2026-09-28).
+   A stop with MA inverse roots within MA_WALL_TOL (5e-5, lik.h) of the unit
+   circle is on the edge of the admissible region -- chekma refuses beyond
+   1 + MA_WALL_TOL -- so "CONVERGED" would
+   be false there, whatever the termcode. The facts only: no verdict on the
+   model, which is the assistant's to study (sima; -lik shea for a second
+   path). */
+void report_stop( int nboundary, int nroots )
+{
+   const char *crit = criterion( opt_termcode );
+
+   if ( quiet_mode ) return;
+
+   fprintf( outputv, "\n=============================================================\n" );
+   if ( nboundary > 0 )
+      fprintf( outputv, "  OPTIMIZER STOPPED at the MA invertibility boundary after %d iterations\n",
+               opt_iters );
+   else
+      fprintf( outputv, "  OPTIMIZER %s after %d iterations\n",
+               ( opt_termcode == 1 || opt_termcode == 2 ) ? "CONVERGED" : "STOPPED",
+               opt_iters );
+   fprintf( outputv, "  Objective function = %.12f\n", opt_fk );
+   if ( crit ) fprintf( outputv, "  Convergence criterion: %s\n", crit );
+   if ( nboundary > 0 )
+      fprintf( outputv, "  MA boundary: %d of %d inverse roots within 5e-5 of the unit circle\n",
+               nboundary, nroots );
    fprintf( outputv, "=============================================================\n\n" );
 }
 
@@ -470,124 +496,7 @@ void fdhess( real (*func)(real *), int n, real *x, real f, real eta, real **H )
 
 /*****************************************************************************/
 
-real lnsrch( int n, real *xk, real fk, real *gk, real *dk, real *xkp1,
-             real *fkp1, real maxstep, real steptol, int *retcode,
-             int *maxtaken, real (*func)(real *) )
-
-{
-   real alpha, newtlen, tmp, initslp, rellen, minlam, lambda, tlambda;
-   real prelam, pfkp1, t1, t2, t3, a, b, disc;
-   int  i, haveprev = 0;            /* A finite trial point to interpolate   */
-                                    /* with exists (BUG-0006).               */
-
-   *maxtaken = 0;
-   *retcode  = 2;
-   alpha     = 1.0e-4;
-
-   for ( newtlen = 0.0, i = 1; i <= n; i++ ) newtlen += dk[i] * dk[i];
-   newtlen = sqrt( newtlen );
-   if ( newtlen > maxstep )         /* Scale if attempted step is too large: */
-      {
-      tmp = maxstep / newtlen;
-      for ( i = 1; i <= n; i++ ) dk[i] *= tmp;
-      newtlen = maxstep;
-      }
-
-   for ( initslp = 0.0, i = 1; i <= n; i++ ) initslp += gk[i] * dk[i];
-
-   rellen = 0.0;                    /* Compute minlam:                       */
-   for ( i = 1; i <= n; i++ )
-       {
-       tmp = fabs( dk[i] ) / rmax( fabs( xk[i] ), 1.0 );
-       if ( tmp > rellen ) rellen = tmp;
-       }
-   minlam = steptol / rellen;
-   lambda = 1.0;                    /* Always try full step first.           */
-
-   do                               /* Start of iteration loop:              */
-      {
-      for ( i = 1; i <= n; i++ ) xkp1[i] = xk[i] + lambda * dk[i];
-      *fkp1 = (*func)( xkp1 );
-
-      /* BUG-0006: a NaN or infinite objective is an INADMISSIBLE point, not a
-         value.  Every comparison below is false for a NaN, so the step was
-         neither accepted nor abandoned, tlambda and then lambda became NaN,
-         and the search never returned (drtran met it on real data and spun
-         for an hour and a half).  An infinity reaches the same loop one step
-         later, through inf/inf in the cubic fit.  Shrink the step without
-         interpolating -- there is nothing to interpolate with -- and give up
-         at minlam exactly as for a step that never decreases.  On a path of
-         finite values nothing changes: `haveprev` is false exactly when
-         `lambda == 1.0` was, the first time through.                        */
-      if ( !isfinite( *fkp1 ) )
-         {
-         if ( lambda < minlam )
-            {
-            *retcode = 1;
-            for ( i = 1; i <= n; i++ ) xkp1[i] = xk[i];
-            *fkp1 = fk;                /* The value at the point returned.   */
-            }
-         else
-            lambda = 0.1 * lambda;
-         continue;                     /* To the `while`: retcode decides.   */
-         }
-
-      if ( *fkp1 <=  fk + alpha * lambda * initslp )
-         {
-      /* Sufficient function decrease:                                       */
-         *retcode = 0;
-         if ( (lambda == 1.0) && (newtlen > 0.99 * maxstep) ) *maxtaken = 1;
-         }
-      else if ( lambda < minlam )
-         {
-      /* Convergence on x values:                                            */
-      /* The point goes back to xk, and so must its value: *fkp1 still held  */
-      /* the rejected trial's, and raxopt returned it as the optimum's       */
-      /* (drvec BUG-41, item 2; atsw-gui lib/optim/lnsrch.c).                */
-         *retcode = 1;
-         for ( i = 1; i <= n; i++ ) xkp1[i] = xk[i];
-         *fkp1 = fk;
-         }
-      else
-         {
-      /* Backtrack:                                                          */
-      /* First time (no finite point to interpolate with yet):                */
-         if ( !haveprev )
-            tlambda = -initslp / (2.0 * (*fkp1 - fk - initslp));
-      /* Subsequent backtracks:                                              */
-         else
-            {
-            t1 = *fkp1 - fk - lambda * initslp;
-            t2 = pfkp1 - fk - prelam * initslp;
-            t3 = 1.0 / (lambda - prelam);
-            a  = (t1 / (lambda * lambda) - t2 / (prelam * prelam)) * t3;
-            b  = (t2 * lambda / (prelam * prelam) -
-                 t1 * prelam / (lambda * lambda)) * t3;
-            if ( a == 0.0 )
-               tlambda = -initslp / (2.0 * b);
-            else
-               {
-               disc = b * b - 3.0 * a * initslp;
-               if ( disc < 0.0 )
-               /* Probably, dk is not a direction of descent (initslp > 0):  */
-                  nrerror( "ROUNDOFF PROBLEM IN LINE SEARCH" );
-               else
-                  tlambda = (-b + sqrt( disc )) / (3.0 * a);
-               }
-            if ( tlambda > 0.5 * lambda ) tlambda = 0.5 * lambda;
-            }
-         prelam = lambda;
-         pfkp1  = *fkp1;
-         haveprev = 1;
-         if ( tlambda <= 0.1 * lambda )
-            lambda = 0.1 * lambda;
-         else
-            lambda = tlambda;
-         }
-      }
-   while ( *retcode ==  2 );    /* Try again */
-   return( lambda );
-}
+/* lnsrch lives in lib/optim/lnsrch.c: one source for the four engines. */
 
 /*****************************************************************************/
 /*****************************************************************************/

@@ -65,6 +65,7 @@ typedef struct {
     int     twostep;
     int     maxits;
     double  grtol, sptol;
+    int     bfgs_se;
 } DrvarmaModelSpec;
 
 typedef struct {
@@ -85,6 +86,9 @@ typedef struct {
     double  logelf;
     int     termcode;
     int     nit;
+    int     se_how;
+    int     ma_boundary;
+    int     ma_nroots;
 } DrvarmaResult;
 
 void           drvarma_defaults(DrvarmaModelSpec *spec);
@@ -113,7 +117,9 @@ _SOURCES = [
     os.path.join(_INT, "nlatools.c"),
     os.path.join(_INT, "elfvarma.c"),
     os.path.join(_INT, "multshea.c"),
+    os.path.join(_INT, "lik.c"),
     os.path.join(_INT, "qnewtopt.c"),
+    os.path.join(_INT, "lnsrch.c"),
     os.path.join(_INT, "drvmlest.c"),
 ]
 
