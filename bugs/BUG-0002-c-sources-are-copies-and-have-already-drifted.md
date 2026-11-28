@@ -1,11 +1,11 @@
 ---
 id: BUG-0002
 title: The C sources are three unsynchronised COPIES, and they have already drifted — the termcode fix lives in the embedded copy only
-status: open
+status: fixed
 severity: high
 component: csrc
 found_in: 0.1.3
-fixed_in:
+fixed_in: unreleased (after 0.3.4)
 reported: 2026-08-12
 reporter: Revisión de defectos del ecosistema
 tags:
@@ -118,3 +118,23 @@ path goes in drvarma 6.0.
 Two ways to close it: bring `drvmlest.c`/`qnewtopt.c`/`nlatools.c` to the
 C's and regenerate the `.inp` path's references (its standard errors become
 fdhess's), or leave it until 6.0 removes the path. A decision for David.
+
+## Resolution (2026-11-28)
+
+Resynced, not waited for 6.0: the path is still distributed, and the port
+does not part from the C while it is. `csrc/internal/` is now atsw-gui's at
+d603ea1, every file identical (`drvmlest.c`, `qnewtopt.c`, `nlatools.c`,
+`elfvarma.c`, `main.h`, `likhost.h`, `optimhost.h`, and `lib/lik/{lik.c,
+lik.h, multshea.c}`, `lib/optim/lnsrch.c`, `lib/fuepre/tusmodel.h`, which
+they now need). `drvarma_api.c` reads the verdict from `opt_termcode` /
+`opt_iters`, holds `qq[1,1]` (`est_fixed`) and returns `se_how` and the MA
+wall count; `estimate_w(hessian="fd")` asks the C for its own fdhess.
+
+- `tests/data/homologation.json` records each file's sha256 and that it is
+  identical to the C's; `test_c_oracle.py` passes whole against d603ea1
+  (36 passed, with `ATSW_GUI`).
+- `tests/test_inp_path_as_the_c.py`: six cases of the C's battery; with the
+  compiled engine the parameter table is the C's line for line.
+- What the resync uncovered: the pure-Python `.inp` estimator is not the
+  C's on four of those cases (BUG-0033).
+

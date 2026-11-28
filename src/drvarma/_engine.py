@@ -75,10 +75,31 @@ def _warn_python_fallback(what="", stacklevel=3):
         RuntimeWarning, stacklevel=stacklevel)
 
 
+# The C's est_se_label (drvmlest.c), and stderr.legacy_fd_std_errors' words.
+_SE_LABEL = {
+    0: "bfgs",
+    1: "fdhess",
+    2: "bfgs (fdhess: the optimum is on the boundary of the admissible region)",
+    3: "bfgs (fdhess: the Hessian is not positive definite)",
+    4: "none (fdhess: the optimum is on the boundary of the admissible region; "
+       "the search did not move, so it built no BFGS Hessian)",
+    5: "none (fdhess: the Hessian is not positive definite; the search did not "
+       "move, so it built no BFGS Hessian)",
+}
+
+
 def estimate_w(w, p, q, include_mean=False,
                diag_ar=False, diag_ma=False, diag_cov=False,
-               method=1, twostep=False, maxits=0, grtol=0.0, sptol=0.0):
+               method=1, twostep=False, maxits=0, grtol=0.0, sptol=0.0,
+               hessian="bfgs"):
     """Estimate VARMA(p,q) on the stationary series w (nobs x m).
+
+    ``hessian``: "bfgs" (the default) returns the BFGS factor's standard
+    errors, from either engine. "fd" asks the C engine for its own fdhess at
+    the optimum, as the C's CLI (``-hessian fd``), and adds ``se_method``
+    (the C's ``est_se_label``); the pure-Python estimator ignores it and
+    returns BFGS, and Model then takes fdhess in Python
+    (``stderr.legacy_fd_std_errors``), the port of the same routine.
 
     Uses the compiled C engine when available; otherwise falls back to the
     pure-Python exact-ML estimator (`estimate_py.estimate_w_py`), a faithful
@@ -114,6 +135,10 @@ def estimate_w(w, p, q, include_mean=False,
     spec.diag_cov = 1 if diag_cov else 0
     spec.method = method
     spec.twostep = 1 if twostep else 0
+    # The vendored C (atsw-gui's, BUG-0002) takes fdhess unless told not to.
+    if hessian not in ("bfgs", "fd"):
+        raise ValueError("hessian must be 'bfgs' or 'fd'")
+    spec.bfgs_se = 0 if hessian == "fd" else 1
     if maxits:
         spec.maxits = maxits
     if grtol:
@@ -141,6 +166,8 @@ def estimate_w(w, p, q, include_mean=False,
             # built on it was inert.
             "termcode": res.termcode,
             "nit": res.nit,
+            "ma_boundary": res.ma_boundary,
+            "ma_nroots": res.ma_nroots,
             "params": np.frombuffer(ffi.buffer(res.params, npar * 8), float).copy()
                       if npar else np.zeros(0),
             "std_errors": np.frombuffer(ffi.buffer(res.std_errors, npar * 8), float).copy()
@@ -157,6 +184,8 @@ def estimate_w(w, p, q, include_mean=False,
             "sigma": np.frombuffer(ffi.buffer(res.sigma, rm * rm * 8), float)
                      .reshape(rm, rm).copy(),
         }
+        if hessian == "fd":
+            out["se_method"] = _SE_LABEL.get(res.se_how, "bfgs")
     finally:
         lib.drvarma_result_free(res)
     _ = _wbuf  # keep buffer alive until here

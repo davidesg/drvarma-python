@@ -2,10 +2,10 @@
 /*  nlatools.c -- part of drvarma (multivariate VARMA modelling).
  *
  *  SHARED, Numerical-Recipes-free version: kept byte-identical to
- *  drvarma_v.04.1/src/nlatools.c and to drtran/src/nlatools.c.  Three
- *  independent NR cleanups each dropped the same base offset in the memory
- *  routines; one shared copy is the answer to that.  If you fix something here,
- *  fix it there.
+ *  drtran/src/nlatools.c and to the copy embedded in the Python package
+ *  (csrc/internal/).  Three independent NR cleanups each dropped the same base
+ *  offset in the memory routines; one shared copy is the answer to that.  If
+ *  you fix something here, fix it there.
  *
  *  Copyright (C) 1995-2026 A.B. Treadway, J.A. Mauricio & D.E. Guerrero.
  *
@@ -724,25 +724,8 @@ void Easter( int *day, int *month, int year )
 /****************************************************************************/
 /****************************************************************************/
 
-void calcnu( double omega, int s, double delta, int r, double *nu, int lags )
-
-{
-   int  i, j;
-   double sum1, sum2;
-
-   nu[0] = omega;
-   for ( j = 1; j <= lags; j++ )
-       {
-       sum1 = 0.0;
-       if ( r > 0 )
-          for ( i = 1; i <= j; i++ )
-              if ( i <= r ) sum1 = sum1 + delta * nu[j-i];
-       sum2 = 0.0;
-       if ( s > 0 )
-          if ( j <= s ) sum2 = omega;
-       nu[j] = sum1 - sum2;
-       }
-}
+/* calcnu (escalar) quitada 2026-10-16: nadie la llamaba. El filtro
+   determinista de la suite es lib/fuedet (BUG-40 de drvec).              */
 
 /****************************************************************************/
 /*****************************************************************************/
@@ -823,7 +806,10 @@ static real gammap(real a, real x) {
 real chisq(real x, int df) {
     if (df <= 0) return 0.0;
     if (x <= 0.0) return 0.0;
-    if (x > 1000.0) return 1.0;  /* L�mite superior */
+    /*  BUG-42(2): here was `if (x > 1000.0) return 1.0;`, which put every
+     *  p-value at 0 once Hosking's df = m^2*s neared 1000. No cap is
+     *  needed: Wilson-Hilferty below holds at any x for df >= 30, and
+     *  gammap() handles df < 30.                                          */
 
     /* Para df peque�os, c�lculo exacto */
     if (df < 30) {

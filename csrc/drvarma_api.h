@@ -16,6 +16,8 @@ typedef struct {
     int     twostep;
     int     maxits;       /* 0 -> default 500                                */
     double  grtol, sptol; /* 0 -> defaults                                   */
+    int     bfgs_se;      /* 0: standard errors from fdhess at the optimum, the
+                             C's default; 1: the BFGS factor (-hessian bfgs)  */
 } DrvarmaModelSpec;
 
 typedef struct {
@@ -36,6 +38,9 @@ typedef struct {
     double  logelf;
     int     termcode;      /* raxopt: 1 gradient, 2 step, 3-5 no convergence  */
     int     nit;           /* raxopt iterations                               */
+    int     se_how;        /* est_se_how: 0 bfgs, 1 fdhess, 2-5 why not fdhess */
+    int     ma_boundary;   /* MA inverse roots on the wall at the stop        */
+    int     ma_nroots;     /* of how many (m*q)                               */
 } DrvarmaResult;
 
 void           drvarma_defaults(DrvarmaModelSpec *spec);

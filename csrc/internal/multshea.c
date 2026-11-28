@@ -1,6 +1,5 @@
 /*****************************************************************************/
-/*  multshea.c -- part of drvarma. COPY of atsw-gui lib/lik/multshea.c
- *  (the source of truth since 2026-09-28; sync from there, never edit here) (multivariate VARMA modelling).
+/*  multshea.c -- part of drvarma (multivariate VARMA modelling).
  *
  *  Copyright (C) 1995-2026 A.B. Treadway, J.A. Mauricio & D.E. Guerrero.
  *
@@ -18,7 +17,7 @@
 /*  Copyright (C) Jos‚ Alberto Mauricio, 1996.                               */
 /*****************************************************************************/
 
-#include "main.h"              /* Header file (prototype declarations)        */
+#include "likhost.h"      /* the engine: real, elf, chekma, allocators */              /* Header file (prototype declarations)        */
 
 /*****************************************************************************/
 /*****************************************************************************/

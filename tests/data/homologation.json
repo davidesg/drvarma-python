@@ -2,8 +2,8 @@
  "_": "The record of the homologation with the C engine. tests/test_c_oracle.py reads it; docs/HOMOLOGATION.md explains it.",
  "c_repository": "davidesg/atsw-gui",
  "c_path": "engines/drvarma",
- "c_commit": "29bd4f2f9724aea6994abf52499af86d0afb1b8f",
- "date": "2026-11-22",
+ "c_commit": "d603ea1ee75cf2ee486b5fba040b633cc05151bb",
+ "date": "2026-11-28",
  "cases": [
   {
    "name": "route U, monetary pair, VAR(1), deterministic terms by class",
@@ -279,44 +279,74 @@
  ],
  "csrc": {
   "csrc/internal/drvmlest.c": {
-   "sha256": "199be2d72cafabe36a702876d8aea30cbef65c38a2316b03c97d838e65c84959",
    "c_file": "engines/drvarma/src/drvmlest.c",
-   "identical_to_c": false
-  },
-  "csrc/internal/elfvarma.c": {
-   "sha256": "bce5e718b0ad87eca01a519b43c190c24f59df0b4de81bcdb13049353d1523a7",
-   "c_file": "engines/drvarma/src/elfvarma.c",
-   "identical_to_c": true
-  },
-  "csrc/internal/main.h": {
-   "sha256": "d1b4b133016545d7e4ddbf41c950c1d4ae8576bca0acdddea44f9bf46c2c31db",
-   "c_file": "engines/drvarma/include/main.h",
-   "identical_to_c": false
-  },
-  "csrc/internal/multshea.c": {
-   "sha256": "8eebd784c50514679099225212f033226af3a9d135bfb4ed296029b2745acc15",
-   "c_file": "lib/lik/multshea.c",
-   "identical_to_c": false
-  },
-  "csrc/internal/nlatools.c": {
-   "sha256": "c67df33692fdb22e1b48fcb1c7c89d70a16689cc732faea8275a711f8aed6225",
-   "c_file": "engines/drvarma/src/nlatools.c",
-   "identical_to_c": false
+   "identical_to_c": true,
+   "sha256": "f39b4fc424264d79e4df81cc3b12edc95dfbd5851ca06dafc938bcd1be8df5a2"
   },
   "csrc/internal/qnewtopt.c": {
-   "sha256": "1374e8b07ac11ec3e798a1050d77ad0f53554230cf6080aa947635e894ca2d70",
    "c_file": "engines/drvarma/src/qnewtopt.c",
-   "identical_to_c": false
+   "identical_to_c": true,
+   "sha256": "6481fc56e245d680e6f496467c2752fec0d54195b56c7f86d1e8b636eb566b7a"
+  },
+  "csrc/internal/nlatools.c": {
+   "c_file": "engines/drvarma/src/nlatools.c",
+   "identical_to_c": true,
+   "sha256": "a663d4d86640fa6e54ebf245629ea6a08e517cf253e9742d637639b0cd717fc2"
+  },
+  "csrc/internal/elfvarma.c": {
+   "c_file": "engines/drvarma/src/elfvarma.c",
+   "identical_to_c": true,
+   "sha256": "bce5e718b0ad87eca01a519b43c190c24f59df0b4de81bcdb13049353d1523a7"
+  },
+  "csrc/internal/main.h": {
+   "c_file": "engines/drvarma/include/main.h",
+   "identical_to_c": true,
+   "sha256": "e7df119de543ed6ca104252aac7aca503e3ec6aeb392f2c67e29a9ce571cce24"
+  },
+  "csrc/internal/likhost.h": {
+   "c_file": "engines/drvarma/include/likhost.h",
+   "identical_to_c": true,
+   "sha256": "15daf84c05cf3f5d6b39ef2df3dcc9cc2fc3ee5865ed1542b16d7d49a1f08f3f"
+  },
+  "csrc/internal/optimhost.h": {
+   "c_file": "engines/drvarma/include/optimhost.h",
+   "identical_to_c": true,
+   "sha256": "80842bb44674f1806aecd020369312a966841b84f8d4ab969b2bd35e0c675bb4"
+  },
+  "csrc/internal/multshea.c": {
+   "c_file": "lib/lik/multshea.c",
+   "identical_to_c": true,
+   "sha256": "5a0e0f5613f1e254f155b6ba99e0c1dd0387276da05399ce67dcc4df3972ade1"
+  },
+  "csrc/internal/lik.c": {
+   "c_file": "lib/lik/lik.c",
+   "identical_to_c": true,
+   "sha256": "37a9ff1fc3fa7dbba042dd159c71f8127f0ddc8d9902a59df5bbc9fd13411e98"
+  },
+  "csrc/internal/lik.h": {
+   "c_file": "lib/lik/lik.h",
+   "identical_to_c": true,
+   "sha256": "4e42771972989411647848962271502e924d7fdf20bfee4c453ea65da37dfda0"
+  },
+  "csrc/internal/lnsrch.c": {
+   "c_file": "lib/optim/lnsrch.c",
+   "identical_to_c": true,
+   "sha256": "4c7bcb7a398b820c0e61071fc54b2d971d0d466090c9595183e9172004dffabc"
+  },
+  "csrc/internal/tusmodel.h": {
+   "c_file": "lib/fuepre/tusmodel.h",
+   "identical_to_c": true,
+   "sha256": "8ba9262ab7fafbc3dafaa82a62db02436a3fb906e46080b75b564e28c2298163"
   },
   "csrc/drvarma_api.c": {
-   "sha256": "01b6e48f38101eeacadb22b4ab17672c76c5c964235a17e2b28fe8da1c16df03",
    "c_file": null,
-   "identical_to_c": null
+   "identical_to_c": null,
+   "sha256": "00f6a36e2576e26a1f71a7ee3171b8e8c35077f3224cbd72bdd177cca8b34fba"
   },
   "csrc/drvarma_api.h": {
-   "sha256": "5a6fa08c84dea40b4e56feac70aad98925684a1d82cf319cf1e5c433dc181df0",
    "c_file": null,
-   "identical_to_c": null
+   "identical_to_c": null,
+   "sha256": "d5325c2576a2174d71e7319d05457aa0926dc60adc08f89ce60fab0fc618a052"
   }
  }
 }

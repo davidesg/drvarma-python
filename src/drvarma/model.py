@@ -95,10 +95,12 @@ class Model:
         self.result = estimate_w(
             w, p=self.p, q=self.q, include_mean=self.include_mean,
             diag_ar=self.diag_ar, diag_ma=self.diag_ma, diag_cov=self.diag_cov,
-            method=self.method, twostep=self.twostep,
+            method=self.method, twostep=self.twostep, hessian=self.hessian,
         )
-        self.se_method = "bfgs"
-        if self.hessian == "fd" and self.result.get("npar"):
+        self.se_method = self.result.pop("se_method", "bfgs")
+        if (self.hessian == "fd" and self.result.get("npar")
+                and self.se_method == "bfgs"):
+            # The pure-Python estimator: fdhess here, the port of the C's.
             from .stderr import legacy_fd_std_errors
             cov, std, how, info = legacy_fd_std_errors(
                 self.result, w, self.p, self.q, self.include_mean, self.diag_ar,

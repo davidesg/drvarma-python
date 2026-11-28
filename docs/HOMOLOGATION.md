@@ -89,20 +89,25 @@ measured: the C has only been run on Linux for this record.
 Changing a file under `csrc/` makes `test_the_vendored_c_is_the_recorded_one`
 fail until the record is updated: the same steps.
 
+## The `.inp` path (deprecated)
+
+`csrc/` is the C's: every vendored file is identical to atsw-gui's at the
+recorded commit (`identical_to_c` in the record), only `drvarma_api.c` and
+`.h`, the binding, are the package's own (BUG-0002, 2026-11-28).
+`tests/test_inp_path_as_the_c.py` holds six cases of the C's battery
+(`tests/banco/ref`, `tests/data/inp_c/cases.json`): with the compiled engine
+the port's parameter table is the C's line for line, the standard errors
+fdhess's computed by the C itself (`estimate_w(hessian="fd")`). The
+pure-Python estimator matches on two of them and not yet on four (BUG-0033).
+
 ## What is not homologated against the current C
 
-- **The deprecated multivariate `.inp` path.** Its tests
-  (`test_estimate_cffi.py`, `test_estimate_py.py`, `test_deseason.py`,
-  `test_diagnostics.py`, `test_forecast.py`, `test_irf.py`,
-  `test_recursive.py`, `test_report.py`, `test_residual_report.py`,
-  `test_volatility.py`, `test_pure_python_out.py`, `test_io_transform.py`,
-  `test_reliability.py`) compare against the frozen 0.4.1 program
-  (`drvarma_v.04.1`) and its saved outputs, and are skipped where that
-  checkout is missing. The C's `.inp` path has moved since (fdhess standard
-  errors, the MA wall report): pointing them at it means regenerating their
-  references. The path is removed in drvarma 6.0.
-- **`csrc/`.** Only `elfvarma.c` is identical to the C's. `drvmlest.c`,
-  `qnewtopt.c`, `nlatools.c` and `main.h` differ (BUG-0002), and
-  `multshea.c` in its header. The record pins what they are; bringing them
-  to the C's is pending.
+- **The pure-Python `.inp` path** on the four cases of BUG-0033.
+- **The older `.inp` tests** (`test_estimate_cffi.py`, `test_estimate_py.py`,
+  `test_deseason.py`, `test_diagnostics.py`, `test_forecast.py`,
+  `test_irf.py`, `test_recursive.py`, `test_report.py`,
+  `test_residual_report.py`, `test_volatility.py`, `test_pure_python_out.py`,
+  `test_io_transform.py`, `test_reliability.py`) compare against the frozen
+  0.4.1 program (`drvarma_v.04.1`) and its saved outputs, and are skipped
+  where that checkout is missing. The path is removed in drvarma 6.0.
 - **What exists in one engine only**: `docs/ARCHITECTURE.md` §8.
